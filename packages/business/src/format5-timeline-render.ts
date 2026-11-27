@@ -10,7 +10,9 @@ import {assertTimelineSpeedRenderable} from '../../contracts/src/timeline-speed-
 import {timelineSpeedExportSnapshotFields} from '../../contracts/src/timeline-speed-export.ts';
 import {FORMAT6_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
 import {timelineStorageFormat, timelineStorageSchema} from './project-file/timeline-storage.ts';
-import {assertSpeedExportInterpolation, timelineSpeedExportLayout, type SpeedExportSnapshotContext} from './timeline-speed-export-admission.ts';
+import {timelineSpeedExportLayout, type SpeedExportSnapshotContext} from './timeline-speed-export-admission.ts';
+import {freezeTimelineOpticalProxies} from './timeline-speed-export-optical.ts';
+import type {TimelineOpticalProxyPort} from './timeline-processing/optical-proxy-port.ts';
 import {freezeTimelineReverseProxies, type TimelineReverseProxyPort} from './timeline-speed-export-proxy.ts';
 import {AppError} from '../../contracts/src/app-error.ts';
 import type {Format5Cue, Format5Timeline} from '../../contracts/src/project-format5.ts';
@@ -131,7 +133,7 @@ export function readFormat5AudioProjection(store: ProjectStore, {previewSpeed = 
 /** Preflight and enqueue hash the same frozen projection. */
 export function freezeFormat5RenderProjection(projection: Format5RenderProjection, input: {
   readonly exportSettings?: unknown; readonly exportRange?: unknown; readonly deliveryName?: string;
-}, reverseProxy?: TimelineReverseProxyPort): Row {
+}, reverseProxy?: TimelineReverseProxyPort, opticalProxy?: TimelineOpticalProxyPort): Row {
   const {legacy, assets} = projection;
   const retimes = legacy.clips.some(clip => clip.timing);
   if (retimes) {
@@ -144,9 +146,12 @@ export function freezeFormat5RenderProjection(projection: Format5RenderProjectio
     const snapshot = frozen as unknown as SpeedExportSnapshotContext;
     const layout = timelineSpeedExportLayout(snapshot, assets);
     if (layout) {
-      assertSpeedExportInterpolation(layout);
-      const proofs = freezeTimelineReverseProxies(snapshot, layout, assets, reverseProxy);
-      if (proofs.size) Object.assign(frozen, timelineSpeedExportSnapshotFields(legacy, proofs));
+      const phases = new Map(layout.clips.flatMap(clip => clip.interpolation ? [[clip.clipId, clip.interpolation.phase] as const] : []));
+      const opticalProxies = freezeTimelineOpticalProxies(snapshot, layout, assets, opticalProxy);
+      const reverseProofs = freezeTimelineReverseProxies(snapshot, layout, assets, reverseProxy);
+      if (phases.size || opticalProxies.size || reverseProofs.size) {
+        Object.assign(frozen, timelineSpeedExportSnapshotFields(legacy, reverseProofs, {phases, opticalProxies}));
+      }
     }
   }
   return frozen;
@@ -160,7 +165,7 @@ export function freezeFormat5RenderSnapshot(store: ProjectStore, input: {
   readonly exportRange?: unknown;
   readonly deliveryName?: string;
   readonly preflightSnapshotHash?: string;
-} = {}, reverseProxy?: TimelineReverseProxyPort): unknown {
+} = {}, reverseProxy?: TimelineReverseProxyPort, opticalProxy?: TimelineOpticalProxyPort): unknown {
   const projection = readFormat5RenderProjection(store, {purpose: input.purpose});
   if (!projection) throw new AppError('EMPTY_TIMELINE', '请先向时间线添加片段', 409);
   const timeline = projection.format5;
@@ -179,5 +184,5 @@ export function freezeFormat5RenderSnapshot(store: ProjectStore, input: {
       : '时间线还有未生成片段或待选版本的片段，不能导出。', 409, {blockers});
   }
   if (!projection.legacy.clips.length) throw new AppError('EMPTY_TIMELINE', '请先向时间线添加片段', 409);
-  return freezeFormat5RenderProjection(projection, input, reverseProxy);
+  return freezeFormat5RenderProjection(projection, input, reverseProxy, opticalProxy);
 }

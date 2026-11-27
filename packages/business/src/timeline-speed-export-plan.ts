@@ -1,9 +1,10 @@
 import {AppError} from '../../contracts/src/app-error.ts';
 import type {ClipTiming} from '../../contracts/src/timeline-speed.ts';
 import {compileClipTimeMap} from '../../contracts/src/timeline-clip-timing.ts';
+import {INTERPOLATION_UNAVAILABLE, TIMELINE_SPEED_EXPORT_MESSAGES} from '../../contracts/src/timeline-speed-export.ts';
 import {
   compileFreezeTimeMap, compileTimeMap, initialTimeMap, restoreTimeMap, timeMapSourceRangeForEdit,
-  timeMapSourceWindowForOutput, trimTimeMap,
+  timeMapHasSlowMotion, timeMapSourceWindowForOutput, trimTimeMap,
   type CompiledTimeMap, type TimeMapResult, type TimeMapSourceBoundary, type TimeMapSpeedRate,
 } from '../../contracts/src/timeline-time-map.ts';
 
@@ -19,6 +20,20 @@ export interface SpeedPictureWindow {
   readonly beginFrame: number;
   readonly endFrame: number;
   readonly plan: CompiledTimeMap;
+  /** The uncropped window owns source phase across every export range. */
+  readonly fullPlan: CompiledTimeMap;
+}
+
+export function speedInterpolationUnavailable(clipId: string): AppError {
+  return new AppError(INTERPOLATION_UNAVAILABLE, TIMELINE_SPEED_EXPORT_MESSAGES[INTERPOLATION_UNAVAILABLE], 409, {clipId});
+}
+
+export function speedInterpolationWindows(clipId: string, windows: readonly SpeedPictureWindow[]): readonly SpeedPictureWindow[] {
+  return windows.filter(window => {
+    const slow = timeMapHasSlowMotion(window.plan);
+    if (!slow.ok) throw speedInterpolationUnavailable(clipId);
+    return slow.value;
+  });
 }
 
 export function speedExportMappingError(clipId: string | undefined, reason: string): AppError {
@@ -110,7 +125,7 @@ export function speedPictureWindows(clip: TimedClip, plan: CompiledTimeMap,
     const full = source();
     const plan = beginFrame === start && last === end ? full
       : mapped(clip.id, trimTimeMap(full, beginFrame - start, last - start));
-    windows.push({beginFrame, endFrame: last, plan});
+    windows.push({beginFrame, endFrame: last, plan, fullPlan: full});
   };
   append(picture.start, clip.startFrame, () => speedTransitionHandle(clip, plan, 'before', clip.startFrame - picture.start, sourceFrames));
   append(clip.startFrame, endFrame, () => plan);

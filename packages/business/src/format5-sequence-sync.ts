@@ -57,6 +57,15 @@ import {
 } from './project-file/format5-timeline.ts';
 import {readProjectContentStamp} from './project-file/content-stamp.ts';
 import {readSceneSplitCuts} from './scene-history.ts';
+import {assertProjectStore} from './store-runtime.ts';
+import {checkpoint} from './operation-lifecycle.ts';
+import {EXPORT_PREFLIGHT_LIMITS} from '../../contracts/src/export-preflight.ts';
+import {inspectSpeedVideoInterpolation} from './timeline-speed-export-video.ts';
+import {speedTimelineTransitionRegions} from './timeline-speed-export-admission.ts';
+import {speedInterpolationWindows, speedPictureWindows} from './timeline-speed-export-plan.ts';
+import {transitionPictureRange} from './timeline-transition-filter.ts';
+import {probeTimelineSource, readOwnedTimelineAsset} from './timeline-sources.ts';
+import {sameManagedFile, validateManagedSource, verifiedManagedHash} from './managed-media.ts';
 import type {ProjectStore} from './project-file/store.ts';
 import {
   findSequenceEditReceipt, historyCommandDigest, moveSequenceEditHistoryCursor, patchFromEntry, prepareSequenceEditHistory,
@@ -2130,7 +2139,7 @@ function prepareSpeedEdit(store: ProjectStore, context: SyncContext, intent: Seq
     return before && (!sameJson(before.anchor, item.anchor)
       || (before.anchor !== null && before.anchor !== undefined && before.startFrame !== item.startFrame));
   }).map(item => item.id).sort();
-  return {patch, impact, targets: [...targets, ...cueTargets],
+  return {patch, timeline, impact, targets: [...targets, ...cueTargets],
     summary: {durationFrames: candidate.durationFrames, movedClipIds, changedAnchorIds}};
 }
 
@@ -2148,7 +2157,10 @@ interface SpeedPreviewInput {
   readonly speedIntent: SequenceEditSpeedIntent;
   readonly allocation?: Partial<SequenceEditAllocation>;
 }
-export function previewSequenceSpeed(store: ProjectStore, input: SpeedPreviewInput): SequenceSyncPreview | SequenceEditTransactionFailure {
+interface SpeedPreviewMediaCheck { readonly signal?: AbortSignal; readonly beforeEffect?: () => void }
+type SpeedPreviewResult = SequenceSyncPreview | SequenceEditTransactionFailure;
+
+export function previewSequenceSpeed(store: ProjectStore, input: SpeedPreviewInput): SpeedPreviewResult {
   if (projectFormat(store) !== FORMAT6_PROJECT_SCHEMA_VERSION) return failure('SEQUENCE_EDIT_CONTRACT_INVALID');
   return store.tx(() => {
     try {
@@ -2165,10 +2177,155 @@ export function previewSequenceSpeed(store: ProjectStore, input: SpeedPreviewInp
       return {envelope, warnings: [], planDigest: sequenceEditInputDigest(envelope)};
     } catch (error) {
       if (!(error instanceof AppError) || !isSequenceEditErrorCode(error.code)) throw error;
-      const details = error.details as {ids?: readonly string[]} | undefined;
-      return failure(error.code, details?.ids);
+      return failure(error.code, (error.details as {ids?: readonly string[]} | undefined)?.ids);
     }
   });
+}
+
+function prepareCommittedSpeedEdit(store: ProjectStore, context: SyncContext, envelope: SequenceEditEnvelope,
+  intent: SequenceEditSpeedIntent): ReturnType<typeof prepareSpeedEdit> | SequenceEditTransactionFailure {
+  const state = prepareSequenceEditHistory(store).state;
+  if (envelope.epoch !== state.epoch || envelope.baseline.historyPosition !== state.position ||
+      envelope.baseline.historyRevision !== state.revision) return failure('SEQUENCE_EDIT_HISTORY_CONFLICT');
+  const expectedAllocation = speedAllocation(context, intent, envelope.allocation);
+  if (!sameJson(expectedAllocation, envelope.allocation)) return failure('SEQUENCE_EDIT_CONTRACT_INVALID');
+  const prepared = prepareSpeedEdit(store, context, intent, envelope.allocation);
+  if (!sameJson(prepared.targets, envelope.baseline.targets) || !sameJson(prepared.impact, envelope.impact)) {
+    return failure('SEQUENCE_EDIT_PATCH_INVALID');
+  }
+  return prepared;
+}
+
+function speedMediaError(code: SequenceEditErrorCode, ids: readonly string[] = []): AppError {
+  return new AppError(code, '无法应用片段的补帧设置。', 409, {ids});
+}
+
+/** Validate the exact planned edit on the owned source's decoded clock.
+ * Probing happens outside SQLite transactions. The caller runs the returned
+ * fence synchronously before publishing the preview or applying the edit. */
+export async function assertSequenceSpeedMedia(store: ProjectStore, envelope: SequenceEditEnvelope,
+  options: SpeedPreviewMediaCheck, expectedPlanDigest?: string): Promise<(() => void) | undefined> {
+  const intent = envelope?.speedIntent;
+  const operation = intent?.operation;
+  if (!intent || operation?.kind !== 'clip-speed' || operation.setting?.interpolation === 'off') return;
+  if (projectFormat(store) !== FORMAT6_PROJECT_SCHEMA_VERSION || !isSequenceEditEnvelope(envelope) ||
+      envelope.projectId !== store.projectId) throw speedMediaError('SEQUENCE_EDIT_CONTRACT_INVALID');
+  const digest = sequenceEditInputDigest(envelope);
+  const isReplay = (): boolean => {
+    const receipt = findSequenceEditReceipt(store, envelope.requestId);
+    if (!receipt) return false;
+    if (receipt.inputDigest !== digest) throw speedMediaError('SEQUENCE_EDIT_REQUEST_REUSED');
+    return true;
+  };
+  if (isReplay()) return;
+  if (expectedPlanDigest !== undefined && expectedPlanDigest !== digest) throw speedMediaError('SEQUENCE_EDIT_PATCH_INVALID');
+  const {clipId} = operation;
+  const media = store.tx(() => {
+    const context = readSyncContext(store);
+    if (envelope.filmId !== context.rootNodeId) throw speedMediaError('SEQUENCE_EDIT_CONTRACT_INVALID');
+    const revisionFailure = revisionMatches(store, envelope, context);
+    if (revisionFailure) throw speedMediaError(revisionFailure.code, revisionFailure.ids);
+    const prepared = prepareCommittedSpeedEdit(store, context, envelope, intent);
+    if ('ok' in prepared) throw speedMediaError(prepared.code, prepared.ids);
+    const timeline = {...prepared.timeline, clips: prepared.timeline.clips.map(clip => ({...clip, assetId: clip.assetId ?? ''}))};
+    const clip = timeline.clips.find(clip => clip.id === clipId);
+    if (clip?.timing?.profile !== 'timeline-speed-v1' || clip.timing.interpolation === 'off' || !clip.assetId ||
+        !timeline.tracks.some(track => track.id === clip.trackId && track.kind === 'video') ||
+        !context.assets.get(clip.assetId)?.mimeType?.startsWith('video/')) return;
+    const compiled = (item: typeof clip) => {
+      const plan = compileClipTimeMap(item, timeline);
+      if (!plan.ok) throw speedMediaError(plan.code, [item.id]);
+      return plan.value;
+    };
+    const plan = compiled(clip);
+    const clips = new Map(timeline.clips.map(item => [item.id, item]));
+    const assets = new Map([...context.assets].flatMap(([id, asset]) =>
+      typeof asset.mimeType === 'string' ? [[id, {mimeType: asset.mimeType, duration: asset.duration}] as const] : []));
+    const regions = speedTimelineTransitionRegions(timeline, assets, id => {
+      const item = clips.get(id);
+      return item?.timing ? {timing: item.timing, plan: compiled(item)} : undefined;
+    });
+    const picture = transitionPictureRange(clip, regions);
+    const windows = speedPictureWindows({...clip, timing: clip.timing}, plan, picture, picture,
+      sourceFrameCount(context.assets.get(clip.assetId)?.duration) ?? 0);
+    const plans = speedInterpolationWindows(clipId, windows).map(window => window.fullPlan);
+    return plans.length ? {assetId: clip.assetId, plans} : undefined;
+  });
+  if (!media) return;
+  const deadline = AbortSignal.timeout(EXPORT_PREFLIGHT_LIMITS.timeoutMs);
+  const signal = options.signal ? AbortSignal.any([options.signal, deadline]) : deadline;
+  const {projectId, projectDir, db} = store;
+  const beforeEffect = (): void => {
+    checkpoint(signal);
+    options.beforeEffect?.();
+    assertProjectStore(store);
+    if (db.isTransaction || readProjectContentStamp(db).contentSequence !== envelope.baseline.contentRevision) {
+      throw speedMediaError('SEQUENCE_EDIT_REVISION_CONFLICT', [clipId]);
+    }
+  };
+  const sourceFailure = (error: unknown): boolean => {
+    const code = (error as {code?: string})?.code;
+    return deadline.aborted || code?.startsWith('MANAGED_') === true || code?.startsWith('MEDIA_') === true ||
+      code === 'SPEED_SOURCE_UNSUPPORTED';
+  };
+  try {
+    beforeEffect();
+    const asset = readOwnedTimelineAsset(db, projectId, media.assetId);
+    if (!asset) throw speedMediaError('SPEED_SOURCE_NOT_READY', [clipId]);
+    const source = await verifiedManagedHash(projectDir, asset, {signal, beforeEffect, maxBytes: EXPORT_PREFLIGHT_LIMITS.sourceBytes});
+    const fence = (): void => {
+      beforeEffect();
+      const current = validateManagedSource(projectDir, asset);
+      if (current.file !== source.file || !sameManagedFile(current.info, source.info)) {
+        throw speedMediaError('SPEED_SOURCE_NOT_READY', [clipId]);
+      }
+    };
+    fence();
+    const probe = await probeTimelineSource(source.file, {signal, beforeEffect: fence});
+    fence();
+    if (!probe.hasVideo || probe.videoStreamIndex === null) throw speedMediaError('UNSUPPORTED_FORMAT', [clipId]);
+    try {
+      for (const plan of media.plans) {
+        await inspectSpeedVideoInterpolation({source: {path: source.file, videoStreamIndex: probe.videoStreamIndex},
+          plan, signal, beforeEffect: fence});
+      }
+    } catch (error) {
+      // A format or phase refusal must describe the same file as the plan.
+      if (error instanceof AppError && ['INTERPOLATION_UNAVAILABLE', 'UNSUPPORTED_FORMAT'].includes(error.code)) fence();
+      throw error;
+    }
+    return () => {
+      if (isReplay()) return;
+      try { fence(); }
+      catch (error) {
+        if (sourceFailure(error)) {
+          checkpoint(options.signal);
+          throw speedMediaError('SPEED_SOURCE_NOT_READY', [clipId]);
+        }
+        throw error;
+      }
+    };
+  } catch (error) {
+    checkpoint(options.signal);
+    if ((error as {terminationUnconfirmed?: unknown})?.terminationUnconfirmed === true) throw error;
+    if (error instanceof AppError && error.code === 'SEQUENCE_EDIT_REVISION_CONFLICT' && isReplay()) return;
+    if (error instanceof AppError && isSequenceEditErrorCode(error.code)) throw speedMediaError(error.code, [clipId]);
+    if (sourceFailure(error)) throw speedMediaError('SPEED_SOURCE_NOT_READY', [clipId]);
+    throw error;
+  }
+}
+
+export async function previewSequenceSpeedWithMedia(store: ProjectStore, input: SpeedPreviewInput, options: SpeedPreviewMediaCheck): Promise<SpeedPreviewResult> {
+  const result = previewSequenceSpeed(store, input);
+  if (!('envelope' in result)) return result;
+  try {
+    const fence = await assertSequenceSpeedMedia(store, result.envelope, options, result.planDigest);
+    fence?.();
+    return result;
+  } catch (error) {
+    if (!(error instanceof AppError) || !isSequenceEditErrorCode(error.code)) throw error;
+    return failure(error.code, (error.details as {ids?: readonly string[]} | undefined)?.ids);
+  }
 }
 
 /** One shared transaction: replay, CAS, plan, write both halves, one history
@@ -2200,13 +2357,9 @@ export function runSequenceSync(store: ProjectStore, envelope: SequenceEditEnvel
     const revisionFailure = revisionMatches(store, envelope, context);
     if (revisionFailure) return revisionFailure;
     if (envelope.speedIntent) {
-      const state = prepareSequenceEditHistory(store).state;
-      if (envelope.epoch !== state.epoch || envelope.baseline.historyPosition !== state.position ||
-          envelope.baseline.historyRevision !== state.revision) return failure('SEQUENCE_EDIT_HISTORY_CONFLICT');
-      const expectedAllocation = speedAllocation(context, envelope.speedIntent, envelope.allocation);
-      if (!sameJson(expectedAllocation, envelope.allocation)) return failure('SEQUENCE_EDIT_CONTRACT_INVALID');
-      const {patch, targets, impact} = prepareSpeedEdit(store, context, envelope.speedIntent, envelope.allocation);
-      if (!sameJson(targets, envelope.baseline.targets) || !sameJson(impact, envelope.impact)) return failure('SEQUENCE_EDIT_PATCH_INVALID');
+      const prepared = prepareCommittedSpeedEdit(store, context, envelope, envelope.speedIntent);
+      if ('ok' in prepared) return prepared;
+      const {patch} = prepared;
       const timelineApply = applyTimelineDelta(store, patch.after.timeline, context);
       const baselineApply = applyBaselineDelta(store, context, patch.after.timeline.baseline);
       const receipt = receiptDraft(envelope, inputDigest, {

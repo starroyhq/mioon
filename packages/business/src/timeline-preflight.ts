@@ -18,6 +18,7 @@ import {isTimelineSpeedExportReason, SPEED_PROCESSING_NOT_READY, TIMELINE_SPEED_
  from '../../contracts/src/timeline-speed-export.ts';
 import {assertTimelineSpeedCapability, timelineSpeedExportLayout} from './timeline-speed-export-admission.ts';
 import type {TimelineReverseProxyPort} from './timeline-speed-export-proxy.ts';
+import type {TimelineOpticalProxyPort} from './timeline-processing/optical-proxy-port.ts';
 import {format5ExportBlockersFromTimeline} from './format5-timeline-export.ts';
 import {timelineStorageFormat,timelineStorageSchema} from './project-file/timeline-storage.ts';
 import {isSequenceProjectFormat} from './project-file/schema/databases.ts';
@@ -35,7 +36,7 @@ type PreflightInput = {[key: string]: unknown;projectId: string;expectedRevision
 interface PreflightChecks {totalAssets: number;checkedAssets: number;bytesHashed: number;fullDecode: boolean;subtitles?: {profileId: string;fontVerified: boolean;inkMeasured: boolean}}
 interface PreflightIssue {code: string;severity: string;message: string|undefined;assetId?: string;clipId?: string;taskId?: string}
 export interface TimelinePreflightReport {projectId: string;timelineId: string|null;timelineRevision: number|null;expectedRevision: number;snapshotHash: string|null;checkedAt: string;status: string;summary: unknown;checks: PreflightChecks;issues: PreflightIssue[]}
-interface PreflightServiceOptions {signal?: AbortSignal;probe?: (file: string,options: PreflightProbeOptions)=>Promise<PreflightProbeResult>;limits?: PreflightLimits;reverseProxy?: TimelineReverseProxyPort;/** Trusted host fence; never accepted from RPC input. */beforeEffect?:()=>void}
+interface PreflightServiceOptions {signal?: AbortSignal;probe?: (file: string,options: PreflightProbeOptions)=>Promise<PreflightProbeResult>;limits?: PreflightLimits;reverseProxy?: TimelineReverseProxyPort;opticalProxy?: TimelineOpticalProxyPort;/** Trusted host fence; never accepted from RPC input. */beforeEffect?:()=>void}
 interface PreflightCallOptions {signal?: AbortSignal}
 interface PreflightAttempt {controller: AbortController;task: Promise<unknown>|null}
 
@@ -105,12 +106,12 @@ function classify(error: unknown): [string,string]{
  * ownership, bytes, streams and renderer rules; a report cannot promise future
  * bytes or full decode success. Owned children are joined before drain/close.
  */
-export function createTimelinePreflightServices(store: PreflightStore,{signal:ownerSignal,probe=probeTimelineSource,limits=EXPORT_PREFLIGHT_LIMITS,beforeEffect:hostBeforeEffect,reverseProxy}: PreflightServiceOptions={}){
+export function createTimelinePreflightServices(store: PreflightStore,{signal:ownerSignal,probe=probeTimelineSource,limits=EXPORT_PREFLIGHT_LIMITS,beforeEffect:hostBeforeEffect,reverseProxy,opticalProxy}: PreflightServiceOptions={}){
  const readSnapshot=(input: PreflightInput): {timeline: TimelineRecord|null;snapshot: TimelinePreflightSnapshot|null}=>{
   if(isSequenceProjectFormat(timelineStorageFormat(store.db,timelineStorageSchema(store.db)))){
    const projection=readFormat5RenderProjection(store as never,{purpose:'export'});
    if(!projection)return {timeline:null,snapshot:null};
-   return {timeline:projection.legacy,snapshot:freezeFormat5RenderProjection(projection,input,reverseProxy) as unknown as TimelinePreflightSnapshot};
+   return {timeline:projection.legacy,snapshot:freezeFormat5RenderProjection(projection,input,reverseProxy,opticalProxy) as unknown as TimelinePreflightSnapshot};
   }
   const read=readTimelinePreflightSnapshot(store,input.projectId,input.exportSettings,input);
   // The colour plan counts images per clip; a transition shows two at once.
@@ -201,13 +202,13 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
   const timer=setTimeout(()=>{timedOut=true;controller.abort();},remaining);
   const preparation=(async()=>{
    if(report.checks.subtitles){await verifySubtitleFontResource({signal,beforeEffect});checkpoint(signal);report.checks.subtitles.fontVerified=true;await inspectSubtitleRenderer({signal,beforeEffect});checkpoint(signal);}
-    const options={signal,budget,preparedSources:referencePreparation.preparedSources,beforeEffect,probe:async(file: string,probeOptions: PreflightProbeOptions)=>{beforeEffect?.();const result=await probe(file,{...probeOptions,beforeEffect});beforeEffect?.();return result;},onChecked:()=>{report.checks.checkedAssets++;}};
+   const options={signal,budget,preparedSources:referencePreparation.preparedSources,beforeEffect,probe:async(file: string,probeOptions: PreflightProbeOptions)=>{beforeEffect?.();const result=await probe(file,{...probeOptions,beforeEffect});beforeEffect?.();return result;},onChecked:()=>{report.checks.checkedAssets++;}};
    const sourceSnapshot=initial.snapshot as Parameters<typeof prepareTimelineInputs>[0];
    const prepared=await prepareTimelineInputs(sourceSnapshot,{root:store.root,projectId:input.projectId,readAsset:(id: string)=>{beforeEffect?.();return readOwnedTimelineAsset(store.db,input.projectId,id) as unknown as import('./timeline-inputs.ts').ManagedAssetRecord|null;},
     ...options,readLut:createTimelineColourLutReader(store.db,input.projectId) as never});
    const speed=timelineSpeedExportLayout(initial.snapshot!,prepared);
    if(speed){
-    await assertTimelineSpeedCapability(speed,{signal,beforeEffect});
+    await assertTimelineSpeedCapability(speed,{signal,beforeEffect,sources:prepared});
     checkpoint(signal);beforeEffect();
     validatePreparedTimelineSources(store.db,input.projectId,sourceSnapshot,prepared,{root:store.root});
    }

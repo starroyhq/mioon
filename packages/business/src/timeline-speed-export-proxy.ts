@@ -16,6 +16,8 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 const sha256 = /^[0-9a-f]{64}$/u;
 type ProxyAsset = {readonly sha256?: string; readonly mimeType: string};
 type ReverseClip = SpeedExportLayout['clips'][number];
+const needsReverseProxy = (item: ReverseClip): boolean =>
+  item.plan.direction === 'reverse' && (item.interpolation?.mode !== 'optical' || item.audio);
 
 function notReady(clipId: string, taskId?: string): never {
   throw new AppError(SPEED_PROCESSING_NOT_READY, TIMELINE_SPEED_EXPORT_MESSAGES[SPEED_PROCESSING_NOT_READY], 409,
@@ -36,7 +38,8 @@ function requestFor(snapshot: SpeedExportSnapshotContext, item: ReverseClip,
     assetId: item.assetId, sourceSha256: asset.sha256, mapHash: item.mapHash,
     media: asset.mimeType.startsWith('video/') && track?.kind !== 'audio' ? 'video' : 'audio',
     sourceFps: item.plan.root.sourceFps,
-    sourceWindow: window(item.plan), pictureWindows: item.video.map(value => window(value.plan)), needsAudio: item.audio,
+    sourceWindow: window(item.plan),
+    pictureWindows: item.interpolation?.mode === 'optical' ? [] : item.video.map(value => window(value.plan)), needsAudio: item.audio,
     audioWindow: item.audio ? timelineReverseAudioClock(item.plan, item.timing) : null,
   };
 }
@@ -45,7 +48,7 @@ export function freezeTimelineReverseProxies(snapshot: SpeedExportSnapshotContex
   assets: ReadonlyMap<string, ProxyAsset>, port?: TimelineReverseProxyPort): ReadonlyMap<string, TimelineSpeedExportProxy> {
   const proofs = new Map<string, TimelineSpeedExportProxy>();
   for (const item of layout.clips) {
-    if (item.plan.direction !== 'reverse') continue;
+    if (!needsReverseProxy(item)) continue;
     const task = port?.lookup(requestFor(snapshot, item, assets.get(item.assetId)));
     if (!task || !uuid.test(task.taskId) || !task.readySha256 || !sha256.test(task.readySha256)) notReady(item.clipId, task?.taskId);
     proofs.set(item.clipId, {taskId: task.taskId, sha256: task.readySha256});
@@ -60,7 +63,7 @@ function frozenProof(snapshot: SpeedExportSnapshotContext, clipId: string): Time
 export function assertTimelineReverseProxyBindings(snapshot: SpeedExportSnapshotContext, layout: SpeedExportLayout,
   port?: TimelineReverseProxyPort): void {
   for (const item of layout.clips) {
-    if (item.plan.direction !== 'reverse') continue;
+    if (!needsReverseProxy(item)) continue;
     const proof = frozenProof(snapshot, item.clipId);
     if (!port || !proof) notReady(item.clipId, proof?.taskId);
   }
@@ -70,7 +73,7 @@ export async function withTimelineReverseProxy<T>(snapshot: SpeedExportSnapshotC
   item: ReverseClip, asset: ProxyAsset, port: TimelineReverseProxyPort | undefined,
   options: {signal?: AbortSignal; beforeEffect?: () => void},
   consume: (lease: TimelineReverseProxyLease | undefined, fence?: () => void) => Promise<T>): Promise<T> {
-  if (item.plan.direction !== 'reverse') return consume(undefined, options.beforeEffect);
+  if (!needsReverseProxy(item)) return consume(undefined, options.beforeEffect);
   const proof = frozenProof(snapshot, item.clipId);
   if (!port || !proof) notReady(item.clipId, proof?.taskId);
   checkMediaEffect(options.beforeEffect, options.signal);

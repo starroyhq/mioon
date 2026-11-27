@@ -179,8 +179,11 @@ export interface ReverseProxyFile {
 }
 
 const fileNames = ['proxy.mkv', 'video.raw', 'audio.f32le', 'clock.json', 'frames.jsonl', 'video-block.raw', 'audio-source.f32le',
-  'preview.mp4', 'preview-frames.raw'] as const;
-type FileName = typeof fileNames[number];
+  'optical.ffconcat', 'preview.mp4', 'preview-frames.raw'] as const;
+export const MAX_OPTICAL_SEGMENTS = 8192;
+export const opticalSegmentName = /^optical-[0-9]{5}\.mkv$/u;
+type FileName = typeof fileNames[number] | `optical-${string}.mkv`;
+const isFileName = (name: string): boolean => fileNames.some(fixed => fixed === name) || opticalSegmentName.test(name);
 interface OwnedFile {readonly fileName: FileName; readonly path: string; readonly handle: FileHandle; readonly identity: Stats}
 
 /** Files are opened exclusively inside the provided owned directory. Only the
@@ -195,7 +198,7 @@ export function createReverseStaging(directory: string, options: ReverseProxyMed
   const changes = new Map<FileName, OwnedFile>();
   const handleFile = async (fileName: FileName): Promise<OwnedFile> => {
     fence();
-    if (!fileNames.includes(fileName) || changes.has(fileName)) throw reverseError('PROCESSING_FAILED');
+    if (!isFileName(fileName) || changes.has(fileName)) throw reverseError('PROCESSING_FAILED');
     const file = path.join(directory, fileName);
     const handle = await open(file, constants.O_RDWR | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW ?? 0), 0o600);
     try {

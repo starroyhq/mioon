@@ -373,6 +373,12 @@ export function createProcessingCache(parent: string, {limitBytes = PROCESSING_C
     const timestamp = new Date();
     utimesSync(current.directory, timestamp, timestamp);
   }
-  return {stats, reap, clear, setPins, lookup, lookupWithClock, acquire, pin, stage, touch};
+  function invalidate(entry: ProcessingCacheEntry, beforeEffect: () => void): void {
+    if (activePins.has(entry.cacheKey)) occupied();
+    const current = readEntry(entry.cacheKey);
+    if (!current || current.projectId !== entry.projectId || current.directory !== entry.directory) occupied();
+    remove(current, beforeEffect);
+  }
+  return {stats, reap, clear, setPins, lookup, lookupWithClock, acquire, pin, stage, touch, invalidate};
 }
 export type ProcessingCache = ReturnType<typeof createProcessingCache>;

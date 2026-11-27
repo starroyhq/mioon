@@ -9,6 +9,9 @@ import {setTimeout as delay} from 'node:timers/promises';
 import {promisify} from 'node:util';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
+import {projectLocation, serverAppDirectories} from '../apps/server/src/project-host/directories.ts';
+import {commitMioSequenceAction, previewMioSequenceAction} from '../packages/business/src/format5-mio-sequence.ts';
+import {openProjectStore} from '../packages/business/src/project-file/store.ts';
 import {createClient, operationDefinition} from '../packages/client/src/index.ts';
 import {effectAnnotations} from '../packages/contracts/src/operation-effects.ts';
 import {projectRpcPath, projectMediaPath} from '../packages/contracts/src/project-file.ts';
@@ -16,6 +19,7 @@ import {timelineProcessingResponseSchemas, timelineProcessingSchemas} from '../p
 import type {PreviewMedia} from '../packages/contracts/src/timeline-preview-media.ts';
 import {parseTimelinePreviewMediaQuery, timelinePreviewMediaPath} from '../packages/contracts/src/timeline-preview-media.ts';
 import {FORMAT5_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import {projectDatabasePath, projectDirFor} from './helpers/project-database.ts';
 import {startServer} from './helpers/test-server.ts';
 import {testEnv} from './helpers/test-env.ts';
 
@@ -122,6 +126,7 @@ test('a development host with the format-6 switch off keeps format-5 reads and h
 
 test('CLI and MCP share processing discovery, task ownership and exact retry replay', {timeout: 90_000}, async t => {
   const root = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-processing-rpc-'));
+  const dataDir = path.join(root, 'app');
   const previousGate = process.env.MIOON_FORMAT6_DEV;
   process.env.MIOON_FORMAT6_DEV = '1';
   let server: Awaited<ReturnType<typeof startServer>> | undefined;
@@ -136,12 +141,11 @@ test('CLI and MCP share processing discovery, task ownership and exact retry rep
       await rm(root, {recursive: true, force: true});
     }
   });
-  server = await startServer({dataDir: path.join(root, 'app'), port: 0, token,
-    localDraftChannel: 'development', projectFormatForTest: undefined});
-  const baseUrl = server.url;
-  const env: Record<string, string> = {...testEnv(), MIOON_BASE_URL: baseUrl, MIOON_TOKEN: token};
+  const start = () => startServer({dataDir, port: 0, token, localDraftChannel: 'development', projectFormatForTest: undefined});
+  server = await start();
+  const env: Record<string, string> = {...testEnv(), MIOON_BASE_URL: server.url, MIOON_TOKEN: token};
   const post = async <T>(route: string, operation: string, input: Row): Promise<Envelope<T>> => {
-    const response = await fetch(baseUrl + route, {method: 'POST',
+    const response = await fetch(env.MIOON_BASE_URL + route, {method: 'POST',
       headers: {'content-type': 'application/json', authorization: `Bearer ${token}`},
       body: JSON.stringify({operation, input})});
     return await response.json() as Envelope<T>;
@@ -167,28 +171,16 @@ test('CLI and MCP share processing discovery, task ownership and exact retry rep
       });
     return JSON.parse(result.stdout) as Envelope<T>;
   };
-  const connect = new StdioClientTransport({command: process.execPath, args: ['apps/mcp/src/index.ts'],
-    cwd: repo, env, stderr: 'ignore'});
-  await mcp.connect(connect);
   const mcpCall = async <T>(operation: string, input: Row): Promise<Envelope<T>> => {
     const result = await mcp.callTool({name: operation.replaceAll('.', '_'), arguments: input}, undefined, {timeout: 15_000});
     const structured = result.structuredContent as unknown as Envelope<T>;
     assert.equal(Boolean(result.isError), !structured.ok);
     return structured;
   };
-  const tools = (await mcp.listTools()).tools;
-  for (const operation of Object.keys(timelineProcessingSchemas)) {
-    const definition = operationDefinition(operation);
-    const tool = tools.find(candidate => candidate.name === definition.toolName);
-    assert.ok(tool, operation);
-    assert.deepEqual(tool.inputSchema, definition.inputSchema);
-    assert.deepEqual(tool.annotations, effectAnnotations(definition.effects));
-  }
-
   const file = path.join(root, 'source.mp4');
   await run(env.MIOON_FFMPEG_PATH || 'ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin',
     '-f', 'lavfi', '-i', 'color=c=red:size=64x64:rate=30', '-frames:v', '60',
-    '-an', '-c:v', 'libx264', '-threads', '1', '-pix_fmt', 'yuv420p', file], {env, timeout: 15_000});
+    '-an', '-c:v', 'libx264', '-threads', '1', '-pix_fmt', 'yuv420p10le', file], {env, timeout: 15_000});
   const {id: assetId} = data(await rpc<{id: string}>('asset.import', {name: 'source.mp4', mimeType: 'video/mp4',
     dataBase64: (await readFile(file)).toString('base64')}));
   await edit('sequence.board.edit', {kind: 'board-root-create', name: 'Film', position: {x: 0, y: 0}});
@@ -200,7 +192,7 @@ test('CLI and MCP share processing discovery, task ownership and exact retry rep
   const previewInput = {projectId, clipId};
   const content = projectMediaPath(projectId, assetId);
   const pendingProxy = timelinePreviewMediaPath({...previewInput, assetId, taskId: randomUUID(), digest: 'a'.repeat(64)});
-  const media = (url: string, method = 'GET', authenticated = true) => fetch(baseUrl + url, {method,
+  const media = (url: string, method = 'GET', authenticated = true) => fetch(env.MIOON_BASE_URL + url, {method,
     headers: authenticated ? {authorization: 'Bearer ' + token} : {}});
   const original = await media(content, 'HEAD');
   assert.equal(original.status, 200);
@@ -216,10 +208,39 @@ test('CLI and MCP share processing discovery, task ownership and exact retry rep
   assert.equal(errorCode(await rpc('timeline.preview.media', {...previewInput, projectId: otherProjectId})), 'PROJECT_ID_MISMATCH');
   assert.equal(errorCode(await rpc('timeline.preview.media', {...previewInput, clipId: randomUUID()})), 'NOT_FOUND');
   assert.equal(errorCode(await rpc('timeline.preview.media', {...previewInput, requestId: randomUUID()})), 'VALIDATION_ERROR');
-  const setInterpolation = (interpolation: 'optical' | 'blend') => edit('sequence.timeline.edit',
-    {kind: 'clip-speed', clipId, setting: {speed: {kind: 'constant', rate: {numerator: 1, denominator: 2}},
-      direction: 'forward', pitchShift: false, interpolation}});
-  await setInterpolation('optical');
+  const speedAction = (interpolation: 'optical' | 'blend' | 'off') => ({
+    kind: 'clip-speed', clipId, setting: {speed: {kind: 'constant', rate: {numerator: 1, denominator: 2}},
+      direction: 'forward', pitchShift: false, interpolation},
+  } as const);
+  // Older projects can contain interpolation settings that new edits reject.
+  // Seed them while the host is closed to exercise API behavior on existing data.
+  const projectFile = projectDatabasePath(projectDirFor(dataDir, projectId));
+  const persistLegacyInterpolation = async (interpolation: 'optical' | 'blend') => {
+    await server?.close();
+    server = undefined;
+    const store = openProjectStore({projectFile, allowFormat6: true, locate: id => projectLocation(serverAppDirectories(dataDir), id)});
+    try {
+      const plan = previewMioSequenceAction(store, projectId, randomUUID(), speedAction(interpolation), {origin: 'user'});
+      assert.equal(commitMioSequenceAction(store, plan).status, 'applied');
+    } finally {
+      store.close();
+    }
+    server = await start();
+    env.MIOON_BASE_URL = server.url;
+  };
+  assert.equal(errorCode(await rpc('sequence.timeline.edit', speedAction('optical'))), 'UNSUPPORTED_FORMAT');
+
+  await persistLegacyInterpolation('optical');
+  const connect = new StdioClientTransport({command: process.execPath, args: ['apps/mcp/src/index.ts'], cwd: repo, env, stderr: 'ignore'});
+  await mcp.connect(connect);
+  const tools = (await mcp.listTools()).tools;
+  for (const operation of Object.keys(timelineProcessingSchemas)) {
+    const definition = operationDefinition(operation);
+    const tool = tools.find(candidate => candidate.name === definition.toolName);
+    assert.ok(tool, operation);
+    assert.deepEqual(tool.inputSchema, definition.inputSchema);
+    assert.deepEqual(tool.annotations, effectAnnotations(definition.effects));
+  }
   const halfSpeed = {mode: 'native', rate: {numerator: 1, denominator: 2}};
   assert.deepEqual(data(await cli<PreviewMedia>('timeline.preview.media', previewInput)), halfSpeed);
   assert.deepEqual(data(await mcpCall<PreviewMedia>('timeline.preview.media', previewInput)), halfSpeed);
@@ -234,6 +255,7 @@ test('CLI and MCP share processing discovery, task ownership and exact retry rep
   assert.ok(taskId);
   const task = {projectId, taskId};
   const expected = {taskId, clipId, kind: 'optical', status: 'failed', reason: 'UNSUPPORTED_FORMAT'};
+  assert.deepEqual(data(await mcpCall('timeline.processing.wait', {...task, timeoutMs: 10_000})), {item: expected, timedOut: false});
   assert.deepEqual(data(await cli('timeline.processing.list', {projectId})), {items: [expected]});
   assert.deepEqual(data(await mcpCall('timeline.processing.inspect', task)), {item: expected});
   assert.deepEqual(data(await mcpCall('timeline.processing.wait', {...task, timeoutMs: 200})), {item: expected, timedOut: false});
@@ -245,14 +267,17 @@ test('CLI and MCP share processing discovery, task ownership and exact retry rep
   const retry = {...task, requestId: randomUUID()};
   assert.deepEqual(data(await cli('timeline.processing.retry', retry)), {taskId});
   assert.deepEqual(data(await mcpCall('timeline.processing.retry', retry)), {taskId});
-  await setInterpolation('blend');
-  assert.equal(errorCode(await rpc('timeline.preview.media', previewInput)), 'UNSUPPORTED_FORMAT');
+  await edit('sequence.timeline.edit', speedAction('off'));
   assert.deepEqual(data(await mcpCall('timeline.processing.retry', retry)), {taskId});
   assert.equal(errorCode(await cli('timeline.processing.retry', {...task, requestId: randomUUID()})), 'SPEED_PROCESSING_STALE');
   assert.deepEqual(data(await mcpCall('timeline.processing.cache.clear', {projectId})), {freedBytes: 0});
   const cache = timelineProcessingResponseSchemas['timeline.processing.cache.get'].parse(data(await cli('timeline.processing.cache.get', {projectId})));
   assert.equal(cache.usedBytes, 0);
   assert.equal(cache.limitBytes, 10 * 1024 ** 3);
+
+  assert.equal(errorCode(await rpc('sequence.timeline.edit', speedAction('blend'))), 'UNSUPPORTED_FORMAT');
+  await persistLegacyInterpolation('blend');
+  assert.equal(errorCode(await rpc('timeline.preview.media', previewInput)), 'UNSUPPORTED_FORMAT');
 
   await edit('sequence.timeline.edit', {kind: 'clip-speed', clipId, setting: {
     speed: {kind: 'curve', interpolation: 'log-pchip-v1', presetId: 'custom', points: [

@@ -55,6 +55,27 @@ test('the default cache limit is 10 GiB and a small custom quota refuses an over
   assert.deepEqual(readdirSync(limited.root), []);
 });
 
+test('optical segments and their playlist count against the quota after reopening the cache', t => {
+  const limitBytes = 128;
+  const {cache, open, projectId} = fixture(t, {limitBytes});
+  const stage = cache.stage(projectId, digest('optical reservation'), limitBytes, allowEffect,
+    {taskId: randomUUID(), requestId: randomUUID()});
+  for (let block = 0; block < 16; block++) {
+    const file = `optical-${String(block).padStart(5, '0')}.mkv`;
+    writeFileSync(path.join(stage.directory, file), Buffer.alloc(4), {mode: 0o600});
+  }
+  writeFileSync(path.join(stage.directory, 'optical.ffconcat'), Buffer.alloc(4), {mode: 0o600});
+  stage.retain();
+
+  const reopened = open(), remaining = limitBytes - 68, key = digest('competing reservation');
+  assert.deepEqual(reopened.stats(projectId), {usedBytes: 68, limitBytes});
+  assert.throws(() => reopened.stage(projectId, key, limitBytes, allowEffect), {code: 'CACHE_LIMIT'});
+  assert.throws(() => reopened.stage(projectId, key, remaining + 1, allowEffect), {code: 'CACHE_LIMIT'});
+  const competing = reopened.stage(projectId, key, remaining, allowEffect);
+  competing.discard();
+  assert.deepEqual(reopened.stats(projectId), {usedBytes: 68, limitBytes});
+});
+
 test('LRU uses the last access and enforces one quota across projects', t => {
   const {cache, projectId} = fixture(t, {limitBytes: quota});
   const otherProjectId = randomUUID();
@@ -370,6 +391,11 @@ test('a killed stage owner is reaped only after its recorded writer exits', {tim
       assert.deepEqual(cache.reap(projectId, allowEffect), {freedBytes: 0});
       rmSync(link);
     }
+    const unrelated = path.join(message.directory, 'optical-00000.mkv.bak');
+    writeFileSync(unrelated, 'unrecognized', {mode: 0o600});
+    assert.deepEqual(cache.reap(projectId, allowEffect), {freedBytes: 0});
+    assert.equal(readFileSync(unrelated, 'utf8'), 'unrecognized');
+    rmSync(unrelated);
     assert.deepEqual(cache.reap(projectId, allowEffect), {freedBytes: payloadBytes});
     assert.equal(cache.stats(projectId).usedBytes, 0);
     assert.equal(existsSync(message.directory), false);

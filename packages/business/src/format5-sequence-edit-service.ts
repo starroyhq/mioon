@@ -22,7 +22,7 @@ import type {ProjectStore} from './project-file/store.ts';
 import {
   applySequenceEdit, createSequenceEditing, planSequenceEditIntents, previewSequenceBoardAction, readSequenceEditContext,
 } from './sequence-edit.ts';
-import {previewSequenceSpeed, previewSequenceSync, readSequenceSyncContext, runSequenceSync} from './format5-sequence-sync.ts';
+import {previewSequenceSpeed, previewSequenceSpeedWithMedia, previewSequenceSync, readSequenceSyncContext, runSequenceSync} from './format5-sequence-sync.ts';
 import {explainSequenceEditFailure, sequenceEditCommitError, sequenceEditPreviewFailure,
   type SequenceEditPreviewFailure} from './format5-sequence-preview-errors.ts';
 import {
@@ -163,6 +163,7 @@ export function createFormat5SequenceEditService(store: ProjectStore, options: {
   readonly recordSpeedReceiptInside?: (receipt: SequenceEditReceipt) => void;
 } = {}): {
   preview(input: any): SequenceEditPreview;
+  previewForProperties(input: any, options: Parameters<typeof previewSequenceSpeedWithMedia>[2]): SequenceEditPreview | Promise<SequenceEditPreview>;
   commit(input: any, locale?: Locale): unknown;
   history(input: {projectId: string}): unknown;
   board(input: {projectId: string}): unknown;
@@ -264,6 +265,18 @@ export function createFormat5SequenceEditService(store: ProjectStore, options: {
     return {envelope, planDigest: sequenceEditInputDigest(envelope), warnings: prepared.warnings};
   }
 
+  function speedPreviewInput(input: Row): Parameters<typeof previewSequenceSpeed>[1] {
+    return {requestId: input.requestId,
+      ...(input.actionId ? {actionId: input.actionId} : {}), ...(input.origin ? {origin: input.origin} : {}),
+      speedIntent: input.speedIntent, ...(input.allocation ? {allocation: allocationOf(input)} : {})};
+  }
+  function previewForProperties(input: Row, options: Parameters<typeof previewSequenceSpeedWithMedia>[2]) {
+    const operation = input.speedIntent?.operation;
+    if (operation?.kind !== 'clip-speed' || operation.setting?.interpolation === 'off') return preview(input);
+    projectCheck(store, input.projectId);
+    requireFormat5(store);
+    return previewSequenceSpeedWithMedia(store, speedPreviewInput(input), options);
+  }
   function preview(input: any): SequenceEditPreview {
     const result = previewIntent(input);
     return 'ok' in result ? explainSequenceEditFailure(result, isLocale(input.locale) ? input.locale : undefined) : result;
@@ -274,9 +287,7 @@ export function createFormat5SequenceEditService(store: ProjectStore, options: {
     requireFormat5(store);
     // Timeline preview currently owns its own read transaction; subject and
     // board previews only read, so no outer transaction is needed here.
-    if (input.speedIntent) return previewSequenceSpeed(store, {requestId: input.requestId,
-      ...(input.actionId ? {actionId: input.actionId} : {}), ...(input.origin ? {origin: input.origin} : {}),
-      speedIntent: input.speedIntent, ...(input.allocation ? {allocation: allocationOf(input)} : {})});
+    if (input.speedIntent) return previewSequenceSpeed(store, speedPreviewInput(input));
     if (input.generateIntent) return previewGenerateInEditing(store, {requestId: input.requestId,
       ...(input.actionId ? {actionId: input.actionId} : {}), ...(input.origin ? {origin: input.origin} : {}),
       generateIntent: input.generateIntent as never});
@@ -438,7 +449,7 @@ export function createFormat5SequenceEditService(store: ProjectStore, options: {
   }
   function undo(input: any): unknown { return coordinator.call('sequence.undo', input); }
   function redo(input: any): unknown { return coordinator.call('sequence.redo', input); }
-  return {preview, commit, history, board, undo, redo};
+  return {preview, previewForProperties, commit, history, board, undo, redo};
 }
 
 /** Read-only projection for UI-B2/UI-E2 mounting. */

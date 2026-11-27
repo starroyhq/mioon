@@ -1,18 +1,23 @@
 import {createHmac, randomBytes, randomUUID, timingSafeEqual} from 'node:crypto';
-import {readdirSync} from 'node:fs';
+import {opendirSync} from 'node:fs';
 import type {Stats} from 'node:fs';
 import path from 'node:path';
 import {privateStorageIdentity, readPrivateFile, validateManagedDirectory, validateManagedFile, writePrivateFileAtomic} from '@mioon/contracts/private-storage';
 import {processingStageMarkerSchema, processingStageOwnershipSchema} from '../../../contracts/src/timeline-processing-storage.ts';
 import type {ProcessingStageOwnership} from '../../../contracts/src/timeline-processing-storage.ts';
 import {removeOwnedDirectory, removeOwnedFile, sameFile} from '../managed-file-io.ts';
+import {MAX_OPTICAL_SEGMENTS, opticalSegmentName} from './reverse-io.ts';
 
 export const processingStageName = /^stage-[0-9a-f-]{36}-[a-zA-Z0-9]{6}$/u;
 const markerLimit = 8192;
 const keyName = '.stage-ownership.key';
 const privateOptions = {private: true};
 const stageFiles = new Set(['receipt.json', 'proxy.mkv', 'video.raw', 'audio.f32le', 'clock.json', 'frames.jsonl',
-  'video-block.raw', 'audio-source.f32le', 'preview-frames.raw', 'preview.mp4']);
+  'video-block.raw', 'audio-source.f32le', 'preview-frames.raw', 'preview.mp4', 'optical.ffconcat']);
+// Optical writes one segment per prepared block, up to MAX_OPTICAL_SEGMENTS.
+// It keeps two scratch files during encoding, then replaces them with the
+// playlist and output proxy. Keep the existing 16-entry bound for fixed files.
+const nonSegmentEntryLimit = 16;
 
 export interface ProcessingStageContext {readonly taskId: string; readonly requestId: string}
 export interface ProcessingStageWriter {
@@ -70,19 +75,23 @@ export function createProcessingStageJournal(root: string) {
       const directory = path.join(root, name);
       const info = validateManagedDirectory(directory, {root, ...privateOptions});
       if (!info) return null;
-      const names = readdirSync(directory);
-      if (names.length > 16) return null;
       const files = new Map<string, Stats>();
       let bytes = 0, removable = true;
-      for (const file of names) {
-        try {
-          const leaf = validateManagedFile(path.join(directory, file), {root, ...privateOptions});
-          if (!leaf || !Number.isSafeInteger(bytes + leaf.size)) changed();
-          files.set(file, leaf);
-          bytes += leaf.size;
-          if (!stageFiles.has(file)) removable = false;
-        } catch {removable = false;}
-      }
+      let segments = 0, otherEntries = 0;
+      const dir = opendirSync(directory);
+      try {
+        for (let entry = dir.readSync(); entry !== null; entry = dir.readSync()) {
+          const file = entry.name, segment = opticalSegmentName.test(file);
+          if (segment ? ++segments > MAX_OPTICAL_SEGMENTS : ++otherEntries > nonSegmentEntryLimit) return null;
+          try {
+            const leaf = validateManagedFile(path.join(directory, file), {root, ...privateOptions});
+            if (!leaf || !Number.isSafeInteger(bytes + leaf.size)) changed();
+            files.set(file, leaf);
+            bytes += leaf.size;
+            if (!segment && !stageFiles.has(file)) removable = false;
+          } catch {removable = false;}
+        }
+      } finally {dir.closeSync();}
       return {name, directory, info, files, bytes, removable};
     } catch {return null;}
   }

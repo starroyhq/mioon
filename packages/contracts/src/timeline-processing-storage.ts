@@ -12,13 +12,16 @@ const window = z.object({startFrame: integer, endFrame: integer.positive(), fram
 const audioWindow = z.object({fromSample: integer, toSample: integer.positive()}).strict()
   .refine(value => value.toSample > value.fromSample);
 const timing: z.ZodType<ClipTiming> = clipTimingSchema;
+const opticalTiming = clipTimingSchema.options[0];
+const opticalWindow = z.object({timing: opticalTiming, beforeFrames: integer, afterFrames: integer,
+  sourceFrames: integer.positive()}).strict();
 export const processingInputSchema = z.object({
   version: z.literal(1), kind: speedProcessingKindSchema, timelineId: projectIdSchema,
   assetId: projectIdSchema.nullable(), sourceIdentity: processingDigestSchema.nullable(), sourceSha256: processingDigestSchema.nullable(),
   sourceStat: processingDigestSchema.optional(),
   media: z.enum(['video', 'audio']).nullable(), mapHash: mapHash.nullable(),
   sourceWindow: window.nullable(), sourceFps: timebase.nullable(), recipe: processingDigestSchema,
-  audioWindow: audioWindow.optional(), pictureWindow: window.optional(), timing: timing.optional(),
+  audioWindow: audioWindow.optional(), pictureWindow: window.optional(), timing: timing.optional(), optical: opticalWindow.optional(),
 }).strict()
   .refine(value => value.kind !== 'preview' || value.timing !== undefined, {path: ['timing']})
   .refine(value => value.kind === 'reverse' || value.pictureWindow === undefined, {path: ['pictureWindow']});
@@ -27,7 +30,7 @@ export const processingReasonSchema = speedProcessingReasonSchema;
 const taskState = z.enum(['queued', 'running', 'ready', 'failed', 'cancelled']);
 export type ProcessingTaskState = z.infer<typeof taskState>;
 export const processingResultSchema = z.object({cacheKey: processingDigestSchema, sourceSha256: processingDigestSchema,
-  sourceStat: processingDigestSchema.optional(),
+  sourceStat: processingDigestSchema.optional(), verifiedProxy: processingDigestSchema.optional(),
 }).strict();
 export type ProcessingTaskResult = z.infer<typeof processingResultSchema>;
 export const processingRowSchema = z.object({
@@ -37,13 +40,16 @@ export const processingRowSchema = z.object({
   result: z.string().max(16384).nullable(), updatedAt: z.string().length(24),
 }).strict();
 export type ProcessingTaskRow = z.infer<typeof processingRowSchema>;
-export const processingInputWithClipSchema = z.object({clipId: projectIdSchema, frozen: processingInputSchema}).strict();
+export const processingInputWithClipSchema = z.object({
+  clipId: projectIdSchema, frozen: processingInputSchema, outcomeReason: z.literal('INTERPOLATION_UNAVAILABLE').optional(),
+}).strict();
 export type ProcessingInputWithClip = z.infer<typeof processingInputWithClipSchema>;
 
 export const PROCESSING_REVERSE_PROXY_PROFILE = 'timeline-reverse-source-v1';
 export const PROCESSING_PREVIEW_PROXY_PROFILE = 'timeline-preview-output-v1';
 const reverseFileName = z.enum(['proxy.mkv', 'clock.json', 'frames.jsonl', 'video.raw', 'audio.f32le']);
 const previewFileName = z.enum(['preview.mp4', 'clock.json']);
+const opticalFileName = z.enum(['proxy.mkv', 'clock.json']);
 export const processingProxyResultSchema = z.discriminatedUnion('profileId', [
   z.object({profileId: z.literal(PROCESSING_REVERSE_PROXY_PROFILE), mapHash, frameCount: integer, sampleCount: integer,
     files: z.array(z.object({fileName: reverseFileName, bytes: integer, sha256: processingDigestSchema}).strict()).min(2).max(5),
@@ -51,8 +57,12 @@ export const processingProxyResultSchema = z.discriminatedUnion('profileId', [
   z.object({profileId: z.literal(PROCESSING_PREVIEW_PROXY_PROFILE), mapHash, frameCount: integer.positive(), sampleCount: z.literal(0),
     files: z.array(z.object({fileName: previewFileName, bytes: integer.positive(), sha256: processingDigestSchema}).strict()).length(2),
   }).strict(),
+  z.object({profileId: z.literal('timeline-optical-output-v1'), mapHash, frameCount: integer.positive(),
+    firstOutputFrame: z.number().int().safe(), sampleCount: z.literal(0),
+    files: z.array(z.object({fileName: opticalFileName, bytes: integer, sha256: processingDigestSchema}).strict()).length(2),
+  }).strict(),
 ]).refine(value => new Set(value.files.map(file => file.fileName)).size === value.files.length &&
-  value.files.some(file => file.fileName === 'clock.json') && (value.profileId === PROCESSING_PREVIEW_PROXY_PROFILE ||
+  value.files.some(file => file.fileName === 'clock.json') && (value.profileId !== PROCESSING_REVERSE_PROXY_PROFILE ||
     value.files.some(file => ['proxy.mkv', 'video.raw', 'audio.f32le'].includes(file.fileName))));
 export type ProcessingProxyProfile = z.infer<typeof processingProxyResultSchema>['profileId'];
 export const processingCacheReceiptSchema = z.object({
