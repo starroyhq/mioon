@@ -12,7 +12,7 @@ import type {ProjectTemplateCatalogEntry} from '../apps/server/src/project-host/
 import {createProjectFile, inspectProjectFormatReadOnly} from '../packages/business/src/project-file/connection.ts';
 import {openProjectStore} from '../packages/business/src/project-file/store.ts';
 import {isProjectFileHeld} from '../packages/business/src/project-file/held-files.ts';
-import {FORMAT5_HISTORY_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION, FORMAT6_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import {FORMAT5_HISTORY_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION, FORMAT6_HISTORY_SCHEMA_VERSION, FORMAT6_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {HISTORY_TABLES} from '../packages/business/src/project-file/schema/tables.ts';
 import {mediaMtimeMs} from '../packages/business/src/media-reference/fingerprint.ts';
 import type {ProjectCopyResponse, ProjectTemplateInput} from '../packages/contracts/src/project-copies.ts';
@@ -129,7 +129,8 @@ test('a development-channel template publishes format 6 atomically and replays u
   const target = f.targetStore(copied);
   try {
     assert.equal(target.db.prepare('PRAGMA project.user_version').get()?.user_version, FORMAT6_PROJECT_SCHEMA_VERSION);
-    assert.equal(target.db.prepare('SELECT version FROM main.schema_version').get()?.version, FORMAT5_HISTORY_SCHEMA_VERSION);
+    assert.equal(target.db.prepare('SELECT version FROM main.schema_version').get()?.version, FORMAT6_HISTORY_SCHEMA_VERSION);
+    assert.equal(target.db.prepare('SELECT count(*) AS count FROM timeline_processing_tasks').get()?.count, 0);
     assert.equal(target.historyState, 'current');
   } finally {target.close();}
   assert.deepEqual(f.tree(), original);

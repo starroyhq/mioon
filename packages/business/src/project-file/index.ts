@@ -23,7 +23,7 @@ export type {ForeignKeyViolation, SchemaObject} from '../../../contracts/src/pro
 export {
   CACHE_APPLICATION_ID, CACHE_SCHEMA_VERSION, HISTORY_APPLICATION_ID, HISTORY_SCHEMA_VERSION,
   PROJECT_FILE_APPLICATION_ID, PROJECT_FILE_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT4_HISTORY_SCHEMA_VERSION,
-  FORMAT5_PROJECT_SCHEMA_VERSION, FORMAT5_HISTORY_SCHEMA_VERSION, FORMAT6_PROJECT_SCHEMA_VERSION, isSequenceProjectFormat,
+  FORMAT5_PROJECT_SCHEMA_VERSION, FORMAT5_HISTORY_SCHEMA_VERSION, FORMAT6_PROJECT_SCHEMA_VERSION, FORMAT6_HISTORY_SCHEMA_VERSION, isSequenceProjectFormat,
 } from './schema/databases.ts';
 export type {DatabaseKind, ProjectFileFormat, SequenceProjectFormat} from './schema/databases.ts';
 export {createProjectBackup, inspectCopiedProjectFile, inspectProjectBackup, openProjectBackup, PROJECT_BACKUP_APPLICATION_ID} from './backup.ts';

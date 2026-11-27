@@ -27,8 +27,9 @@ import {subjectVariantSnapshotSchema, isSubjectVariantMutationResponse} from '..
 import {wanVideoInputSchema} from '../../../contracts/src/wan-video.ts';
 import {agentTaskChangeSchema} from '../../../contracts/src/agent-tasks-v2.ts';
 import {MIO_PROJECT_FILE_IMPORT_OPERATION} from '../../../contracts/src/mio-project-import.ts';
-import {CROSS_FILE_RELATIONS, FORMAT4_CROSS_FILE_RELATIONS} from '../project-file/cross-file/relations.ts';
-import {FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION} from '../project-file/schema/databases.ts';
+import {processingInputWithClipSchema} from '../../../contracts/src/timeline-processing-storage.ts';
+import {CROSS_FILE_RELATIONS, FORMAT4_CROSS_FILE_RELATIONS, FORMAT6_CROSS_FILE_RELATIONS} from '../project-file/cross-file/relations.ts';
+import {FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT6_HISTORY_SCHEMA_VERSION} from '../project-file/schema/databases.ts';
 import {CANVAS_HISTORY_TABLES} from '../project-file/schema/tables.ts';
 import type {ProjectStore} from '../project-file/store.ts';
 import {assertProjectStore} from '../store-runtime.ts';
@@ -318,8 +319,24 @@ export function readMioProjectImportDependenciesInside(store: ProjectStore, asse
     if (!target || target.projectId !== store.projectId) deny('invalid');
     const tables: {schema: 'main' | 'project' | 'cache'; table: string}[] = [];
     const historyVersion = db.prepare('SELECT version FROM main.schema_version').get()?.version;
+    const processingHistory = historyVersion === FORMAT6_HISTORY_SCHEMA_VERSION;
+    if (processingHistory) {
+      // An active attempt may still read the frozen asset after its clip is
+      // removed. Terminal results are derived, and retries require a current
+      // demand. Retry receipts themselves hold task and request IDs only.
+      const source = 'main.timeline_processing_tasks.input';
+      const pending = db.prepare(`SELECT kind,CASE WHEN length(CAST(input AS BLOB))<=65536 THEN input END AS input
+        FROM main.timeline_processing_tasks WHERE projectId=? AND state IN ('queued','running') LIMIT ?`);
+      for (const row of pending.iterate(store.projectId, limits.rows + 1)) {
+        countRow();
+        const input = processingInputWithClipSchema.safeParse(decode(row.input, source, 65536));
+        if (!input.success || input.data.frozen.kind !== row.kind) deny('invalid');
+        if (input.data.frozen.assetId === assetId) referenced(source);
+      }
+    }
     for (const schema of ['project', 'main', 'cache'] as const) {
       const expected = new Set<string>([...ignored[schema], ...Object.keys(consumerCells[schema])]);
+      if (schema === 'main' && processingHistory) expected.add('timeline_processing_tasks').add('timeline_processing_retries');
       if (schema === 'main' && historyVersion === FORMAT4_HISTORY_SCHEMA_VERSION) {
         for (const table of CANVAS_HISTORY_TABLES) expected.add(table);
         // Canvas entries change position, order and archive fields only. They
@@ -369,7 +386,8 @@ export function readMioProjectImportDependenciesInside(store: ProjectStore, asse
       if (schema !== 'project' || fk.to !== 'id' || typeof fk.from !== 'string' || fk.seq !== 0) deny('unsupported');
       if (db.prepare(`SELECT 1 FROM ${schema}.${quote(table)} WHERE ${quote(fk.from)} IS ? LIMIT 1`).get(assetId)) referenced(`${schema}.${table}.${fk.from}`);
     }
-    const relations = historyVersion === FORMAT4_HISTORY_SCHEMA_VERSION ? FORMAT4_CROSS_FILE_RELATIONS : CROSS_FILE_RELATIONS;
+    const relations = processingHistory ? FORMAT6_CROSS_FILE_RELATIONS
+      : historyVersion === FORMAT4_HISTORY_SCHEMA_VERSION ? FORMAT4_CROSS_FILE_RELATIONS : CROSS_FILE_RELATIONS;
     for (const relation of relations) {
       if (relation.parent.table !== 'assets') continue;
       const column = relation.child.columns[0];

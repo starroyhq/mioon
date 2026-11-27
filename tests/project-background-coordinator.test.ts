@@ -66,14 +66,16 @@ async function fixture(t: TestContext) {
     failIndexWrites(value: boolean) {failIndex = value;}, setAppOwner(value: boolean) {appOwner = value;}};
 }
 
-test('ready retains the opening task before activation; closing a window keeps work and its terminal finally alive', async t => {
-  const f = await fixture(t), original = task(), project = await f.create([original]);
+for (const kind of ['job', 'timeline-processing'] as const)
+test(`ready retains ${kind} before activation; closing a window keeps work and its terminal finally alive`, async t => {
+  const f = await fixture(t), original = {...task(), kind}, project = await f.create([original]);
   const window = await f.manager.acquire(project.projectId, 'window'), state = f.states.get(project.projectId)!;
   assert.deepEqual(f.log.slice(0, 3), ['backup', 'activate', 'daily']);
   assert.throws(() => f.readyCallbacks.get(project.projectId)!(), {code: 'PROJECT_HOST_TRANSITION'}, 'opening retention cannot become an escaped general lease API');
   assert.equal(f.manager.status(project.projectId)!.leases.task, 1);
   window.release(); assert.equal(f.manager.status(project.projectId)!.leases.window, 0);
   assert.equal(f.library.taskIndex.listProject(project.projectId)[0]!.phase, 'active');
+  assert.equal(f.library.taskIndex.listProject(project.projectId)[0]!.kind, kind);
   state.busy = true;
   const context = f.contexts.get(project.projectId)!;
   context.store.put('projects', {...context.store.get('projects', project.projectId) as object, notes: 'background completed'});

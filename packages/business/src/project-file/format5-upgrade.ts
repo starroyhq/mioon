@@ -8,7 +8,7 @@ import {projectFormatUpgradePreviewSchema} from '../../../contracts/src/project-
 import type {ProjectFormatUpgradePreview} from '../../../contracts/src/project-format-upgrade.ts';
 import {isProjectId, PROJECT_HISTORY_FILE} from '../../../contracts/src/project-file.ts';
 import {HISTORY_APPLICATION_ID, FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT5_HISTORY_SCHEMA_VERSION,
-  FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION, FORMAT6_PROJECT_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION} from './schema/databases.ts';
+  FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION, FORMAT6_PROJECT_SCHEMA_VERSION, historySchemaVersionForProject, PROJECT_FILE_SCHEMA_VERSION} from './schema/databases.ts';
 import type {SequenceProjectFormat} from './schema/databases.ts';
 import {upgradeProject5To6Inside} from './schema/format6-upgrade.ts';
 import {FORMAT4_INITIAL_HISTORY_SCHEMA_VERSION} from './schema/domains/canvas.ts';
@@ -115,7 +115,7 @@ export function previewSequenceFormatUpgrade(target: SequenceProjectFormat, file
   const historyVersion = readHistoryPreview(historyFile ?? path.join(path.dirname(path.resolve(file)), PROJECT_HISTORY_FILE), identity.projectId, source);
   const preview = projectFormatUpgradePreviewSchema.parse({projectId: identity.projectId, contentSequence: identity.contentSequence,
     contentToken: identity.contentToken, projectVersion: source, historyVersion,
-    targetProjectVersion: target, targetHistoryVersion: FORMAT5_HISTORY_SCHEMA_VERSION});
+    targetProjectVersion: target, targetHistoryVersion: historySchemaVersionForProject(target)});
   return Object.freeze(preview);
 }
 
