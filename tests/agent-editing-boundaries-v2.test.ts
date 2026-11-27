@@ -5,9 +5,9 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {transformSync} from 'esbuild';
 import * as protection from '../apps/web/src/agent-editing-protection.ts';
-import {AGENT_TASK_DISPLAY_TARGET_KINDS,agentTaskEditingResolveBatchSchema,agentTaskEditingSchema} from '../packages/contracts/src/agent-tasks-v2.ts';
+import {AGENT_TASK_DISPLAY_TARGET_KINDS,agentTaskEditingResolveBatchSchema,agentTaskEditingSchema,agentTaskEditingTargetRevisionKind} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type {AgentTaskEditingLiveness,AgentTaskEditingResolveBatchInput,AgentTaskEditingResolveBatchReceipt,AgentTaskTarget} from '../packages/contracts/src/agent-tasks-v2.ts';
-import {matchesEditingBatchReceipt,RetainedEditingConflict} from '../apps/web/src/agent-retained-editing.ts';
+import {createRetainedEditingClient,matchesEditingBatchReceipt,RetainedEditingConflict} from '../apps/web/src/agent-retained-editing.ts';
 import {taskDisplayTargets} from '../apps/web/src/agent-task-presentation.ts';
 import {i18nTestModule,translate} from './helpers/i18n.ts';
 
@@ -33,7 +33,7 @@ function harness(){
     async read(id:string){
       reads.push([id]);if(readHandler)await readHandler(id);
       const owners=claims.filter(claim=>claim.projectId===id).map(claim=>({claim,generation:123,sequence:4,claimSnapshot:'0'.repeat(64),liveness:liveness.get(claim.ownerId)??'in_use'}));
-      return owners.length?[{projectId:id,kind:target.kind,id:target.id,owners}]:[];
+      return owners.length?[{projectId:id,kind:agentTaskEditingTargetRevisionKind(owners[0]!.claim.target.kind),id:target.id,owners}]:[];
     },
     async lookup(id:string,requestId:string){batchLookups.push([id,requestId]);return batchReceipt;},
     async resolve(input:AgentTaskEditingResolveBatchInput){
@@ -58,7 +58,7 @@ function harness(){
     if(id.includes('workbench-tooltip'))return{WorkbenchTooltip:'tooltip'};
     if(id==='./icons.tsx')return{__esModule:true,default:'Icon'};
     if(id.includes('packages/i18n'))return{message:(key: unknown)=>({key})};
-    if(id.includes('agent-tasks-v2'))return{agentTaskEditingResolveBatchSchema,agentTaskEditingSchema,AGENT_TASK_DISPLAY_TARGET_KINDS};
+    if(id.includes('agent-tasks-v2'))return{agentTaskEditingResolveBatchSchema,agentTaskEditingSchema,agentTaskEditingTargetRevisionKind,AGENT_TASK_DISPLAY_TARGET_KINDS};
     if(id.endsWith('.css'))return{};
     throw Error('Unmocked component dependency: '+id);
   },module,module.exports);return module.exports;};
@@ -114,6 +114,99 @@ test('autoAcquire claims the editing target for an explicit form without a secon
 
 test('automatic read leaves no empty recovery card and never dispatches a write',async()=>{
   const h=harness();try{assert.equal(h.render(),null);await flush();assert.equal(h.render(),null);assert.equal(h.reads.length,1);assert.equal(h.updates.length,0);assert.equal(h.closeState()!.blocked,false);}finally{h.cleanup();}
+});
+
+test('retained clip groups accept verified group-specific claims without changing their identities', async () => {
+  const projectId = crypto.randomUUID(), clipId = crypto.randomUUID();
+  const owners = ['timeline_clip_audio', 'timeline_clip_visual', 'timeline_clip_timing'].map(kind => ({
+    claim: {id: crypto.randomUUID(), projectId, ownerId: crypto.randomUUID(), target: {kind, id: clipId, revision: 3},
+      state: 'active', createdAt: '2026-10-20T00:00:00Z', updatedAt: '2026-10-20T00:00:00Z'},
+    generation: 12, sequence: 1, claimSnapshot: '0'.repeat(64), liveness: 'retained',
+  }));
+  const group = {projectId, kind: 'timeline_clip', id: clipId, owners};
+  const read = (kind: string, id = clipId) => createRetainedEditingClient(async () =>
+    Response.json({ok: true, data: {groups: [{...group, kind, id}]}})).read(projectId);
+  assert.deepEqual(await read('timeline_clip'), [group]);
+  await assert.rejects(read('shot'), /Editing recovery target mismatch/u);
+  await assert.rejects(read('timeline_clip', crypto.randomUUID()), /Editing recovery target mismatch/u);
+});
+
+test('retained status combines only trusted local draft evidence with host liveness and end permission', async () => {
+  const projectId = crypto.randomUUID();
+  const owner = (id: string, kind: string, liveness: AgentTaskEditingLiveness) => ({
+    claim: {id: crypto.randomUUID(), projectId, ownerId: crypto.randomUUID(), target: {kind, id, revision: 2},
+      state: 'active' as const, createdAt: '2026-10-20T00:00:00Z', updatedAt: '2026-10-20T00:00:00Z'},
+    locator: {kind, id}, canEnd: liveness === 'retained', generation: 2, sequence: 3, claimSnapshot: '1'.repeat(64), liveness,
+  });
+  const group = (...owners: ReturnType<typeof owner>[]) => {
+    const kind = 'timeline_clip', id = owners[0]!.claim.target.id;
+    return {projectId, kind, id, locator: {kind, id}, canEnd: owners.some(owner => owner.canEnd), owners};
+  };
+  const first = crypto.randomUUID(), clean = owner(first, 'timeline_clip_visual', 'in_use');
+  const unknown = owner(first, 'timeline_clip_audio', 'in_use');
+  const second = crypto.randomUUID(), dirty = owner(second, 'timeline_clip_visual', 'in_use');
+  const foreign = owner(second, 'timeline_clip_audio', 'in_use');
+  const third = crypto.randomUUID(), retained = owner(third, 'timeline_clip_timing', 'retained');
+  const active = owner(third, 'timeline_clip_audio', 'in_use');
+  const fourth = crypto.randomUUID(), occupied = owner(fourth, 'timeline_clip_audio', 'in_use');
+  const groups = [group(clean, unknown), group(dirty, foreign), group(retained, active), group(occupied)];
+  const wire = {groups, endableClaimCount: 1, endableGroupCount: 1};
+  const localIds = [clean, unknown, dirty, occupied].map(owner => owner.claim.ownerId);
+  const client = createRetainedEditingClient(async (url, init) => {
+    assert.equal(url, `/api/projects/${projectId}/agent/tasks/v2/editing/retained`);
+    assert.equal(init?.method, 'GET');
+    assert.equal(init?.body, undefined, 'Draft evidence must never be transmitted');
+    return Response.json({ok: true, data: wire});
+  });
+  const result = await client.readStatus(projectId, {
+    ownsWindow: ownerId => localIds.includes(ownerId),
+    readDraft({claim}) {
+      assert.ok(localIds.includes(claim.ownerId));
+      if (claim.id === dirty.claim.id) return 'unsaved';
+      return claim.id === unknown.claim.id ? undefined : 'clean';
+    },
+  });
+  assert.deepEqual(result.groups.map(value => value.status), ['unconfirmed', 'local_unsaved', 'another_window', 'local_occupied']);
+  assert.deepEqual(result.groups.map(value => value.owners.map(owner => owner.status)), [
+    ['local_occupied', 'unconfirmed'], ['local_unsaved', 'another_window'], ['unconfirmed', 'another_window'], ['local_occupied'],
+  ]);
+  assert.deepEqual(result.groups.map(value => value.canEnd), [false, false, true, false]);
+  assert.deepEqual(result.groups[2]?.owners.map(value => value.canEnd), [true, false]);
+  assert.deepEqual(result.groups[2]?.owners[0]?.locator, retained.locator);
+  assert.equal(result.endableClaimCount, 1);
+  assert.equal(result.endableGroupCount, 1);
+});
+
+test('legacy retained reads accept an old host and enriched reads reject missing authority or a mismatched locator', async () => {
+  const projectId = crypto.randomUUID(), id = crypto.randomUUID();
+  const locator = {kind: 'timeline_clip', id};
+  const owner = {claim: {id: crypto.randomUUID(), projectId, ownerId: crypto.randomUUID(),
+    target: {...locator, revision: 1}, state: 'active', createdAt: '2026-10-20T00:00:00Z', updatedAt: '2026-10-20T00:00:00Z'},
+    generation: 1, sequence: 1, claimSnapshot: '0'.repeat(64), liveness: 'in_use'};
+  const group = {projectId, ...locator, owners: [owner]};
+  const local = {ownsWindow: () => false};
+  const read = (data: unknown) => createRetainedEditingClient(async () => Response.json({ok: true, data}));
+  const legacy = read({groups: [group]});
+  assert.deepEqual(await legacy.read(projectId), [group]);
+  await assert.rejects(legacy.readStatus(projectId, local));
+  await assert.rejects(read({groups: [{...group, canEnd: false, locator, owners: [{...owner, canEnd: false,
+    locator: {kind: 'timeline_clip', id: crypto.randomUUID()}}]}], endableGroupCount: 0, endableClaimCount: 0}).readStatus(projectId, local));
+});
+
+test('existing retained clip labels understand an audio claim and release its exact identity', async () => {
+  const h = harness();
+  try {
+    const claim = h.addForeign();
+    claim.target.kind = 'timeline_clip_audio';
+    h.render(); await flush();
+    const tree = h.render();
+    const article = nodes(tree).find(node => node.type === 'article');
+    assert.ok(article);
+    assert.ok(text(article).includes(translate('zh-Hans', 'agent.display.target.timeline_clip')));
+    assert.doesNotMatch(text(article), /timeline_clip_audio/u);
+    await resolveButton(tree)!.props.onClick(); await flush();
+    assert.equal(h.batchRequests[0]?.claims[0]?.claimId, claim.id);
+  } finally { h.cleanup(); }
 });
 
 test('retained recovery offers explicit resolution only for claims the host confirms are retained',async()=>{

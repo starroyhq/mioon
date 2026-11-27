@@ -6,24 +6,25 @@ import {mkdtempSync, realpathSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {openStore} from '../packages/business/src/project-file/index.ts';
+import {FORMAT5_PROJECT_SCHEMA_VERSION, type ProjectFileFormat} from '../packages/business/src/project-file/schema/databases.ts';
 import {createMioJournal} from '../packages/business/src/agent/mio-journal.ts';
 import {createMioRecords} from '../packages/business/src/agent/mio-records.ts';
 import {createMioAssembly} from '../packages/business/src/agent/mio-assembly.ts';
 import {assembleRunContext} from '../packages/business/src/agent/task-context-v2.ts';
 import type {TaskContextHistoryRun} from '../packages/business/src/agent/task-context-v2.ts';
 import type {TaskRunRecordBackground,TaskRunRecordChange,TaskRunRecordTarget} from '../packages/business/src/agent/task-run-record-v2.ts';
-import {DEFAULT_AGENT_TASK_POLICY} from '../packages/contracts/src/agent-tasks-v2.ts';
-import type {AgentTaskJson, AgentTaskPolicyUpdate, AgentTaskToolCall} from '../packages/contracts/src/agent-tasks-v2.ts';
+import {agentTaskEditingRejectedReceiptSchema, agentTaskEditingSchema, agentTaskEditingWritesSchema, DEFAULT_AGENT_TASK_POLICY} from '../packages/contracts/src/agent-tasks-v2.ts';
+import type {AgentTaskEditingInput, AgentTaskJson, AgentTaskPolicyUpdate, AgentTaskToolCall} from '../packages/contracts/src/agent-tasks-v2.ts';
 
-function fixture(t: TestContext, safetyStepLimit?: number) {
+function fixture(t: TestContext, safetyStepLimit?: number, format?: ProjectFileFormat) {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-mio-journal-'));
-  let store = openStore(root), policy = structuredClone(DEFAULT_AGENT_TASK_POLICY);
+  let store = openStore(root, format), policy = structuredClone(DEFAULT_AGENT_TASK_POLICY);
   store.put('projects', {id: store.projectId, name: 'Mio journal synthetic project'});
   const options = {policy: () => structuredClone(policy), updatePolicy: (next: AgentTaskPolicyUpdate) => {policy = {...policy, modes: next.modes, revision: policy.revision + 1}; return structuredClone(policy);}, lookupPolicy: () => null, safetyStepLimit};
   let journal = createMioJournal(store, options);
   t.after(() => {store.close(); rmSync(root, {recursive: true, force: true});});
   return {root, get store() {return store;}, get journal() {return journal;}, get records() {return createMioRecords(store);},
-    reopen() {store.close(); store = openStore(root); journal = createMioJournal(store, options);},
+    reopen() {store.close(); store = openStore(root, format); journal = createMioJournal(store, options);},
     start(input: {conversationId?: string; text?: string; context?: AgentTaskJson[]} = {}) {
       return journal.create({requestId: randomUUID(), projectId: store.projectId, text: input.text ?? '原消息 😀 \\ \ud800', configuration: {protocol: 'chat_completions', model: 'synthetic'}, ...input}).run;
     },
@@ -40,6 +41,77 @@ function model(f: ReturnType<typeof fixture>, runId: string, calls: AgentTaskToo
   };
   return {step, body, complete};
 }
+
+test('the editing wire keeps replaying receipts written with the original claim key order', t => {
+  const f = fixture(t), projectId = f.store.projectId;
+  const request = {
+    requestId: randomUUID(), action: 'claim' as const, projectId, ownerId: randomUUID(), generation: 1, sequence: 1,
+    targets: [{kind: 'timeline_clip', id: randomUUID(), revision: 0}],
+  };
+  const receipt = f.journal.edit(request);
+  const reordered = Object.fromEntries(Object.entries(request).reverse());
+  assert.deepEqual(f.journal.edit(agentTaskEditingSchema.parse(reordered)), receipt);
+});
+
+test('sequence co-editing claims arbitrate the actual group and retain original denials after restart', t => {
+  const f = fixture(t, undefined, FORMAT5_PROJECT_SCHEMA_VERSION);
+  const projectId = f.store.projectId, run = f.start(), id = randomUUID();
+  const clip = {kind: 'timeline_clip', id, revision: 0};
+  const audio = {...clip, kind: 'timeline_clip_audio'};
+  const visual = {...clip, kind: 'timeline_clip_visual'};
+  const input = (target = audio): AgentTaskEditingInput => ({
+    requestId: randomUUID(), ownerId: randomUUID(), projectId, action: 'claim', generation: 1, sequence: 1, targets: [target],
+  });
+  const first = input();
+  assert.equal(f.journal.edit(first).claims[0]?.target.kind, audio.kind);
+  assert.throws(() => f.journal.assertTargets(projectId, [clip], [audio]), {code: 'AGENT_TASK_TARGET_CLAIMED'});
+  assert.throws(() => f.journal.assertTargets(projectId, [clip]), {code: 'AGENT_TASK_TARGET_CLAIMED'});
+  assert.doesNotThrow(() => f.journal.assertTargets(projectId, [clip], [visual]));
+  f.journal.edit({...first, requestId: randomUUID(), action: 'release', sequence: 2});
+
+  const toolCall = {id: 'co_editing_tool', name: 'mioon_timeline_clip_set_gains', arguments: {}};
+  f.journal.transition(run.id, run.revision, 'running');
+  const source = model(f, run.id, [toolCall]); source.complete();
+  const step = f.journal.beginStep(run.id, {kind: 'tool', toolCall, tier: 'local_reversible', targets: [clip],
+    data: {sourceModelStepId: source.step.id, editingWriteTargets: [audio]}});
+  assert.deepEqual(f.journal.editingWrites(projectId), []);
+  f.store.tx(() => {
+    f.journal.assertTargets(projectId, [clip], [audio]);
+    f.journal.markDispatch(run.id, step.id);
+  });
+  const active = {kind: audio.kind, id, state: 'committing', runId: run.id, stepId: step.id};
+  assert.deepEqual(agentTaskEditingWritesSchema.parse({writes: f.journal.editingWrites(projectId)}), {writes: [active]});
+  assert.equal(f.journal.edit(input(visual)).claims.length, 1);
+  const incoming = input();
+  assert.throws(() => f.journal.edit(incoming), {code: 'AGENT_TASK_MIO_COMMITTING'});
+  const denied = agentTaskEditingRejectedReceiptSchema.parse(f.journal.lookupEdit(incoming.requestId));
+  assert.deepEqual(denied.error, {code: 'AGENT_TASK_MIO_COMMITTING', details: {reason: 'mio_committing', writes: [active]}});
+  assert.equal(f.journal.editingOwnerVersion(projectId, incoming.ownerId), null);
+
+  f.reopen();
+  f.journal.recover();
+  const unknown = {...active, state: 'outcome_unknown'};
+  assert.deepEqual(f.journal.editingWrites(projectId), [unknown]);
+  assert.throws(() => f.journal.edit(incoming), {code: 'AGENT_TASK_MIO_COMMITTING'});
+  assert.throws(() => f.journal.edit({...incoming, targets: [visual]}), {code: 'AGENT_TASK_REQUEST_CONFLICT'});
+  assert.deepEqual(f.journal.lookupEdit(incoming.requestId), denied);
+  const blocked = input(clip);
+  assert.throws(() => f.journal.edit(blocked), {code: 'AGENT_TASK_UNKNOWN_RESULT'});
+  assert.deepEqual(agentTaskEditingRejectedReceiptSchema.parse(f.journal.lookupEdit(blocked.requestId)).error.details,
+    {reason: 'outcome_unknown', writes: [unknown]});
+  f.journal.updateStep(run.id, step.id, {status: 'failed'});
+  assert.deepEqual(f.journal.editingWrites(projectId), []);
+  assert.equal(f.journal.edit(input()).claims.length, 1);
+  const groups = f.journal.editingClaimGroups(projectId, () => 'retained');
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0]?.kind, 'timeline_clip');
+  assert.deepEqual(groups[0]?.owners.map(entry => entry.claim.target.kind).sort(), [audio.kind, visual.kind]);
+
+  const stale = input({...audio, revision: 1});
+  assert.throws(() => f.journal.edit(stale), {code: 'AGENT_TASK_TARGET_CHANGED'});
+  assert.deepEqual(agentTaskEditingRejectedReceiptSchema.parse(f.journal.lookupEdit(stale.requestId)).error.details,
+    {reason: 'revision_changed', targets: [{kind: audio.kind, id, expectedRevision: 1, currentRevision: 0, currentValues: null}]});
+});
 
 test('Mio journal projects canonical entries after cleanup and every read is write-free', t => {
   const f = fixture(t), run = f.start(), request = model(f, run.id);

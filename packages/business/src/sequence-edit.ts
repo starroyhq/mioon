@@ -718,26 +718,18 @@ export function previewSequenceBoardAction(store: ProjectStore, intents: readonl
     if (!context.archived.has(`shot:${id}`)) continue;
     projectedShotRows.set(id, preparation.restored.get(id)!);
   }
-  let projectedCueIds: string[] = [];
-  if (plan) {
+  let impact = {mainTrackClipIds: [] as readonly string[], otherTrackItemIds: [] as readonly string[],
+    subtitleCueIds: [] as readonly string[]};
+  if (plan && planTimelineChanged(plan)) {
     const projection = previewMainTrackProjection(store, plan, projectedShotRows);
-    if (projection.ok === false) return projection;
-    projectedCueIds = [...new Set([...projection.projection.changedCueIds, ...projection.projection.removedCueIds])].sort();
-  }  const nodeIds = new Set<string>();
-  for (const entity of [...boardDeltas.after.writes, ...boardDeltas.after.removals]) if (entity.kind !== 'edge') nodeIds.add(entity.id);
-  const edgeIds = new Set<string>();
-  for (const entity of [...boardDeltas.after.writes, ...boardDeltas.after.removals]) if (entity.kind === 'edge') edgeIds.add(entity.id);
-  const mainTrackClipIds = new Set<string>();
-  for (const item of preparation.allocation.clips) mainTrackClipIds.add(item.clipId);
-  const otherTrackItemIds = new Set<string>();
-  if (plan) {
-    const delta = plan.changes.clips;
-    for (const change of delta) if (change.after) mainTrackClipIds.add(change.after.id);
-    for (const change of plan.changes.anchored) if (change.after) otherTrackItemIds.add(change.after.id);
+    if (!projection.ok) return projection;
+    impact = projection.impact;
   }
+  const touched = [...boardDeltas.after.writes, ...boardDeltas.after.removals];
+  const nodeIds = [...new Set(touched.filter(entity => entity.kind !== 'edge').map(entity => entity.id))];
+  const edgeIds = [...new Set(touched.filter(entity => entity.kind === 'edge').map(entity => entity.id))];
   return {ok: true, allocation: preparation.allocation, warnings: [...preparation.warnings, ...warnings] as unknown as readonly ChainSyncWarning[],
-    impact: {nodeIds: [...nodeIds], edgeIds: [...edgeIds], mainTrackClipIds: [...mainTrackClipIds],
-      otherTrackItemIds: [...otherTrackItemIds], subtitleCueIds: projectedCueIds}};
+    impact: {nodeIds, edgeIds, ...impact}};
 }
 
 // ---------------------------------------------------------------------------

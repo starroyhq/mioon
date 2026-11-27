@@ -1386,10 +1386,8 @@ function shotChanges(context: SyncContext, plan: SequenceEditPlan): ShotChange[]
   return changes;
 }
 
-function timelineDeltaPair(context: SyncContext, nextTimeline: Format5Timeline, plan: SequenceEditPlan,
-  board: {readonly before: SequenceEditBoardDelta; readonly after: SequenceEditBoardDelta},
-  nextBaseline: Format5SyncBaseline, additionalChangedClipIds: readonly string[] = [],
-  projection: MainTrackProjection): SequenceEditPatch {
+function timelinePatchRows(context: SyncContext, nextTimeline: Format5Timeline, plan: SequenceEditPlan,
+  additionalChangedClipIds: readonly string[], projection: MainTrackProjection) {
   const beforeClips = new Map(context.timeline.clips.map(clip => [clip.id, clip] as const));
   const afterClips = new Map(nextTimeline.clips.map(clip => [clip.id, clip] as const));
   const beforeCues = new Map((context.timeline.subtitles?.cues ?? []).map(cue => [cue.id, cue] as const));
@@ -1412,6 +1410,37 @@ function timelineDeltaPair(context: SyncContext, nextTimeline: Format5Timeline, 
   const clipIds = [...changedIds].filter(id => beforeClips.has(id) || afterClips.has(id));
   const cueIds = new Set<string>([...changedIds].filter(id => beforeCues.has(id) || afterCues.has(id)));
   for (const id of [...projection.changedCueIds, ...projection.removedCueIds]) cueIds.add(id);
+  return {beforeClips, afterClips, beforeCues, afterCues, clipIds, cueIds};
+}
+
+type TimelineImpact = Pick<SequenceEditImpact, 'mainTrackClipIds' | 'otherTrackItemIds' | 'subtitleCueIds'>;
+
+/** Derive the preview's affected rows using the same selection as the persisted patch. */
+function timelineImpact(context: SyncContext, nextTimeline: Format5Timeline, plan: SequenceEditPlan,
+  additionalChangedClipIds: readonly string[], projection: MainTrackProjection): TimelineImpact {
+  const {beforeClips, afterClips, clipIds, cueIds} = timelinePatchRows(context, nextTimeline, plan, additionalChangedClipIds, projection);
+  const mainTrackId = context.timeline.mainTrack.trackId;
+  const isMain = (id: string) => (afterClips.get(id) ?? beforeClips.get(id))?.trackId === mainTrackId;
+  return {mainTrackClipIds: clipIds.filter(isMain), otherTrackItemIds: clipIds.filter(id => !isMain(id)),
+    subtitleCueIds: [...cueIds].sort()};
+}
+
+function boardImpact(board: SequenceEditBoardDelta): Pick<SequenceEditImpact, 'nodeIds' | 'edgeIds'> {
+  const entities = [...board.writes, ...board.removals];
+  const nodeIds = entities.flatMap(row => {
+    if (row.kind === 'node' || row.kind === 'shot') return [row.id];
+    if (row.kind === 'adoption' && typeof row.data.shotId === 'string') return [row.data.shotId];
+    return [];
+  });
+  return {nodeIds: [...new Set(nodeIds)], edgeIds: [...new Set(entities.filter(row => row.kind === 'edge').map(row => row.id))]};
+}
+
+function timelineDeltaPair(context: SyncContext, nextTimeline: Format5Timeline, plan: SequenceEditPlan,
+  board: {readonly before: SequenceEditBoardDelta; readonly after: SequenceEditBoardDelta},
+  nextBaseline: Format5SyncBaseline, additionalChangedClipIds: readonly string[] = [],
+  projection: MainTrackProjection): SequenceEditPatch {
+  const {beforeClips, afterClips, beforeCues, afterCues, clipIds, cueIds} =
+    timelinePatchRows(context, nextTimeline, plan, additionalChangedClipIds, projection);
   const baselineChanged = !sameJson(context.baseline, nextBaseline);
   const baselineAfter: SequenceEditBaselineChange = baselineChanged ? {kind: 'set', value: nextBaseline} : {kind: 'unchanged'};
   const baselineBefore: SequenceEditBaselineChange = baselineChanged ? {kind: 'set', value: context.baseline} : {kind: 'unchanged'};
@@ -1714,18 +1743,9 @@ export function previewGenerateInEditing(store: ProjectStore, input: {
     const nextTimeline = projected.projection.timeline;
     const anchorIssue = validateAnchoredTimeline(nextTimeline);
     if (anchorIssue) return failure('SEQUENCE_EDIT_ANCHOR_CONFLICT', anchorIssue.ids);
-    const mainTrackId = context.timeline.mainTrack.trackId;
     const generatedOther = generatedShotMeta.get(successful)?.otherClip;
-    const changedIds = successful.changes.clips.map(change => change.after?.id ?? change.before?.id)
-      .filter((id): id is string => typeof id === 'string');
-    if (generatedOther) changedIds.push(generatedOther.id);
-    const impact: SequenceEditImpact = {
-      nodeIds: operation.kind === 'generate-placeholder' ? [operation.shotId] : [],
-      edgeIds: allocation.edges.map(edge => edge.id),
-      mainTrackClipIds: changedIds.filter(id => nextTimeline.clips.some(clip => clip.id === id && clip.trackId === mainTrackId)),
-      otherTrackItemIds: generatedOther ? [generatedOther.id] : [],
-      subtitleCueIds: [...projected.projection.changedCueIds, ...projected.projection.removedCueIds].sort(),
-    };
+    const impact: SequenceEditImpact = {...boardImpact(boardEntities.after), ...timelineImpact(
+      context, nextTimeline, successful, generatedOther ? [generatedOther.id] : [], projected.projection)};
     const kindName = (kind: 'shot' | 'node' | 'edge' | 'clip' | 'cue'): string =>
       kind === 'clip' ? 'timeline_clip' : kind === 'cue' ? 'timeline_cue' : kind;
     const targets = targetKinds({...provisional, impact}).flatMap(target => {
@@ -1795,31 +1815,11 @@ export function previewSequenceSync(store: ProjectStore, command: SequenceSyncCo
     }
     const anchorIssue = validateAnchoredTimeline(nextTimeline);
     if (anchorIssue) return failure('SEQUENCE_EDIT_ANCHOR_CONFLICT', anchorIssue.ids);
-    const mainTrackClipSet = new Set(nextTimeline.clips.filter(clip => clip.trackId === mainTrackId).map(clip => clip.id));
-    const otherTrackClipSet = new Set(nextTimeline.clips.filter(clip => clip.trackId !== mainTrackId).map(clip => clip.id));
-    const mainClipIds = successful.changes.clips.map(change => change.after?.id ?? change.before?.id)
-      .filter((clipId): clipId is string => !!clipId && mainTrackClipSet.has(clipId));
-    const otherItemIds = [...new Set(successful.changes.anchored.map(change => change.after?.id ?? change.before?.id).filter((id): id is string => !!id))];
-    const newNodeIds = successful.after.board.nodes.filter(node => !context.board.nodes.some(item => item.id === node.id)).map(node => node.id);
-    const changedEdgeIds: string[] = [];
-    for (const edge of successful.changes.edges) {
-      const key = `${edge.after?.fromId ?? edge.before?.fromId}>${edge.after?.toId ?? edge.before?.toId}`;
-      const existing = context.edgeRows.values();
-      for (const row of existing) if (row.kind === 'sequence' && `${row.source}>${row.target}` === key) changedEdgeIds.push(String(row.id));
-    }
-    const copiedNodeIds = [...new Set([...successful.changes.nodes.flatMap(change => change.after ? [change.after.id] : []), ...newNodeIds])];
     const extraOtherTrackIds = sceneData
-      ? [...new Set(sceneData.split.filter(row => context.timeline.clips.some(clip => clip.id === row.clipId && clip.trackId !== mainTrackId))
-        .flatMap(row => row.clipIds.slice(1)))]
-      : [];
-    const impact: SequenceEditImpact = {
-      nodeIds: copiedNodeIds,
-      edgeIds: [...new Set([...changedEdgeIds, ...provisional.allocation.edges.map(item => item.id)])],
-      mainTrackClipIds: [...new Set(mainClipIds.filter(id => successful.changes.clips.some(change => (change.after?.id ?? change.before?.id) === id)))],
-      otherTrackItemIds: [...new Set([...otherItemIds.filter(id => otherTrackClipSet.has(id)), ...extraOtherTrackIds])],
-      subtitleCueIds: [...new Set([...otherItemIds.filter(id => (context.timeline.subtitles?.cues ?? []).some(cue => cue.id === id)),
-        ...projection.changedCueIds, ...projection.removedCueIds])].sort(),
-    };
+      ? sceneData.split.filter(row => context.timeline.clips.some(clip => clip.id === row.clipId && clip.trackId !== mainTrackId))
+        .flatMap(row => row.clipIds.slice(1)) : [];
+    const impact: SequenceEditImpact = {...boardImpact(boardEntities.after),
+      ...timelineImpact(context, nextTimeline, successful, extraOtherTrackIds, projection)};
     const kindName = (kind: 'shot' | 'node' | 'edge' | 'clip' | 'cue'): string =>
       kind === 'clip' ? 'timeline_clip' : kind === 'cue' ? 'timeline_cue' : kind;
     const targets = targetKinds({...effective, impact}).flatMap(target => {
@@ -1837,8 +1837,12 @@ export function previewSequenceSync(store: ProjectStore, command: SequenceSyncCo
  * `sequence.preview` impact and for rejecting dialogue/anchor conflicts before
  * the user confirms. Never writes. */
 export function previewMainTrackProjection(store: ProjectStore, plan: SequenceEditPlan,
-  extraShots: ReadonlyMap<string, Row> = new Map()): MainTrackProjectionOutcome {
-  return patchMainTimeline(readSyncContext(store), plan, extraShots);
+  extraShots: ReadonlyMap<string, Row> = new Map()):
+  (Extract<MainTrackProjectionOutcome, {ok: true}> & {readonly impact: TimelineImpact}) | SequenceEditTransactionFailure {
+  const context = readSyncContext(store);
+  const result = patchMainTimeline(context, plan, extraShots);
+  if (!result.ok) return result;
+  return {...result, impact: timelineImpact(context, result.projection.timeline, plan, [], result.projection)};
 }
 
 // ---------------------------------------------------------------------------
@@ -1954,6 +1958,14 @@ export function runSequenceSync(store: ProjectStore, envelope: SequenceEditEnvel
   });
 }
 
+/** The Mio request freezes the same existing candidates that the worker may adopt. */
+export function isFormat5GenerationPlaceholder(
+  clip: Pick<Format5Clip, 'sourceState' | 'sequenceSource' | 'shotId'>, shotId: string,
+): boolean {
+  return clip.sourceState === 'placeholder' && (clip.sequenceSource?.kind === 'shot'
+    && clip.sequenceSource.nodeId === shotId || clip.shotId === shotId);
+}
+
 /** GE-a: adopt the first successful version of an edit-created shot into its
  * placeholder inside the worker's existing transaction. Returns false when the
  * shot moved on (revised or already has a version) or the placeholder is gone;
@@ -1971,10 +1983,10 @@ export function adoptFormat5GeneratedVersionInside(store: ProjectStore,
   // Follow-mode main pieces and other-track placeholders keep their editing
   // parameters (start, duration, sourceInFrame, gain, rect, fades, anchor/group);
   // only the source identity changes from "not generated yet" to this version.
-  const placeholders = context.timeline.clips.filter(clip => clip.sourceState === 'placeholder'
-    && (clip.sequenceSource?.kind === 'shot' && clip.sequenceSource.nodeId === job.shotId
-      || clip.shotId === job.shotId) && (options.canReplace?.(clip) ?? true));
-  if (placeholders.length === 0) return false;
+  const placeholders = context.timeline.clips.filter(clip => isFormat5GenerationPlaceholder(clip, job.shotId));
+  // One publication owns the full placeholder update. If a target is held
+  // by an editor, the version is retained without adopting any of these rows.
+  if (placeholders.length === 0 || !placeholders.every(clip => options.canReplace?.(clip) ?? true)) return false;
   const ready = placeholders.map(clip => ({...clip, assetId: String(version.assetId),
     versionId: String(version.id), jobId: job.id, shotId: job.shotId, sourceState: 'ready' as const} as Format5Clip));
   const nextTimeline: Format5Timeline = {...context.timeline,

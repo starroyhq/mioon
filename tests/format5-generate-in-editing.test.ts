@@ -12,6 +12,8 @@ import {adoptFormat5GeneratedVersionInside} from '../packages/business/src/forma
 import {previewMioSequenceAction, commitMioSequenceAction} from '../packages/business/src/format5-mio-sequence.ts';
 import {mioSequenceEditSchemas} from '../packages/contracts/src/mio-sequence.ts';
 import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2.ts';
+import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
+import {setAgentTaskEffectGate, withTaskEffectOrigin} from '../packages/business/src/agent/task-effects-v2.ts';
 import {createProviderRegistry, registerInputProfileWrapper} from '../packages/business/src/provider-registry.ts';
 import {startWorker} from '../packages/business/src/jobs.ts';
 
@@ -340,13 +342,14 @@ test('GE-a real worker publishes a synthetic version into the placeholder', asyn
   execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=black:s=360x640:d=4:r=30',
     '-pix_fmt', 'yuv420p', '-y', syntheticVideo]);
   const baseMock = registry.get('mock')!;
+  let beforeDownload: (() => void) | undefined;
   const synthetic = registerInputProfileWrapper({
     id: 'mock', capabilities: baseMock.capabilities,
     validate: baseMock.validate?.bind(baseMock),
     async submit() {return {providerJobId: `synthetic-${randomUUID()}`};},
     async reconcile() {return null;},
     async poll() {return {status: 'succeeded', progress: 100};},
-    async download(_providerJobId: string, destination: string) {copyFileSync(syntheticVideo, destination); return {};},
+    async download(_providerJobId: string, destination: string) {beforeDownload?.(); copyFileSync(syntheticVideo, destination); return {};},
     async cancel() {return {};},
   }, baseMock);
   f.providers.set('mock', synthetic);
@@ -409,6 +412,76 @@ test('GE-a real worker publishes a synthetic version into the placeholder', asyn
   const mioTimeline = f.store.get('timelines', BOARD_IDS.timeline) as any;
   assert.equal(mioTimeline.clips.find((item: any) => item.id === mioClipId).sourceState, 'ready');
   assert.equal((f.store.get('shots', mioShotId) as any).selectedVersionId, mioDone.versionId);
+
+  // A bound job may already be paid when the user starts editing one of its
+  // placeholders. Its saved result should survive, without selecting it or
+  // updating the other placeholder in the same automatic adoption.
+  const blockedShot = randomUUID(), firstClip = randomUUID(), secondClip = randomUUID();
+  const blockedPreview = await f.services.call('sequence.preview', {projectId: f.projectId, requestId: randomUUID(),
+    generateIntent: {side: 'timeline', operation: {kind: 'generate-placeholder', placement: {kind: 'main', beforeClipId: BOARD_IDS.clipB},
+      settings: {requestId: randomUUID(), prompt: 'Late co-editing result', aspectRatio: '9:16', duration: 2},
+      shotId: blockedShot, clipId: firstClip, title: 'Synthetic co-editing shot'}}}) as any;
+  assert.ok(blockedPreview.envelope);
+  await f.services.call('sequence.commit', {projectId: f.projectId, envelope: blockedPreview.envelope,
+    expectedPlanDigest: blockedPreview.planDigest});
+  const before = f.store.get('timelines', BOARD_IDS.timeline) as any;
+  const placeholder = before.clips.find((item: any) => item.id === firstClip);
+  assert.equal(placeholder.durationFrames, 60);
+  f.store.tx(() => f.store.put('timelines', {...before, revision: before.revision + 1,
+    clips: before.clips.flatMap((item: any) => item.id !== firstClip ? [item] : [
+      {...placeholder, durationFrames: 30},
+      {...placeholder, id: secondClip, startFrame: placeholder.startFrame + 30, durationFrames: 30},
+    ])}));
+
+  const journal = createAgentTaskJournal(f.store, {policyStore: f.library.agentPolicy});
+  const tools = createAgentTaskTools({store: f.store, services: f.services, policyStore: f.library.agentPolicy});
+  // Stub the run/connection authorization only. The worker calls the real
+  // target gate installed by createAgentTaskTools with its journal revisions.
+  const removeGate = setAgentTaskEffectGate(f.store.db, () => {});
+  t.after(() => {removeGate(); tools.dispose();});
+  const run = journal.create({projectId: f.projectId, requestId: randomUUID(), text: 'Synthetic generation',
+    configuration: {protocol: 'chat_completions', model: 'synthetic'}}).run;
+  journal.transition(run.id, run.revision, 'running');
+  const toolCall = {id: 'generate-for-adoption', name: 'mioon_generation_submit',
+    arguments: {shotId: blockedShot, expectedRevision: 1, providerId: 'mock', model: 'mock-motion-v1'}};
+  const history = [{role: 'user', content: run.text}];
+  const source = journal.beginModelStep(run.id, {request: {body: JSON.stringify({model: 'synthetic', stream: true, messages: history}), history}}, []);
+  journal.markDispatch(run.id, source.id);
+  journal.completeStep(run.id, source.id, {result: {providerOutput: {role: 'assistant', content: '', tool_calls: [{
+    id: toolCall.id, type: 'function', function: {name: toolCall.name, arguments: JSON.stringify(toolCall.arguments)},
+  }]}}});
+  const targets = [{kind: 'shot', id: blockedShot}, {kind: 'timeline_clip', id: firstClip}, {kind: 'timeline_clip', id: secondClip}]
+    .map(target => ({...target, revision: journal.targetRevision(f.projectId, target.kind, target.id)}));
+  const acceptedStep = journal.beginStep(run.id, {kind: 'tool', toolCall, tier: 'paid', targets, data: {sourceModelStepId: source.id}});
+  journal.markDispatch(run.id, acceptedStep.id);
+  journal.completeStep(run.id, acceptedStep.id, {});
+  const assigned = withTaskEffectOrigin({runId: run.id, stepId: acceptedStep.id, projectId: f.projectId,
+    requestId: acceptedStep.id, operation: 'generation.submit', recorded: true,
+    beforeEffect: () => {}, recordInside: () => assert.fail('The worker cannot replace the tool acceptance receipt')},
+  () => f.store.tx(() => f.services.createGenerationJobInside({shotId: blockedShot, expectedRevision: 1, requestId: acceptedStep.id,
+    providerId: 'mock', model: 'mock-motion-v1'}))) as any;
+  const editedGroup = {...targets[2]!, kind: 'timeline_clip_visual'};
+  beforeDownload = () => {
+    beforeDownload = undefined;
+    assert.equal((f.store.get('jobs', assigned.id) as any).status, 'downloading');
+    journal.claim({projectId: f.projectId, ownerId: 'worker-test-editor', targets: [editedGroup]});
+  };
+  for (let attempt = 0; attempt < 120; attempt++) {
+    await worker.tick();
+    const current = f.store.get('jobs', assigned.id) as any;
+    if (current?.status === 'succeeded' || current?.status === 'failed') break;
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  const finished = f.store.get('jobs', assigned.id) as any;
+  assert.equal(finished.status, 'succeeded', JSON.stringify(finished));
+  const retained = f.store.get('versions', finished.versionId) as any;
+  assert.ok(retained?.assetId && f.store.get('assets', retained.assetId), 'paid result remains available');
+  assert.equal((f.store.get('shots', blockedShot) as any).selectedVersionId, null);
+  const timelineAfterClaim = f.store.get('timelines', BOARD_IDS.timeline) as any;
+  for (const clip of [firstClip, secondClip]) {
+    assert.equal(timelineAfterClaim.clips.find((item: any) => item.id === clip).sourceState, 'placeholder');
+  }
+  assert.deepEqual(journal.claims(f.projectId).map(claim => claim.target), [editedGroup]);
 });
 
 

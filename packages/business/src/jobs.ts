@@ -10,6 +10,7 @@ import {isCanvasArchived} from './canvas-active.ts';
 import {createProjectBackgroundState,pauseUnavailableBackgroundTask,markBackgroundTaskInvalid} from './background-task-state.ts';
 import {registerExportActivity,isCancelledExport,exportStage,exportEncodingProgress} from './export-controls.ts';
 import {assertAgentTaskJobEffect,withAgentTaskJobOrigin,recordAgentTaskJobDispatch,allowAgentTaskJobTargetMutation,isAgentTaskEffectBlocked,agentTaskJobBinding,isAgentTaskJobStopped} from './agent/task-effects-v2.ts';
+import {supportsSequenceCoEditing} from './agent/co-editing-writes.ts';
 import {isFloatTimelineExport,claimFloatTimelineExport,sameFloatTimelineAttempt,requeueFloatTimelineExport,createFloatTimelineAttemptRegistry,ownedFloatTimelineMeasurement,bindFloatTimelineMeasurement,bindFloatTimelineFailure,assertFloatTimelineExportRead} from './timeline-float-outcome.ts';
 import {createTimelineColourLutReader,verifyTimelineColourLuts} from './timeline-colour-lut.ts';
 import {requiresPreparedTimelineExportIdentity,hasSelectedTimelineExportRange,timelineExportRangeEffectError} from './timeline-export-range.ts';
@@ -444,17 +445,21 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     const commit = () => tx(()=>{if(projectOwner){checkOutput();if(published)assertPublishedProjectOutput(projectOwner,published.publication);}const previous=list('versions',j!.projectId).map(value=>recordValue(value)).find(v=>v?.jobId===j!.id);if(previous){if(artifact&&(previous.id!==artifact.versionId||previous.assetId!==artifact.assetId||previous.sha256!==artifact.info.sha256))throw Object.assign(Error('Generation result conflicts with completed artifact'),{code:'INVALID_OUTPUT_ARTIFACT'});services.saveJob(j!,{status:'succeeded',phase:'complete',versionId:previous.id,progress:100,error:null});return;}
      const asset={id:artifact?.assetId??randomUUID(),projectId:j!.projectId,name:generatedVideoAssetName(store.db,j!,String(property(j!.snapshot,'title'))),mimeType:'video/mp4',...info,...(publishedReference?{...publishedReference,producer:{kind:'generation',id:j!.id}}:{relativePath}),url:null as string|null,provenance:j!.providerId==='mock'?'synthetic-mock':'generated',createdAt:now()};asset.url=`/media/${asset.id}`;put('assets',asset);
      const version={id:artifact?.versionId??randomUUID(),projectId:j!.projectId,shotId:j!.shotId,jobId:j!.id,number:list('versions',j!.projectId).filter(value=>property(value,'shotId')===j!.shotId).length+1,providerId:j!.providerId,model:j!.model,isMock:j!.providerId==='mock',snapshot:j!.snapshot,assetId:asset.id,url:asset.url,sha256:info.sha256,createdAt:now()};put('versions',version);
-     const format5=projectOwner!==null&&projectOwner!==undefined&&Number(projectOwner.db.prepare('PRAGMA project.user_version').get()?.user_version)===5;
-     // Format-5 adoption is a background mutation of the generated shot. It
-     // uses the same Mio target gate as the version selection below (one call
-     // records the skipped/conflict event); user-owned jobs have no binding and
-     // pass. A denied check leaves the placeholder and version untouched.
-     const targetAllowed=!format5||allowAgentTaskJobTargetMutation(store.db,'job',j!.id,{kind:'shot',id:j!.shotId});
-     const adopted=format5&&projectOwner&&targetAllowed?adoptFormat5GeneratedVersionInside(projectOwner,j!,version):false;
-     // Format-5 edit-created shots adopt only while their placeholder and the
-     // frozen shot revision still match. A late result records the version but
-     // never rewrites a moved-on shot.
-     const shot=recordValue(get('shots',j!.shotId));if(shot&&!shot.selectedVersionId&&typeof shot.revision==='number'&&!isCanvasArchived(store.db,'shots',j!.shotId)&&(format5?targetAllowed:allowAgentTaskJobTargetMutation(store.db,'job',j!.id,{kind:'shot',id:j!.shotId})))put('shots',{...shot,selectedVersionId:version.id,revision:shot.revision+1,updatedAt:now()});services.saveJob(j!,{status:'succeeded',phase:'complete',progress:100,versionId:version.id,error:null});
+     const shot=recordValue(get('shots',j!.shotId));
+     if(shot&&!shot.selectedVersionId&&typeof shot.revision==='number'&&!isCanvasArchived(store.db,'shots',j!.shotId)){
+      const allowTarget=(kind:'shot'|'timeline_clip',id:string):boolean=>allowAgentTaskJobTargetMutation(store.db,'job',j!.id,{kind,id});
+      let canSelect=allowTarget('shot',j!.shotId);
+      if(canSelect&&projectOwner&&supportsSequenceCoEditing(projectOwner)){
+       // A late result is still recorded, but clip adoption and version
+       // selection are one effect and share the actual placeholder footprint.
+       adoptFormat5GeneratedVersionInside(projectOwner,j!,version,{canReplace:clip=>{
+        canSelect=allowTarget('timeline_clip',clip.id);
+        return canSelect;
+       }});
+      }
+      if(canSelect)put('shots',{...shot,selectedVersionId:version.id,revision:shot.revision+1,updatedAt:now()});
+     }
+     services.saveJob(j!,{status:'succeeded',phase:'complete',progress:100,versionId:version.id,error:null});
     });
     if (projectOwner && published) {
       await registerVerifiedProjectOutputs(projectOwner, {signal, beforeEffect: checkOutput}, () => {

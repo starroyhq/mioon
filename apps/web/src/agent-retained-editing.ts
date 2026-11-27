@@ -1,8 +1,8 @@
 import {
-  agentTaskEditingClaimGroupSchema, agentTaskEditingResolveBatchReceiptSchema,
+  agentTaskEditingClaimGroupSchema, agentTaskEditingRetainedResponseSchema, agentTaskEditingResolveBatchReceiptSchema, agentTaskEditingTargetRevisionKind,
 } from '../../../packages/contracts/src/agent-tasks-v2.ts';
 import type {
-  AgentTaskEditingClaimGroup, AgentTaskEditingResolveBatchInput, AgentTaskEditingResolveBatchReceipt,
+  AgentTaskEditingClaimGroup, AgentTaskEditingRetainedResponse, AgentTaskEditingResolveBatchInput, AgentTaskEditingResolveBatchReceipt,
 } from '../../../packages/contracts/src/agent-tasks-v2.ts';
 import { projectApiPath } from '../../../packages/contracts/src/project-file.ts';
 
@@ -13,6 +13,45 @@ const record = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 
 export class RetainedEditingConflict extends Error {}
+
+export type RetainedEditingDraftState = 'unsaved' | 'clean' | 'unconfirmed';
+export type RetainedEditingStatus = 'local_unsaved' | 'local_occupied' | 'another_window' | 'unconfirmed';
+type RetainedEditingGroup = AgentTaskEditingRetainedResponse['groups'][number];
+type RetainedEditingOwner = RetainedEditingGroup['owners'][number];
+export interface RetainedEditingLocalEvidence {
+  ownsWindow: (ownerId: string) => boolean;
+  readDraft?: (owner: RetainedEditingOwner) => RetainedEditingDraftState | undefined;
+}
+type RetainedEditingOwnerStatus = RetainedEditingOwner & {status: RetainedEditingStatus};
+type RetainedEditingGroupStatus = Omit<RetainedEditingGroup, 'owners'> & {owners: RetainedEditingOwnerStatus[]; status: RetainedEditingStatus};
+export type RetainedEditingStatusView = Omit<AgentTaskEditingRetainedResponse, 'groups'> & {groups: RetainedEditingGroupStatus[]};
+
+function editingStatus(owner: RetainedEditingOwner, local: RetainedEditingLocalEvidence): RetainedEditingStatus {
+  if (!local.ownsWindow(owner.claim.ownerId)) return owner.liveness === 'in_use' ? 'another_window' : 'unconfirmed';
+  const draft = local.readDraft?.(owner);
+  if (draft === 'unsaved') return 'local_unsaved';
+  return draft === 'clean' && owner.claim.state === 'active' ? 'local_occupied' : 'unconfirmed';
+}
+
+function retainedEditingView(host: AgentTaskEditingRetainedResponse, local: RetainedEditingLocalEvidence): RetainedEditingStatusView {
+  // Surface a known draft or a live foreign window in a mixed group. Missing
+  // draft evidence never elevates an ambiguous group to local_occupied.
+  const statusOrder = ['local_unsaved', 'another_window', 'unconfirmed', 'local_occupied'] as const;
+  return {...host, groups: host.groups.map(group => {
+    const owners = group.owners.map(owner => ({...owner, status: editingStatus(owner, local)}));
+    const status = statusOrder.find(candidate => owners.some(owner => owner.status === candidate)) ?? 'unconfirmed';
+    return {...group, owners, status};
+  })};
+}
+
+function verifyGroups(projectId: string, groups: AgentTaskEditingClaimGroup[]): void {
+  if (groups.some(({projectId: groupProject, kind, id, locator, owners}) =>
+    groupProject !== projectId || locator && (locator.kind !== kind || locator.id !== id) ||
+    owners.some(({claim, locator}) => claim.projectId !== projectId || agentTaskEditingTargetRevisionKind(claim.target.kind) !== kind ||
+      claim.target.id !== id || locator && (locator.kind !== claim.target.kind || locator.id !== claim.target.id)))) {
+    throw new Error('Editing recovery target mismatch');
+  }
+}
 
 export function matchesEditingBatchReceipt(input: AgentTaskEditingResolveBatchInput, receipt: AgentTaskEditingResolveBatchReceipt | null): boolean {
   if (!receipt || receipt.projectId !== input.projectId || receipt.requestId !== input.requestId) return false;
@@ -40,11 +79,13 @@ export function createRetainedEditingClient(fetchImpl = globalThis.fetch) {
     async read(projectId: string): Promise<AgentTaskEditingClaimGroup[]> {
       const {groups} = await request(editingPath(projectId, 'retained'));
       const result = agentTaskEditingClaimGroupSchema.array().parse(groups);
-      if (result.some(group => group.projectId !== projectId || group.owners.some(({claim}) =>
-        claim.projectId !== projectId || claim.target.kind !== group.kind || claim.target.id !== group.id))) {
-        throw new Error('Editing recovery target mismatch');
-      }
+      verifyGroups(projectId, result);
       return result;
+    },
+    async readStatus(projectId: string, local: RetainedEditingLocalEvidence): Promise<RetainedEditingStatusView> {
+      const host = agentTaskEditingRetainedResponseSchema.parse(await request(editingPath(projectId, 'retained')));
+      verifyGroups(projectId, host.groups);
+      return retainedEditingView(host, local);
     },
     async lookup(projectId: string, requestId: string): Promise<AgentTaskEditingResolveBatchReceipt | null> {
       const data = await request(`${editingPath(projectId, 'resolve-batch')}?requestId=${encodeURIComponent(requestId)}`);
