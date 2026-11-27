@@ -114,8 +114,11 @@ function boundReport(report: ExportPreflightReport,context: Record<string, unkno
   return report.projectId === context.projectId && report.timelineId === context.timelineId &&
     report.expectedRevision === context.revision && report.timelineRevision === context.revision;
 }
+function isPreparingReport(report: ExportPreflightReport): boolean {
+  return report.status === 'incomplete' && report.issues.some(issue => issue.code === 'PREFLIGHT_BUSY');
+}
 function canBind(report: ExportPreflightReport|null|undefined,context: Record<string, unknown>): boolean {
-  if(!report)return false;
+  if(!report||isPreparingReport(report))return false;
   return boundReport(report, context) && ['ready', 'incomplete'].includes(report.status) &&
     typeof report.snapshotHash === 'string' && /^[a-f0-9]{64}$/.test(report.snapshotHash) &&
     Number(report.summary?.clipCount ?? 0) > 0 && Number(report.summary?.durationFrames ?? 0) > 0 &&
@@ -124,7 +127,7 @@ function canBind(report: ExportPreflightReport|null|undefined,context: Record<st
 }
 
 function canOfferUnchecked(report: ExportPreflightReport|null|undefined,context: Record<string, unknown>): boolean {
-  return report?.status === 'incomplete' && Boolean(context.connected) && Boolean(context.timelineId) && hasRevision(context.revision) &&
+  return report?.status === 'incomplete' && !isPreparingReport(report) && Boolean(context.connected) && Boolean(context.timelineId) && hasRevision(context.revision) &&
     report.projectId === context.projectId && report.expectedRevision === context.revision &&
     (report.timelineId === null || report.timelineId === context.timelineId) &&
     (report.timelineRevision === null || report.timelineRevision === context.revision) &&
@@ -212,7 +215,7 @@ export function createExportPreflightController({ read, readCapabilities, getCon
         // This is a separate, explicitly unreviewed intent for the current saved
         // revision. It must never masquerade as a checked snapshot binding.
         const uncheckedIntent = canOfferUnchecked(report, state) ? Object.freeze({ projectId: state.projectId, expectedRevision: state.revision, ...deliveryNameRequestFields(captured), ...rangeFields(captured), ...(captured.exportSettings === undefined ? {} : { exportSettings: captured.exportSettings }) }) : null;
-        emit({ report, binding, uncheckedIntent, phase: report.status, checkingStep: null, error: '' });
+        emit({ report, binding, uncheckedIntent, phase: isPreparingReport(report) ? 'preparing' : report.status, checkingStep: null, error: '' });
         return report;
       } catch (error) {
         if (!current(captured)) return null;

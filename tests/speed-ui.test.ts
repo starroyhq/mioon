@@ -702,13 +702,13 @@ test('A5/A6/F4/F5: speed label formatting, freeze clip classification, playhead 
   assert.equal(views?.get('f1')?.isFreeze, true);
   assert.equal(views?.get('f1')?.freezeTitle, '定格');
 
-  // Copy-as-new-shot uses the dedicated copy-as-new-shot intent (not paste-clip) and only on main-track clips
+  // Copy-as-new-shot uses the dedicated copy-as-new-shot command (not paste-clip) and only on main-track clips
   const appSrc = read('apps/web/src/App.tsx');
   const copyStart = appSrc.indexOf('async function format5CopyClipAsNewShot(');
-  const copyEnd = appSrc.indexOf('async function format5SeparateClipSound(', copyStart);
+  const copyEnd = appSrc.indexOf('async function format5ToggleClipMute(', copyStart);
   assert.ok(copyStart > 0 && copyEnd > copyStart);
   const copyBody = appSrc.slice(copyStart, copyEnd);
-  assert.ok(copyBody.includes("kind: 'copy-as-new-shot'"), 'format5CopyClipAsNewShot must dispatch copy-as-new-shot');
+  assert.ok(copyBody.includes('format5CopyAsNewShotCommand('), 'format5CopyClipAsNewShot must dispatch format5CopyAsNewShotCommand');
   assert.equal(copyBody.includes('format5PasteClipCommand'), false, 'format5CopyClipAsNewShot must not fall back to paste-clip');
   assert.ok(copyBody.includes('{copying: true}'), 'format5CopyClipAsNewShot must surface copy-specific dialogue conflict messages');
   assert.ok(appSrc.includes('isMainTrackClip ? {onCopyAsNewShot:'), 'copy-as-new-shot menu entry is restricted to main-track clips');

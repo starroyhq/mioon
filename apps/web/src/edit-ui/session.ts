@@ -173,6 +173,11 @@ export function format5InsertAssetCommand(assetId: string, trackId: string | nul
 export function format5PasteClipCommand(clipId: string, startFrame: number): SequenceSyncCommand {
   return {kind: 'paste-clip', clipId, startFrame};
 }
+/** Copy one main-track clip into a new board shot and main-track clip right after
+ * its split group, using caller-allocated identities for deterministic replay. */
+export function format5CopyAsNewShotCommand(clipId: string, newClipId = uuid(), copyNodeId = uuid()): SequenceSyncCommand {
+  return {kind: 'clip-copy-as-new-shot', clipId, newClipId, copyNodeId};
+}
 /** The keyboard paste handler is registered once; take the playhead from the
  * live view rather than its render closure. A live playback frame wins when the
  * clock is running, otherwise the current editing playhead does. */
