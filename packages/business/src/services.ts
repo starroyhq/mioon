@@ -33,7 +33,8 @@ import {createTimelineLoudnessApplyServices} from './timeline-loudness-apply.ts'
 import {readFormat5AudioProjection} from './format5-timeline-render.ts';
 import {createTimelineAudioPreviewServices} from './timeline-audio-preview.ts';
 import {createTimelineAudioPreviewDecoder} from './timeline-audio-preview-decoder.ts';
-import {createTimelineAudioContinuousServices} from './timeline-audio-continuous.ts';
+import {createProjectAudioSnapshotStamp, createTimelineAudioContinuousServices} from './timeline-audio-continuous.ts';
+import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
 import {createTimelineAudioContinuousDecoder} from './timeline-audio-continuous-decoder.ts';
 import {createTimelineAudioPreviewCoordinator} from './timeline-audio-preview-coordinator.ts';
 import {validateTimeline} from './timeline-inputs.ts';
@@ -70,6 +71,7 @@ import {readTimelineFormatOwner} from './timeline-format.ts';
 import {createTimelineExportAdmissionServices} from './timeline-export-admission.ts';
 import {createFormat5SequenceEditService} from './format5-sequence-edit-service.ts';
 import {previewMioSequenceAction,commitMioSequenceAction} from './format5-mio-sequence.ts';
+import {sequenceEditFailureMessage} from './format5-sequence-preview-errors.ts';
 import {mioSequenceEditSchemas} from '../../contracts/src/mio-sequence.ts';
 import type {MioSequenceAction} from '../../contracts/src/mio-sequence.ts';
 import type {MioSequencePlan} from './format5-mio-sequence.ts';
@@ -756,6 +758,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  const continuousAudio=createTimelineAudioContinuousServices(store,{signal:ownerSignal,runtime:{
   assertOrdinaryWorkspace:assertOrdinaryObservation,ownsLock:()=>ownsStoreLock(store),
   readSavedTimeline:readSavedAudioTimeline,validateSource:validateManagedSource,hash:verifiedManagedHash,
+  ...(isFormat5Project(store) ? {readSnapshotStamp:createProjectAudioSnapshotStamp(db,FORMAT5_PROJECT_SCHEMA_VERSION)} : {}),
   decoder:createTimelineAudioContinuousDecoder({run,runStreamingWithBackpressure,withProbePermit,checkMediaEffect}),boundedShutdown,
  }});
  const audioPreview=createTimelineAudioPreviewCoordinator(audioPreviewV1 as unknown as Parameters<typeof createTimelineAudioPreviewCoordinator>[0],continuousAudio as unknown as Parameters<typeof createTimelineAudioPreviewCoordinator>[1],AppError);
@@ -857,7 +860,9 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
     const envelope=input.envelope as {projectId?:unknown};
     if(!envelope||envelope.projectId!==store.projectId)throw new AppError('PROJECT_ID_MISMATCH','项目地址与序列动作不一致。',409);
     const plan={envelope:input.envelope,planDigest:stringValue(input.expectedPlanDigest),summary:{action:'commit',affected:[],counts:{nodes:0,edges:0,clips:0,other:0},warnings:0}} as MioSequencePlan;
-    return commitMioSequenceAction(store as ProjectStore,plan,{generationSubmit:(generationInput:unknown)=>createGenerationJobInside(generationInput as GenerationSubmitInput)});
+    const receipt=commitMioSequenceAction(store,plan,{generationSubmit:(generationInput:unknown)=>createGenerationJobInside(generationInput as GenerationSubmitInput)});
+    const message=receipt.status==='not_applied'&&receipt.code?sequenceEditFailureMessage(receipt.code,receipt.failure?.reason):undefined;
+    return message?{...receipt,message}:receipt;
   },
   'sequence.commit':(input: ServiceRow)=>sequenceEdit.commit(input as never),
   'sequence.board.get':(input: ServiceRow)=>sequenceEdit.board(input as never),

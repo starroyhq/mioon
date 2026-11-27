@@ -96,6 +96,7 @@ export interface ProjectRuntimeOptions extends Pick<ServerOptions,
   readonly port: number;
   readonly serverPort: () => number | undefined;
   readonly listeningPort: () => number;
+  readonly editingWindows?: Pick<Parameters<typeof createAgentTaskHttp>[0], 'editingLiveness' | 'editingOwnerAdmission'>;
   readonly application?: ProjectApplication;
   readonly serviceApplication?: ServiceApplicationPorts;
   /** Host-owned app data/cache/temp roots; never model or request input. */
@@ -109,7 +110,7 @@ export interface ProjectRuntimeOptions extends Pick<ServerOptions,
 /** Shared assembly on a real kernel store and explicit application ports.
  * It neither opens a store nor binds a listener; drafts remain an unbound
  * factory until the host supplies its own context. */
-export async function composeProjectRuntime({store, shutdown, deletionGate, port, serverPort, listeningPort,
+export async function composeProjectRuntime({store, shutdown, deletionGate, port, serverPort, listeningPort, editingWindows,
   agentSettings: suppliedAgentSettings, agentSecretCodecFactory, imageSecretCodec, videoSecretCodec, imageNetwork, comfyNetwork,
   comfyModule = 'load', taskGatewayV2, taskFault, localDraftChannel = 'web', nativeAudioPreview, application, serviceApplication, privateMediaDirectories, settings, deferBackgroundRecovery = false,
 }: ProjectRuntimeOptions) {
@@ -227,7 +228,7 @@ export async function composeProjectRuntime({store, shutdown, deletionGate, port
       const previous=raw===null?null:agentDiagnosticSummarySchema.parse(JSON.parse(raw));
       if(previous===null||previous.completedAt<=summary.completedAt)application.documents.write('agent-diagnostic-summary-v1.json',JSON.stringify(summary));
     })}:{}),agentSettings:chatSettings,authorizations:agentAuthorizations!,tools:taskToolsV2,...(projectRules?{rules:projectRules}:{}),selfPort:()=>listeningPort(),assertMutationAllowed:()=>ordinary.assertMutationAllowed(),checksPreflight:(input,{signal}={})=>ordinary.call('timeline.export.preflight',input,{signal:signal?AbortSignal.any([shutdown.signal,signal]):shutdown.signal}),...(taskGatewayV2?{gateway:taskGatewayV2}:{})});
-    taskHttpV2=createAgentTaskHttp({runtime:taskRuntimeV2,tools:taskToolsV2,assertMutationAllowed:()=>ordinary.assertMutationAllowed()});
+    taskHttpV2=createAgentTaskHttp({runtime:taskRuntimeV2,tools:taskToolsV2,assertMutationAllowed:()=>ordinary.assertMutationAllowed(),...editingWindows});
     agentDiagnosticsHttp=createAgentDiagnosticsHttp({settings:chatSettings,authorizations:agentAuthorizations!,tools:taskToolsV2,policy:()=>taskRuntimeV2!.policy(),selfPort:()=>listeningPort(),hasProject:id=>!!store.get('projects',id),storage:projectId=>projectId===store.projectId?readMioStorage(store.db):undefined});
     }
 

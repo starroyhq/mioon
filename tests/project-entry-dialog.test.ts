@@ -1,7 +1,7 @@
 interface DialogNode{type:unknown;props:DialogProps}
 interface DialogProps extends Record<string,unknown>{children:unknown;className:string;style:{display:string};onOpenChange(open:boolean,details?:{cancel():void}):void}
 type DialogComponent=(props:unknown)=>DialogNode;
-interface EntryModule{default:DialogComponent;Dialog:unknown;DialogContent:DialogComponent;ProjectHome:unknown;React:typeof import('react')&{__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE:{H:unknown}}}
+interface EntryModule{default:DialogComponent;Dialog:unknown;DialogContent:DialogComponent;ProjectHome:unknown;NativeProjectEntryDialogs:unknown;React:typeof import('react')&{__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE:{H:unknown}}}
 interface ConfirmationTree{props:{value(message:string):Promise<boolean>;children:[unknown,DialogNode]}}
 import type {HookSlot} from './helpers/strict-timeline-audio-harness-types.ts';
 import test from 'node:test';
@@ -18,13 +18,18 @@ const require = createRequire(import.meta.url);
 const entrySource = readFileSync(process.env.MIOON_PROJECT_ENTRY_SOURCE || join(renderer, 'ProjectEntry.tsx'), 'utf8');
 const css = readFileSync(join(renderer, 'styles.css'), 'utf8');
 const homeCss = readFileSync(join(renderer, 'project-home-redesign.css'), 'utf8');
-const output = buildSync({ stdin: { contents: entrySource.replace("import { useI18n } from './i18n/I18nProvider.tsx';", "import { createI18nTestContext } from '../../../tests/helpers/i18n.ts'; const useI18n = () => createI18nTestContext();") + '\nexport { React, Dialog, DialogContent, ProjectHome };', loader: 'tsx', resolveDir: renderer },
+const output = buildSync({ stdin: { contents: entrySource.replace("import { useI18n } from './i18n/I18nProvider.tsx';", "import { createI18nTestContext } from '../../../tests/helpers/i18n.ts'; const useI18n = () => createI18nTestContext();") + '\nexport { React, Dialog, DialogContent, ProjectHome, NativeProjectEntryDialogs };', loader: 'tsx', resolveDir: renderer },
   bundle: true, platform: 'node', format: 'cjs', write: false, jsx: 'transform', loader: { '.css': 'empty' },
   define: { 'process.env.NODE_ENV': '"production"' } });
 const module = { exports: {} as EntryModule };
 Function('require', 'module', 'exports', output.outputFiles[0].text)(require, module, module.exports);
-const { default: ProjectEntry, React, Dialog, DialogContent, ProjectHome } = module.exports;
+const { default: ProjectEntry, React, Dialog, DialogContent, ProjectHome, NativeProjectEntryDialogs } = module.exports;
 const elements = (value: unknown): DialogNode[] => Array.isArray(value) ? value.flatMap(elements) : value && typeof value === 'object' ? [value as DialogNode, ...elements((value as DialogNode).props?.children)] : [];
+function pickerRoot(tree: DialogNode): DialogNode {
+  const dialog = elements(tree).find(node => node.type === Dialog);
+  assert.ok(dialog);
+  return dialog;
+}
 function zIndex(selector: string) {
   const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter(match => match[1].trim() === selector);
   assert.equal(rules.length, 1, `One existing application stacking rule: ${selector}`);
@@ -56,7 +61,7 @@ function dialogParts(tree: DialogNode) {
 }
 
 test('real ProjectEntry shared Dialog output opts into the existing modal stack above its global backdrop', () => {
-  const f = fixture(), { popup, overlay } = dialogParts(f.render());
+  const f = fixture(), { popup, overlay } = dialogParts(pickerRoot(f.render()));
   assert.equal(popup.props['data-slot'], 'dialog-content'); assert.equal(overlay.props['data-slot'], 'dialog-overlay');
   assert.ok(popup.props.className.split(/\s+/).includes('project-entry-dialog'));
   assert.ok(popup.props.className.split(/\s+/).includes('modal'), 'The real popup must use the existing modal stacking rule, not only shadcn z-50');
@@ -69,8 +74,8 @@ test('real ProjectEntry shared Dialog output opts into the existing modal stack 
 });
 
 test('real hidden picker remains a controlled inert keepMounted dialog with the same form callbacks', () => {
-  const f = fixture(), openTree = f.render(), open = dialogParts(openTree);
-  f.state.shown = false; const closedTree = f.render(), closed = dialogParts(closedTree);
+  const f = fixture(), openTree = pickerRoot(f.render()), open = dialogParts(openTree);
+  f.state.shown = false; const closedTree = pickerRoot(f.render()), closed = dialogParts(closedTree);
   assert.equal(openTree.props.open, true); assert.equal(closedTree.props.open, false);
   assert.equal(openTree.type, closedTree.type); assert.equal(open.content.type, closed.content.type);
   assert.equal(closed.portal.props.keepMounted, true); assert.equal(closed.content.props.showCloseButton, false);
@@ -79,8 +84,15 @@ test('real hidden picker remains a controlled inert keepMounted dialog with the 
   assert.equal(form.props.onCreate, f.controller.create); assert.equal(form.props.onCreateStateChange, f.controller.reportCreate);
   assert.equal(form.props.presentation, 'embedded');
   assert.equal(form.props.canMutateEntry, f.controller.canMutate); assert.deepEqual((f.calls as unknown), []);
-  assert.notEqual(f.render(false).type, Dialog, 'The launcher remains a page, not a new modal');
+  assert.ok(!elements(f.render(false)).some(node => node.type === Dialog), 'The launcher remains a page, not a new modal');
   assert.equal(elements(f.render(false)).find((element: { type: unknown; }) => element.type === ProjectHome)!.props.presentation, 'page');
+});
+test('native open issues render independently when the editor picker stays inert', () => {
+  const f = fixture({shown: false}), tree = f.render();
+  const selection = pickerRoot(tree);
+  assert.ok(elements(tree).some(node => node.type === NativeProjectEntryDialogs));
+  assert.ok(!elements(selection).some(node => node.type === NativeProjectEntryDialogs));
+  assert.equal(selection.props.open, false);
 });
 
 test('the retained embedded catalog has one full-width scrolling column and bounded error text', () => {
@@ -122,7 +134,7 @@ test('launcher and existing editor picker expose cancel only for the current pen
 });
 
 test('real picker Escape or outside-dismiss callback cancels primitive dismissal before asking its retained owner', () => {
-  const f = fixture(), tree = f.render();
+  const f = fixture(), tree = pickerRoot(f.render());
   tree.props.onOpenChange(false, { cancel() { f.calls.push('cancel'); } });
   assert.deepEqual(f.calls, ['cancel', 'dismiss']); assert.equal(f.state.shown, true);
   tree.props.onOpenChange(true, { cancel() { assert.fail('An open notification is not a dismissal'); } });

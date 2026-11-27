@@ -10,7 +10,8 @@ import {setImmediate} from 'node:timers/promises';
 import {createRequire} from 'node:module';
 import {lstatSync} from 'node:fs';
 import {initializeNodePrivateStorage} from '../packages/node-host/src/private-storage-bootstrap.ts';
-import {createPrivateTemporaryDirectory,getWindowsManagedFileIO,privateStorageIdentity} from '../packages/contracts/src/private-storage.ts';
+import {createPrivateTemporaryDirectory,getWindowsManagedFileIO,privateStorageIdentity,validateManagedFile,
+ readPrivateFile,writePrivateFileAtomic,removePrivateFile,PRIVATE_STORAGE_BUFFER_BYTES,PRIVATE_STORAGE_STREAM_BYTES} from '../packages/contracts/src/private-storage.ts';
 const enabled=process.platform==='win32';
 const MiB=1024*1024;
 type ManagedIO = NonNullable<ReturnType<typeof getWindowsManagedFileIO>>;
@@ -19,6 +20,15 @@ function write(io: ManagedIO,root: string,file: string,bytes: Buffer){const out=
 test('native Windows opaque streaming leases read/write beyond 64MiB with exact bounded chunks and full identities',{skip:!enabled,timeout:180000},()=>fixture(async(root,io)=>{
  const file=path.join(root,'large.bin'),chunk=Buffer.alloc(MiB,0xa7),hash=createHash('sha256');const writer=io.openFile(file,{root,private:true,maxBytes:65*MiB,mode:'create'});let expected;
  try{assert.throws(()=>writer.write(Buffer.alloc(MiB+1)),e=>(e as RootFailure).reason==='INVALID_LIMIT');for(let i=0;i<65;i++){writer.write(chunk);hash.update(chunk);}assert.throws(()=>writer.write(Buffer.from('x')),e=>(e as RootFailure).reason==='SIZE_LIMIT');writer.flush();expected=writer.metadata();assert.equal(expected.size,65*MiB);assert.match(privateStorageIdentity(expected),/^windows:[a-f0-9]{16}:[a-f0-9]{32}$/);}finally{writer.close();}
+ const validated=validateManagedFile(file,{root,private:true,maxBytes:65*MiB});
+ assert.equal(validated?.size,65*MiB);
+ assert.equal(privateStorageIdentity(validated!),privateStorageIdentity(expected));
+ assert.throws(()=>validateManagedFile(file,{root,private:true,maxBytes:65*MiB-1}),{reason:'SIZE_LIMIT'});
+ assert.throws(()=>validateManagedFile(file,{root,private:true,maxBytes:PRIVATE_STORAGE_STREAM_BYTES+1}),{reason:'INVALID_LIMIT'});
+ assert.throws(()=>readPrivateFile(file,{root,maxBytes:65*MiB}),{reason:'INVALID_LIMIT'});
+ assert.throws(()=>readPrivateFile(file,{root,maxBytes:PRIVATE_STORAGE_BUFFER_BYTES}),{reason:'SIZE_LIMIT'});
+ assert.throws(()=>writePrivateFileAtomic(file,'replacement',{root,maxBytes:65*MiB}),{reason:'INVALID_LIMIT'});
+ assert.throws(()=>removePrivateFile(file,{root,maxBytes:65*MiB}),{reason:'INVALID_LIMIT'});
  assert.throws(()=>writer.metadata(),e=>(e as RootFailure).reason==='IO_ERROR');writer.close();
  const reader=io.openFile(file,{root,private:true,maxBytes:65*MiB,mode:'read',expected});const actual=createHash('sha256');let total=0;
  try{assert.throws(()=>reader.read(MiB+1),e=>(e as RootFailure).reason==='INVALID_LIMIT');assert.throws(()=>reader.write(Buffer.from('x')),e=>(e as RootFailure).reason==='IO_ERROR');for(;;){const bytes=reader.read(MiB);if(!bytes.length)break;actual.update(bytes);total+=bytes.length;}assert.equal(total,65*MiB);assert.equal(actual.digest('hex'),hash.digest('hex'));assert.equal(privateStorageIdentity(reader.metadata()),privateStorageIdentity(expected));}finally{reader.close();}
