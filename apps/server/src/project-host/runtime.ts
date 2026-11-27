@@ -24,6 +24,7 @@ import {createFileResponses} from '../file-response.ts';
 import {createVersionComparisonMediaHttp} from '../version-comparison-media.ts';
 import {createProjectDeletionGate} from '../project-deletion-gate.ts';
 import {composeProjectRuntime, ProjectRuntimeCleanupError} from '../project-runtime.ts';
+import type {ProjectRuntimeOptions} from '../project-runtime.ts';
 import {bindAgentTaskRowValidation} from '@mioon/business/agent/task-project-row-validation-v2';
 import {callObservedRpc} from '../rpc-observation.ts';
 import {readOutputLocale} from '../output-locale-http.ts';
@@ -52,7 +53,7 @@ export interface HostedProject extends ProjectHostRuntime {
 
 /** Production assembly over the exact kernel connection owned by the manager. */
 export async function composeHostedProject(context: ProjectHostContext, library: AppLibrary, app: ApplicationRuntime, options: ServerOptions,
-  selfPort: () => number | undefined, listeningPort: () => number): Promise<HostedProject> {
+  selfPort: () => number | undefined, listeningPort: () => number, editingWindows?: ProjectRuntimeOptions['editingWindows']): Promise<HostedProject> {
   const {store, projectId} = context, root = store.projectDir;
   ensureProjectRow(store, {name: library.registry.get(projectId)!.name});
   const releaseRowValidation = bindAgentTaskRowValidation(store, library);
@@ -72,7 +73,7 @@ export async function composeHostedProject(context: ProjectHostContext, library:
   // leave its in-memory acceptance marker ahead of the rolled-back SQL.
   const removeVersionCapture = installProjectVersionCapture(store, {assertMutationAllowed: assertVersionWrite});
   try {
-    project = await composeProjectRuntime({...options, store, shutdown, deletionGate, port: options.port ?? 4318, serverPort: selfPort, listeningPort,
+    project = await composeProjectRuntime({...options, store, shutdown, deletionGate, port: options.port ?? 4318, serverPort: selfPort, listeningPort, editingWindows,
       application: library, serviceApplication: createProjectServiceApplication(library, shutdown.signal),
       privateMediaDirectories: [context.directories.dataDir, context.directories.cacheDir, context.directories.tempDir],
       agentSettings: app.agentSettings, settings: app.settings, deferBackgroundRecovery: true});

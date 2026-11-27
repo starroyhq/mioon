@@ -23,6 +23,7 @@ import {randomUUID} from 'node:crypto';
 
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
+import type {AgentTaskEditingClaimOwner, AgentTaskEditingLiveness} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {beginFixtureModelStep,beginFixtureToolStep} from './helpers/mio-model-fixture.ts';
 function fixture(safetyStepLimit?:number){const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-task-v2-')),store=openStore(root),projectId=store.projectId;store.put('projects',{id:projectId,name:'Task fixture',revision:1,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});return {root,store,projectId,journal:createAgentTaskJournal(store,{safetyStepLimit}),close(){store.close();rmSync(root,{recursive:true,force:true});}};}
 function start(f:ReturnType<typeof fixture>){return f.journal.create({requestId:randomUUID(),projectId:f.projectId,text:'测试',configuration:{protocol:'responses'}});}
@@ -151,6 +152,169 @@ test('explicit same-owner restore retains claim identity, checks original target
  assert.throws(()=>f.journal.edit({...input,requestId:randomUUID(),generation:3,action:'restore',targets:[{...target,revision:f.journal.targetRevision(f.projectId,'shot',id)}]}),{code:'AGENT_TASK_TARGET_CHANGED'});assert.equal(f.journal.claims(f.projectId,ownerId)[0]?.state,'uncertain');
  f.journal.edit({...input,requestId:randomUUID(),generation:3,action:'resolve'});assert.equal(f.journal.claims(f.projectId,ownerId).length,0);
 }finally{f.close();}});
+
+function selectedClaim(owner: AgentTaskEditingClaimOwner) {
+  const {claim, generation, sequence, claimSnapshot} = owner;
+  assert.ok(generation !== null && sequence !== null);
+  return {claimId: claim.id, ownerId: claim.ownerId, generation, sequence, claimSnapshot};
+}
+
+test('retained editing read groups target kind and ID, with one authoritative status per owner', () => {
+  const f = fixture();
+  try {
+    const id = randomUUID(), retired = randomUUID(), live = randomUUID(), legacy = randomUUID();
+    const shot = {kind: 'shot', id, revision: 0}, asset = {...shot, kind: 'asset'};
+    const {journal, projectId} = f;
+    const edit = (ownerId: string, targets: typeof shot[]) => journal.edit({requestId: randomUUID(), projectId, ownerId, generation: 2, sequence: 1, action: 'claim', targets});
+    edit(retired, [shot, asset]);
+    edit(live, [shot]);
+    journal.claim({projectId, ownerId: legacy, targets: [shot]});
+    const seen: string[] = [];
+    const groups = journal.editingClaimGroups(projectId, (project, owner) => {
+      assert.equal(project, projectId);
+      seen.push(owner);
+      return owner === live ? 'in_use' : 'retained';
+    });
+    assert.deepEqual(seen.sort(), [retired, live].sort());
+    assert.deepEqual(groups.map(group => [group.projectId, group.kind, group.id]), [[projectId, 'asset', id], [projectId, 'shot', id]]);
+    assert.equal(groups[0]!.owners[0]!.liveness, 'retained');
+    const owners = new Map(groups[1]!.owners.map(owner => [owner.claim.ownerId, owner]));
+    assert.equal(owners.size, 3);
+    assert.equal(owners.get(retired)!.liveness, 'retained');
+    assert.equal(owners.get(live)!.liveness, 'in_use');
+    assert.equal(owners.get(live)!.generation, 2);
+    assert.equal(owners.get(live)!.sequence, 1);
+    assert.equal(owners.get(legacy)!.liveness, 'uncertain');
+    assert.equal(owners.get(legacy)!.generation, null);
+    assert.equal(owners.get(legacy)!.sequence, null);
+    assert.throws(() => journal.editingClaimGroups(randomUUID(), () => 'retained'), {code: 'AGENT_TASK_NOT_FOUND'});
+  } finally { f.close(); }
+});
+
+test('retained batch refuses stale rows or unconfirmed owners without modifying any selected claim', () => {
+  const f = fixture();
+  try {
+    const {journal, projectId} = f, first = randomUUID(), second = randomUUID();
+    const target = {kind: 'shot', id: randomUUID(), revision: 0};
+    const edit = (ownerId: string, sequence: number, action: 'claim' | 'heartbeat') => journal.edit({requestId: randomUUID(), projectId, ownerId, generation: 1, sequence, action, targets: [target]});
+    edit(first, 1, 'claim');
+    edit(second, 1, 'claim');
+    let secondStatus: AgentTaskEditingLiveness = 'retained';
+    const liveness = (_projectId: string, ownerId: string): AgentTaskEditingLiveness => ownerId === first ? 'retained' : secondStatus;
+    const read = () => journal.editingClaimGroups(projectId, liveness)[0]!.owners.map(selectedClaim);
+    const requestId = randomUUID();
+    const checkConflict = (claims = read()) => {
+      const before = journal.claims(projectId);
+      assert.throws(() => journal.resolveEditingBatch({projectId, requestId, claims}, liveness), {code: 'AGENT_TASK_EDIT_BATCH_CONFLICT'});
+      assert.deepEqual(journal.claims(projectId), before);
+      assert.equal(journal.lookupEditingBatch(projectId, requestId), null);
+    };
+    const initial = read();
+    secondStatus = 'in_use';
+    checkConflict(initial);
+    secondStatus = 'uncertain';
+    checkConflict(initial);
+    secondStatus = 'retained';
+    edit(second, 2, 'heartbeat');
+    checkConflict(initial);
+    const beforeRecovery = read();
+    journal.markClaimsUncertain(projectId, second);
+    checkConflict(beforeRecovery);
+    const swapped = read().map(claim => ({...claim, ownerId: claim.ownerId === first ? second : first}));
+    checkConflict(swapped);
+    const fresh = read();
+    assert.throws(() => journal.resolveEditingBatch({projectId, requestId, claims: [fresh[0]!, fresh[0]!]}, liveness), {code: 'AGENT_TASK_INVALID'});
+    assert.throws(() => journal.resolveEditingBatch({projectId: randomUUID(), requestId, claims: fresh}, liveness), {code: 'AGENT_TASK_NOT_FOUND'});
+    const before = journal.editingClaimGroups(projectId, liveness);
+    f.store.db.exec("CREATE TEMP TRIGGER test_fail_batch_receipt BEFORE INSERT ON mio_edit_receipts BEGIN SELECT RAISE(ABORT,'synthetic editing receipt failure'); END");
+    try {
+      assert.throws(() => journal.resolveEditingBatch({projectId, requestId, claims: fresh}, liveness), /synthetic editing receipt failure/u);
+      assert.deepEqual(journal.editingClaimGroups(projectId, liveness), before);
+      assert.equal(journal.lookupEditingBatch(projectId, requestId), null);
+    } finally { f.store.db.exec('DROP TRIGGER test_fail_batch_receipt'); }
+  } finally { f.close(); }
+});
+
+test('a reloaded live native owner can claim with a newer generation after a clean release', () => {
+  const f = fixture();
+  try {
+    const {journal, projectId} = f, ownerId = randomUUID();
+    const target = {kind: 'shot', id: randomUUID(), revision: 0};
+    const edit = (generation: number, sequence: number, action: 'claim' | 'release', admitted = false) =>
+      journal.edit({projectId, ownerId, requestId: randomUUID(), generation, sequence, action, targets: [target]}, admitted ? () => 'native-live' : undefined);
+    assert.equal(journal.editingOwnerVersion(projectId, ownerId), null);
+    const first = edit(1, 1, 'claim').claims[0]!;
+    assert.throws(() => edit(2, 1, 'claim', true), {code: 'AGENT_TASK_EDIT_OWNER_UNCERTAIN'});
+    assert.deepEqual(edit(1, 2, 'release').claims, []);
+    assert.deepEqual(journal.editingOwnerVersion(projectId, ownerId), {generation: 1, sequence: 2});
+    assert.throws(() => edit(2, 1, 'claim'), {code: 'AGENT_TASK_EDIT_OWNER_UNCERTAIN'});
+    const next = edit(2, 1, 'claim', true).claims[0]!;
+    assert.notEqual(next.id, first.id);
+    assert.throws(() => edit(1, 3, 'release', true), {code: 'AGENT_TASK_EDIT_OWNER_STALE'});
+    assert.deepEqual(journal.claims(projectId), [next]);
+  } finally { f.close(); }
+});
+
+test('a closed native owner accepts only the existing generation’s final release', () => {
+  const f = fixture();
+  try {
+    const {journal, projectId} = f, ownerId = randomUUID();
+    const target = {kind: 'shot', id: randomUUID(), revision: 0};
+    const claim = {projectId, ownerId, requestId: randomUUID(), generation: 3, sequence: 1, action: 'claim' as const, targets: [target]};
+    const release = {...claim, requestId: randomUUID(), sequence: 2, action: 'release' as const};
+    const closed = () => 'native-closed' as const;
+    assert.throws(() => journal.edit(release, closed), {code: 'AGENT_TASK_EDIT_OWNER_UNCERTAIN'});
+    journal.edit(claim);
+    assert.throws(() => journal.edit({...release, action: 'resolve'}, closed), {code: 'AGENT_TASK_EDIT_OWNER_UNCERTAIN'});
+    assert.throws(() => journal.edit({...release, generation: 4}, closed), {code: 'AGENT_TASK_EDIT_OWNER_UNCERTAIN'});
+    assert.throws(() => journal.edit({...release, sequence: 1}, closed), {code: 'AGENT_TASK_EDIT_OWNER_STALE'});
+    assert.deepEqual(journal.edit(release, closed).claims, []);
+    journal.assertTargets(projectId, [target]);
+  } finally { f.close(); }
+});
+
+test('successful batch clears only selected claims, permanently fences retired owners and replays after reopen', () => {
+  const f = fixture();
+  try {
+    const {journal, projectId} = f, ownerId = randomUUID(), otherOwner = randomUUID();
+    const target = {kind: 'shot', id: randomUUID(), revision: 0}, other = {...target, id: randomUUID()};
+    const request = {projectId, ownerId, requestId: randomUUID(), generation: 1, sequence: 1, action: 'claim' as const, targets: [target, other]};
+    const oldReceipt = journal.edit(request);
+    journal.edit({...request, ownerId: otherOwner, requestId: randomUUID(), targets: [target]});
+    const retained = (): AgentTaskEditingLiveness => 'retained';
+    const readTarget = (id: string) => journal.editingClaimGroups(projectId, retained).find(group => group.id === id)!.owners.map(selectedClaim);
+    const claims = readTarget(target.id), unselected = readTarget(other.id)[0]!;
+    assert.equal(journal.lookupEditingBatch(projectId, request.requestId), null);
+    assert.throws(() => journal.resolveEditingBatch({projectId, requestId: request.requestId, claims}, retained), {code: 'AGENT_TASK_REQUEST_CONFLICT'});
+    const input = {projectId, requestId: randomUUID(), claims};
+    const receipt = journal.resolveEditingBatch(input, retained);
+    assert.deepEqual(receipt, {projectId, requestId: input.requestId, releasedClaimIds: claims.map(item => item.claimId).sort()});
+    journal.assertTargets(projectId, [target]);
+    assert.throws(() => journal.assertTargets(projectId, [other]), {code: 'AGENT_TASK_TARGET_CLAIMED'});
+    assert.equal(journal.lookupEdit(input.requestId), null);
+    assert.deepEqual(journal.lookupEdit(request.requestId), oldReceipt);
+    assert.deepEqual(journal.edit(request, () => assert.fail('saved receipt should precede owner admission')), oldReceipt);
+    assert.throws(() => journal.edit({...request, requestId: input.requestId}), {code: 'AGENT_TASK_REQUEST_CONFLICT'});
+    for (const action of ['claim', 'release', 'restore'] as const) {
+      assert.throws(() => journal.edit({...request, action, requestId: randomUUID(), generation: 2, sequence: 2, targets: [other]}), {code: 'AGENT_TASK_EDIT_OWNER_STALE'});
+    }
+    assert.throws(() => journal.resolveEditingBatch({...input, claims: [unselected]}, retained), {code: 'AGENT_TASK_REQUEST_CONFLICT'});
+    assert.throws(() => journal.resolveEditingBatch({...input, requestId: randomUUID(), claims: [unselected]}, retained), {code: 'AGENT_TASK_EDIT_BATCH_CONFLICT'});
+    const stillSelected = readTarget(other.id)[0]!;
+    assert.equal(stillSelected.claimId, unselected.claimId);
+    journal.resolveEditingBatch({projectId, requestId: randomUUID(), claims: [stillSelected]}, retained);
+    journal.assertTargets(projectId, [other]);
+
+    f.store.close();
+    const reopened = openStore(f.root);
+    try {
+      const restored = createAgentTaskJournal(reopened);
+      assert.deepEqual(restored.lookupEditingBatch(projectId, input.requestId), receipt);
+      assert.deepEqual(restored.resolveEditingBatch({...input, claims: [...claims].reverse()}, () => 'uncertain'), receipt);
+      assert.throws(() => restored.lookupEditingBatch(randomUUID(), input.requestId), {code: 'AGENT_TASK_NOT_FOUND'});
+    } finally { reopened.close(); }
+  } finally { f.close(); }
+});
 
 
 
