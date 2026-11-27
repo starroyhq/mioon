@@ -1329,6 +1329,14 @@ function tailResult(plan: CompiledTimeMap, _state: RootState, options: {tailInve
   return done({position: {kind: 'numeric', value: latest ? visible.value.sourceWindow.endFrame : visible.value.sourceWindow.startFrame, errorBound: 0},
     frame, tail: true});
 }
+function curveInverseTarget(state: RootState, base: RootTimeValue, signed: Rat) {
+  const integralPerFrame = 1 / numberFromRat(state.framesPerIntegral);
+  const rawNumber = timeNumber(state, base) + ratNumber(signed);
+  const rawError = timeUncertainty(state, base) + 8 * EPSILON * (Math.abs(rawNumber) + 1);
+  if (rawNumber - rawError > state.lengthNumber || rawNumber + rawError < 0) return null;
+  const integral = state.integralOrigin + rawNumber * integralPerFrame;
+  return {integral, error: rawError * integralPerFrame + 8 * EPSILON * (Math.abs(integral) + 1)};
+}
 /** Resolves an output clock position (in output frames from the view start) to a
  * source position. Positions beyond the motion range are the explicit tail hold
  * chosen by `tailInverse`; positions inside are inverted with the refinement
@@ -1353,19 +1361,121 @@ export function timeMapTailInverse(plan: CompiledTimeMap, position: TimeMapOutpu
     return done({position: {kind: 'exact', numerator: String(clamped.n), denominator: String(clamped.d)}, frame: clampFrame(state, frame),
       tail: false});
   }
-  const integralPerFrame = 1 / numberFromRat(state.framesPerIntegral);
-  const rawNumber = timeNumber(state, base) + ratNumber(signed);
-  const rawError = timeUncertainty(state, base) + 8 * EPSILON * (Math.abs(rawNumber) + 1);
-  if (rawNumber - rawError > state.lengthNumber) return tailResult(plan, state, options);
-  if (rawNumber + rawError < 0) return tailResult(plan, state, options);
-  const targetIntegral = state.integralOrigin + rawNumber * integralPerFrame;
-  const targetError = rawError * integralPerFrame + 8 * EPSILON * (Math.abs(targetIntegral) + 1);
+  const target = curveInverseTarget(state, base, signed);
+  if (!target) return tailResult(plan, state, options);
+  const {integral: targetIntegral, error: targetError} = target;
   const inverted = invertCurve(state, targetIntegral, targetError, CURVE_REFINEMENT_TOLERANCES.length - 1);
   if (!inverted.ok) return inverted;
   const decided = decideFramePosition(state, inverted.value.value, inverted.value.errorBound, planInfo.direction,
     level => invertCurve(state, targetIntegral, targetError, level));
   if (!decided.ok) return decided;
   return done({position: {kind: 'numeric', value: inverted.value.value, errorBound: inverted.value.errorBound}, frame: decided.value, tail: false});
+}
+
+// Forward curve audio repeatedly inverts nearby positions at sample resolution.
+// Keep one bounded, lazy prefix per control-point segment of the immutable root.
+const audioIntegrationCells = 64;
+const audioCellTolerance = 1e-12;
+interface AudioIntegralTable {
+  readonly positions: Float64Array;
+  readonly integrals: Float64Array;
+  readonly errors: Float64Array;
+}
+const audioIntegralTables = new WeakMap<RootState, Map<number, AudioIntegralTable | null>>();
+
+function audioIntegralTable(state: RootState, segment: number): AudioIntegralTable | null {
+  let tables = audioIntegralTables.get(state);
+  if (!tables) {tables = new Map(); audioIntegralTables.set(state, tables);}
+  const cached = tables.get(segment);
+  if (cached !== undefined) return cached;
+  const table = buildAudioIntegralTable(state.curve!, segment);
+  tables.set(segment, table);
+  return table;
+}
+
+function buildAudioIntegralTable(curve: CurveState, segment: number): AudioIntegralTable | null {
+  const positions = new Float64Array(audioIntegrationCells + 1), integrals = new Float64Array(positions.length), errors = new Float64Array(positions.length);
+  const begin = curve.xs[segment]!, end = curve.xs[segment + 1]!;
+  positions[0] = begin;
+  integrals[0] = curve.prefix[segment]!;
+  errors[0] = curve.prefixError[segment]!;
+  let budget = LOCAL_CELL_BUDGET;
+  for (let i = 1; i <= audioIntegrationCells; i++) {
+    const cellEnd = i === audioIntegrationCells ? end : begin + ((end - begin) * i) / audioIntegrationCells;
+    positions[i] = cellEnd;
+    const estimate = integrateCurveCell(curve, segment, positions[i - 1]!, cellEnd, audioCellTolerance / audioIntegrationCells, budget);
+    if (!estimate || estimate.value <= 0) return null;
+    budget -= estimate.cells;
+    integrals[i] = integrals[i - 1]! + estimate.value;
+    errors[i] = errors[i - 1]! + estimate.errorBound + 8 * EPSILON * (Math.abs(integrals[i]!) + 1);
+  }
+  return {positions, integrals, errors};
+}
+
+function audioIntegralInverse(state: RootState, target: number, targetError: number): {readonly value: number; readonly errorBound: number} | null {
+  if (target <= state.integralOrigin + targetError || target >= state.integralOrigin + state.integralTotal - targetError) {
+    return null;
+  }
+  const curve = state.curve!;
+  let low = 0, high = curve.xs.length - 2;
+  while (low < high) {
+    const middle = (low + high + 1) >> 1;
+    if (curve.prefix[middle]! <= target) low = middle; else high = middle - 1;
+  }
+  const segment = low;
+  const table = audioIntegralTable(state, segment);
+  if (!table) return null;
+  low = 0;
+  high = audioIntegrationCells - 1;
+  while (low < high) {
+    const middle = (low + high + 1) >> 1;
+    if (table.integrals[middle]! <= target) low = middle; else high = middle - 1;
+  }
+  const cell = low, integral = table.integrals[cell]!, cellStart = table.positions[cell]!, cellEnd = table.positions[cell + 1]!;
+  let lowerSource = cellStart, upperSource = cellEnd;
+  const cellIntegral = table.integrals[cell + 1]! - integral;
+  if (!(cellIntegral > 0)) return null;
+  let u = clampNumber(cellStart + (target - integral) * (cellEnd - cellStart) / cellIntegral, lowerSource, upperSource);
+  for (let iteration = 0; iteration < 12; iteration++) {
+    const estimate = integrateCurveCell(curve, segment, cellStart, u, audioCellTolerance, LOCAL_CELL_BUDGET);
+    if (!estimate) break;
+    const atPosition = integral + estimate.value;
+    const residual = atPosition - target;
+    const error = table.errors[cell]! + estimate.errorBound + targetError + 8 * EPSILON * (Math.abs(atPosition) + 1);
+    if (Math.abs(residual) <= error) {
+      // The supported rate cap is 10. Bound conversion from integral to source
+      // distance with its reciprocal, leaving room for rate rounding.
+      const errorBound = (error + Math.abs(residual)) / (0.1 - 64 * EPSILON) + 8 * EPSILON * (Math.abs(u) + 1);
+      return {value: u, errorBound};
+    }
+    const slope = curveIntegrand(curve, u);
+    if (!(slope > 0) || !Number.isFinite(slope)) break;
+    if (residual > 0) upperSource = u; else lowerSource = u;
+    const newton = u - residual / slope;
+    const next = newton > lowerSource && newton < upperSource ? newton : lowerSource + (upperSource - lowerSource) / 2;
+    if (next === u) break;
+    u = next;
+  }
+  return null;
+}
+
+/** A source position for audio resampling. The prefix is eligible only within
+ * the caller's error limit in source frames. Other positions use the established inverse. */
+export function timeMapAudioInverse(plan: CompiledTimeMap, position: TimeMapOutputPosition, prefixErrorLimit: number):
+  TimeMapResult<{readonly position: ContinuousSourcePosition; readonly tail: boolean}> {
+  const exact = () => timeMapTailInverse(plan, position, {tailInverse: 'latest'});
+  const state = rootState(plan.root);
+  if (plan.direction === 'reverse' || !state.curve || !Number.isFinite(prefixErrorLimit) || prefixErrorLimit <= 0) return exact();
+  let offset: Rat;
+  try { offset = ratNorm(BigInt(position.numerator), BigInt(position.denominator)); }
+  catch { return exact(); }
+  if (offset.n < 0n) return exact();
+  const target = curveInverseTarget(state, boundaryTimeValue(planState(plan).loTime), offset);
+  if (!target) return exact();
+  const inverted = audioIntegralInverse(state, target.integral, target.error);
+  if (!inverted || inverted.errorBound > prefixErrorLimit || inverted.value < numberFromRat(state.sourceStart) ||
+      inverted.value > numberFromRat(state.sourceEnd)) return exact();
+  return done({position: {kind: 'numeric', ...inverted}, tail: false});
 }
 
 // ---------------------------------------------------------------------------
