@@ -587,7 +587,7 @@ test('actual App renders standalone home, routes settings to the retained center
 test('actual auth branches retain their existing protections', () => {
   const render = boundaryRenderer(), h = harness(); h.env.auth = false;
   assert.deepEqual(render(h).mounted, ['Login']); assert.doesNotMatch(render(h).html, /data-testid="project-home"|data-testid="workbench"/);
-  h.env.auth = 'error'; const failed = render(h); assert.match(failed.html, /暂时无法连接工作台/); assert.doesNotMatch(failed.html, /data-testid="workbench"/);
+  h.env.auth = 'error'; const failed = render(h); assert.match(failed.html, /暂时无法连接 Mioon/); assert.doesNotMatch(failed.html, /data-testid="workbench"/);
 
 });
 
@@ -621,7 +621,7 @@ test('identity-blocked dirty home settings retain the keyed settings shell witho
   // The separate retention requires an open settings shell. A closed shell
   // still takes the existing authentication failure branch without a project.
   h.env.webSettingsOpen = false; h.env.auth = 'error';
-  assert.match(render(h).html,/暂时无法连接工作台/u);
+  assert.match(render(h).html,/暂时无法连接 Mioon/u);
 });
 
 test('a pinned identity block preserves the loaded workbench and inputs behind inert with a separate alert in every early-return branch', async () => {
