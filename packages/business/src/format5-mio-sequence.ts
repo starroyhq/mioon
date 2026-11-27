@@ -13,11 +13,12 @@ import {MioSequencePreviewRejection} from './format5-sequence-preview-errors.ts'
 import {createSequenceEditing, readSequenceEditHistory} from './sequence-edit.ts';
 import {readSequenceEditHistoryEntry} from './format5-editor-history.ts';
 import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
-import {readSequenceSyncContext} from './format5-sequence-sync.ts';
+import {readSequenceSyncContext, sequenceSpeedImpact} from './format5-sequence-sync.ts';
 import {sequenceSyncIntent} from '../../contracts/src/sequence-sync.ts';
+import {MIO_SEQUENCE_ACTION_LIMITS} from '../../contracts/src/mio-sequence.ts';
 import type {MioSequenceAction} from '../../contracts/src/mio-sequence.ts';
 import type {BoardIntentOperation, SequenceEditDialogueEdit, SequenceEditDialogueIntent, SequenceEditEnvelope,
-  SequenceEditIntent, SequenceEditPrevisIntent, SequenceEditReceipt, SequenceEditReferenceIntent,
+  SequenceEditAllocation, SequenceEditIntent, SequenceEditPrevisIntent, SequenceEditReceipt, SequenceEditReferenceIntent,
   SequenceEditSubjectIntent, SequenceEditTrackIntent} from '../../contracts/src/sequence-edit.ts';
 import type {AgentTaskLocale} from '../../contracts/src/agent-tasks-v2.ts';
 import type {ProjectStore} from './project-file/store.ts';
@@ -180,6 +181,7 @@ export interface MioSequencePlan {
     readonly action: string; readonly affected: readonly string[];
     readonly counts: {readonly nodes: number; readonly edges: number; readonly clips: number; readonly other: number};
     readonly warnings: number;
+    readonly speed?: ReturnType<typeof sequenceSpeedImpact>;
   };
 }
 function summarize(action: MioSequenceAction, envelope: SequenceEditEnvelope, warnings: readonly unknown[]): MioSequencePlan['summary'] {
@@ -196,8 +198,9 @@ function summarize(action: MioSequenceAction, envelope: SequenceEditEnvelope, wa
  * separated-sound clip and a created audio track are named in the language the
  * user talks to Mio in. */
 export function previewMioSequenceAction(store: ProjectStore, projectId: string, requestId: string,
-  action: MioSequenceAction, {origin = 'mio', locale}: {
+  action: MioSequenceAction, {origin = 'mio', locale, speedStep}: {
     readonly origin?: 'user' | 'mio'; readonly locale?: AgentTaskLocale;
+    readonly speedStep?: {readonly actionId: string; readonly allocation?: SequenceEditAllocation};
   } = {}): MioSequencePlan {
   requireF5(store);
   projectCheck(store, projectId);
@@ -242,6 +245,13 @@ export function previewMioSequenceAction(store: ProjectStore, projectId: string,
   }
   else if (action.kind === 'separate-sound') request.soundIntent = {side: 'timeline',
     operation: {kind: 'separate-sound', clipId: action.clipId}};
+  else if (action.kind === 'clip-speed' || action.kind === 'freeze-frame') {
+    request.speedIntent = {side: 'timeline', operation: action};
+    if (speedStep) {
+      request.actionId = speedStep.actionId;
+      if (speedStep.allocation) request.allocation = speedStep.allocation;
+    }
+  }
   else if (action.kind === 'format-set') request.formatIntent = {side: 'timeline',
     operation: {kind: 'timeline-format', presetId: action.presetId}};
   else if (action.kind === 'track-add') request.trackIntent = {side: 'timeline',
@@ -275,11 +285,19 @@ export function previewMioSequenceAction(store: ProjectStore, projectId: string,
   if (action.kind === 'replace-source' && warnings.some(warning => warning.code === 'SOURCE_TOO_SHORT' && warning.clipId === action.clipId)) {
     throw new MioSequencePreviewRejection('SEQUENCE_EDIT_CLIP_PROPERTIES_INVALID', '新来源不够长，无法保留片段的入点和长度。', 409, {clipId: action.clipId});
   }
-  return {envelope: result.envelope, planDigest: result.planDigest, summary: summarize(action, result.envelope, warnings)};
+  const summary = summarize(action, result.envelope, warnings);
+  if (!result.envelope.speedIntent) return {envelope: result.envelope, planDigest: result.planDigest, summary};
+  const impact = sequenceSpeedImpact(store, result.envelope);
+  const limit = MIO_SEQUENCE_ACTION_LIMITS.maxTargets;
+  return {envelope: result.envelope, planDigest: result.planDigest, summary: {...summary, speed: {
+    durationFrames: impact.durationFrames, movedClipIds: impact.movedClipIds.slice(0, limit),
+    changedAnchorIds: impact.changedAnchorIds.slice(0, limit),
+  }}};
 }
 /** Commit exactly the previewed envelope; repeated commits replay the receipt. */
 export function commitMioSequenceAction(store: ProjectStore, plan: MioSequencePlan,
-  options: {readonly generationSubmit?: (input: any) => unknown} = {}): SequenceEditReceipt {
+  options: {readonly generationSubmit?: (input: any) => unknown;
+    readonly recordSpeedReceiptInside?: (receipt: SequenceEditReceipt) => void} = {}): SequenceEditReceipt {
   requireF5(store);
   const value = createFormat5SequenceEditService(store, options).commit({projectId: store.projectId,
     envelope: plan.envelope, expectedPlanDigest: plan.planDigest}) as SequenceEditReceipt;

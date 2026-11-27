@@ -12,7 +12,7 @@
 import {randomUUID} from 'node:crypto';
 import {AppError} from '../../contracts/src/app-error.ts';
 import type {SequenceEditAllocation, SequenceEditEnvelope, SequenceEditHistoryCursor, SequenceEditImpact,
-  SequenceEditIntent, SequenceEditReferenceIntent, SequenceEditSubjectIntent} from '../../contracts/src/sequence-edit.ts';
+  SequenceEditIntent, SequenceEditReceipt, SequenceEditReferenceIntent, SequenceEditSubjectIntent} from '../../contracts/src/sequence-edit.ts';
 import {isSequenceEditEnvelope} from '../../contracts/src/sequence-edit.ts';
 import {sequenceEditInputDigest} from './format5-editor-history.ts';
 import type {SequenceSyncCommand} from '../../contracts/src/sequence-sync.ts';
@@ -22,7 +22,7 @@ import type {ProjectStore} from './project-file/store.ts';
 import {
   applySequenceEdit, createSequenceEditing, planSequenceEditIntents, previewSequenceBoardAction, readSequenceEditContext,
 } from './sequence-edit.ts';
-import {previewSequenceSync, readSequenceSyncContext, runSequenceSync} from './format5-sequence-sync.ts';
+import {previewSequenceSpeed, previewSequenceSync, readSequenceSyncContext, runSequenceSync} from './format5-sequence-sync.ts';
 import {sequenceEditPreviewFailure, type SequenceEditPreviewFailure} from './format5-sequence-preview-errors.ts';
 import {
   buildSubjectBindingEnvelope, planSubjectBindingAction,
@@ -44,7 +44,7 @@ import {previewSubtitleEdits, runSubtitleEditsSync} from './format5-subtitle-edi
 import {previewDialogueAction, runDialogueAction} from './format5-dialogue.ts';
 import {prepareSequenceEditHistory} from './format5-editor-history.ts';
 import {readProjectContentStamp} from './project-file/content-stamp.ts';
-import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
+import {isSequenceProjectFormat} from './project-file/schema/databases.ts';
 import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
 import {deriveFilmChains} from '../../contracts/src/board-sequence.ts';
 import {isBoardIntentOperation} from '../../contracts/src/sequence-edit.ts';
@@ -59,7 +59,7 @@ type SequenceEditPreview = SequenceEditPreviewFailure | {
 const uuid = (value: unknown): value is string => typeof value === 'string' &&
   /^[a-f0-9]{8}-[a-f0-9]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[a-f0-9]{12}$/iu.test(value);
 const format5 = (store: ProjectStore): boolean =>
-  Number(store.db.prepare('PRAGMA project.user_version').get()?.user_version) === FORMAT5_PROJECT_SCHEMA_VERSION;
+  isSequenceProjectFormat(Number(store.db.prepare('PRAGMA project.user_version').get()?.user_version));
 const requireFormat5 = (store: ProjectStore): void => {
   if (!format5(store)) throw new AppError('SEQUENCE_EDIT_CONTRACT_INVALID', '这个操作只适用于格式 5 项目。', 409, {reason: 'FORMAT_REQUIRED'});
 };
@@ -158,6 +158,7 @@ function subjectCardCommand(operation: import('../../contracts/src/sequence-edit
 export function createFormat5SequenceEditService(store: ProjectStore, options: {
   readonly clipboardOwner?: object;
   readonly generationSubmit?: (input: any) => unknown;
+  readonly recordSpeedReceiptInside?: (receipt: SequenceEditReceipt) => void;
 } = {}): {
   preview(input: any): SequenceEditPreview;
   commit(input: any): unknown;
@@ -266,6 +267,9 @@ export function createFormat5SequenceEditService(store: ProjectStore, options: {
     requireFormat5(store);
     // Timeline preview currently owns its own read transaction; subject and
     // board previews only read, so no outer transaction is needed here.
+    if (input.speedIntent) return previewSequenceSpeed(store, {requestId: input.requestId,
+      ...(input.actionId ? {actionId: input.actionId} : {}), ...(input.origin ? {origin: input.origin} : {}),
+      speedIntent: input.speedIntent, ...(input.allocation ? {allocation: allocationOf(input)} : {})});
     if (input.generateIntent) return previewGenerateInEditing(store, {requestId: input.requestId,
       ...(input.actionId ? {actionId: input.actionId} : {}), ...(input.origin ? {origin: input.origin} : {}),
       generateIntent: input.generateIntent as never});
@@ -318,6 +322,12 @@ export function createFormat5SequenceEditService(store: ProjectStore, options: {
     const actualDigest = sequenceEditInputDigest(envelope);
     if (input.expectedPlanDigest !== actualDigest) throw new AppError('SEQUENCE_EDIT_PATCH_INVALID', '确认的计划已变化，请重新预览。', 409);
     const intents = envelope.intents;
+    if (envelope.speedIntent) {
+      const result = runSequenceSync(store, envelope, {expectedPlanDigest: input.expectedPlanDigest,
+        ...(options.recordSpeedReceiptInside ? {recordSpeedReceiptInside: options.recordSpeedReceiptInside} : {})});
+      if (!result.ok) throw new AppError(result.code, '变速编辑未完成。', 409, {ids: result.ids});
+      return result.receipt;
+    }
     if (envelope.generateIntent) {
       const operation = envelope.generateIntent.operation;
       // Only the explicit submit flag submits: UI placements leave it unset and
