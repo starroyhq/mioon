@@ -93,7 +93,7 @@ function commandFromIntent(intent: SequenceEditIntent): SequenceSyncCommand | nu
   if (operation.kind === 'sync-board') return {kind: 'sync-board', ...(operation.newClipIds ? {newClipIds: operation.newClipIds} : {})};
   if (operation.kind === 'board-version') return {kind: 'board-version', nodeId: operation.nodeId, versionId: operation.version?.id ?? null};
   if (operation.kind !== 'track') return null;
-  const edit: any = operation.edit;
+  const edit = operation.edit;
   switch (edit.kind) {
     case 'add': return {kind: 'clip-add', clip: {id: edit.clip.id, nodeId: edit.clip.nodeId,
         segmentGroupId: edit.clip.splitGroupId ?? edit.clip.id, startFrame: edit.clip.startFrame,
@@ -106,6 +106,8 @@ function commandFromIntent(intent: SequenceEditIntent): SequenceSyncCommand | nu
     case 'insert-asset': return {kind: 'insert-asset', assetId: edit.assetId, trackId: edit.trackId,
       startFrame: edit.startFrame};
     case 'paste-clip': return {kind: 'paste-clip', clipId: edit.clipId, startFrame: edit.startFrame};
+    case 'copy-as-new-shot': return {kind: 'clip-copy-as-new-shot', clipId: edit.clipId,
+      newClipId: edit.newClipId, copyNodeId: edit.copyNodeId};
     case 'split-at-scenes': return {kind: 'clip-split-scenes', assetId: edit.assetId, resultId: edit.resultId};
     case 'split': return {kind: 'clip-split', clipId: edit.clipId, offsetFrames: edit.offsetFrames,
       rightClipId: edit.rightClipId, ...(edit.rightSourceInFrame === undefined ? {} : {rightSourceInFrame: edit.rightSourceInFrame})};
@@ -359,8 +361,9 @@ export function createFormat5SequenceEditService(store: ProjectStore, options: {
       return result.receipt;
     }
     if (envelope.dialogueIntent) {
-      const result = runDialogueAction(store, envelope) as any;
-      if (result.ok === false) throw new AppError(result.code, '格式 5 台词没有完成。', 409, {ids: result.ids});
+      const result = runDialogueAction(store, envelope);
+      if (result.ok === false) throw new AppError(result.code, result.message ?? '格式 5 台词没有完成。', 409,
+        {ids: result.ids, ...(result.dialogueConflict ? {dialogueConflict: result.dialogueConflict} : {})});
       return result.receipt;
     }
     if (envelope.trackIntent) {
@@ -379,8 +382,9 @@ export function createFormat5SequenceEditService(store: ProjectStore, options: {
       return result.receipt;
     }
     if (envelope.subjectIntent || envelope.referenceIntent || envelope.previsIntent || intents.some(timelineIntent)) {
-      const result = runSequenceSync(store, envelope, {expectedPlanDigest: input.expectedPlanDigest}) as any;
-      if (result.ok === false) throw new AppError(result.code, '格式 5 同步没有完成。', 409, {ids: result.ids});
+      const result = runSequenceSync(store, envelope, {expectedPlanDigest: input.expectedPlanDigest});
+      if (result.ok === false) throw new AppError(result.code, result.message ?? '格式 5 同步没有完成。', 409,
+        {ids: result.ids, ...(result.dialogueConflict ? {dialogueConflict: result.dialogueConflict} : {})});
       return result.receipt;
     }
     if (intents.some(boardIntent)) {

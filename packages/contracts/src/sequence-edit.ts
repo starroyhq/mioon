@@ -102,6 +102,7 @@ export const SEQUENCE_EDIT_OPERATIONS = Object.freeze([
   'board.paste', 'board.duplicate',
   'timeline.clip.move', 'timeline.clip.remove', 'timeline.clip.add', 'timeline.clip.split',
   'timeline.clip.trim', 'timeline.clip.version', 'timeline.clip.move-off-track', 'timeline.clip.paste',
+  'timeline.clip.copy-as-new-shot',
   'timeline.clip.splitAtScenes', 'timeline.clip.separateSound', 'timeline.format.set', 'timeline.track.add', 'timeline.track.update',
   'timeline.clip.setSpeed', 'timeline.clip.freeze',
   'timeline.generate.placeholder', 'timeline.generate.resize',
@@ -505,6 +506,7 @@ export function sequenceEditIntentOperationName(operation: ChainSyncOperation | 
         case 'add': return operation.edit.copyFromClipId ? 'timeline.clip.paste' : 'timeline.clip.add';
         case 'insert-asset': return 'timeline.clip.add';
         case 'paste-clip': return 'timeline.clip.paste';
+        case 'copy-as-new-shot': return 'timeline.clip.copy-as-new-shot';
         case 'add-overlay': return operation.edit.copyFromClipId ? 'timeline.clip.paste' : 'timeline.clip.add';
         case 'split': return 'timeline.clip.split';
         case 'trim': return 'timeline.clip.trim';
@@ -743,6 +745,9 @@ const allocationSchema = z.object({
   duplicate(value.edges.map(item => item.id), 'edge');
 });
 export {allocationSchema as sequenceEditAllocationSchema};
+export const copyAsNewShotTrackEditSchema = z.object({
+  kind: z.literal('copy-as-new-shot'), clipId: uuidSchema, newClipId: uuidSchema, copyNodeId: uuidSchema,
+}).strict();
 const operationSchema = z.object({kind: z.enum(['board', 'sync-board', 'board-version', 'track',
   'board.root.create', 'board.shot.append', 'board.layout.move', 'board.node.create', 'board.shot.update',
   'board.node.update', 'board.restore', 'board.paste', 'board.duplicate'])}).passthrough();
@@ -750,6 +755,11 @@ const intentSchema = z.object({side: z.enum(SEQUENCE_EDIT_SIDES), operation: ope
   .superRefine((value, context) => {
     if (sequenceEditIntentSide(value.operation as unknown as Pick<ChainSyncOperation, 'kind'>) !== value.side) {
       context.addIssue({code: z.ZodIssueCode.custom, message: 'Intent side does not match its operation kind'});
+    }
+    const edit = value.operation.kind === 'track' ? value.operation.edit : undefined;
+    if (typeof edit === 'object' && edit !== null && 'kind' in edit && edit.kind === 'copy-as-new-shot'
+      && !copyAsNewShotTrackEditSchema.safeParse(edit).success) {
+      context.addIssue({code: z.ZodIssueCode.custom, path: ['operation', 'edit'], message: 'Invalid copy-as-new-shot edit'});
     }
   });
 
@@ -1364,6 +1374,17 @@ export const sequenceEditHistoryEntrySchema = z.object({
 /** `ok` plan for one envelope, produced by exactly one `planChainSync` call. */
 export type SequenceEditPlan = Extract<ChainSyncPlan, {readonly ok: true}>;
 
+export const SEQUENCE_EDIT_DIALOGUE_BLOCKER_LIMIT = 8;
+export const sequenceEditDialogueConflictSchema = z.object({
+  blockers: z.array(z.object({
+    cueId: uuidSchema, startFrame: sequenceSchema, endFrame: sequenceSchema, textExcerpt: z.string().max(25),
+  }).strict()).max(SEQUENCE_EDIT_DIALOGUE_BLOCKER_LIMIT),
+  blockerCount: sequenceSchema,
+  requiredFrames: sequenceSchema.positive(),
+  availableFrames: sequenceSchema,
+}).strict();
+export type SequenceEditDialogueConflict = z.infer<typeof sequenceEditDialogueConflictSchema>;
+
 export interface SequenceEditTransactionFailure {
   readonly ok: false;
   readonly code: SequenceEditErrorCode;
@@ -1371,6 +1392,7 @@ export interface SequenceEditTransactionFailure {
   /** Bounded validation reason for a user-facing explanation; no raw data. */
   readonly reason?: string;
   readonly message?: string;
+  readonly dialogueConflict?: SequenceEditDialogueConflict;
 }
 
 /** Input both transaction-internal entries receive. The coordinator reads the

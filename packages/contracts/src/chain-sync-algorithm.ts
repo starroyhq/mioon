@@ -35,6 +35,7 @@ export type TrackSyncEdit =
    * so the exact envelope (IDs and media) is what the UI confirms. */
   | { readonly kind: 'insert-asset'; readonly assetId: string; readonly trackId: string | null; readonly startFrame: number }
   | { readonly kind: 'paste-clip'; readonly clipId: string; readonly startFrame: number }
+  | { readonly kind: 'copy-as-new-shot'; readonly clipId: string; readonly newClipId: string; readonly copyNodeId: string }
   /** ED: add one clip to a non-main track, anchored below its owning main clip. */
   | { readonly kind: 'add-overlay'; readonly clipId: string; readonly trackId: string; readonly startFrame: number;
     readonly durationFrames: number; readonly sourceInFrame: number; readonly name: string;
@@ -66,7 +67,12 @@ type SyncFailure = { readonly ok: false; readonly code:
 type GraphFailure = { readonly ok: false; readonly code: BoardSequenceIssue['code']; readonly issues: readonly BoardSequenceIssue[] };
 type CopyRequired = { readonly ok: false; readonly code: 'COPY_NODE_REQUIRED'; readonly nodeId: string; readonly clipId: string };
 export interface ChainSyncTransfer { readonly trackId: string; readonly clip: ChainSyncClip }
-export interface ChainSyncNodeCopy { readonly fromNodeId: string; readonly toNodeId: string }
+export interface ChainSyncNodeCopy {
+  readonly fromNodeId: string;
+  readonly toNodeId: string;
+  /** A move reuses the existing clip identity. An in-place copy creates a full new clip row. */
+  readonly clipCopy?: {readonly fromClipId: string; readonly toClipId: string};
+}
 interface PlannedTrackDetails {
   readonly transfer?: ChainSyncTransfer;
   readonly copiedNode?: ChainSyncNodeCopy;
@@ -350,12 +356,27 @@ function planTrackEdit(
   } else {
     if (edit.kind === 'split-at-scenes') return {ok: false, code: 'INVALID_TRACK_TARGET', id: ''};
     const at = next.findIndex(item => item.id === edit.clipId);
-    if (at < 0) return {ok: false, code: 'CLIP_NOT_FOUND', id: edit.clipId};
+    if (at < 0) return {ok: false, id: edit.clipId, code:
+      edit.kind === 'copy-as-new-shot' && state.anchored.some(item => item.id === edit.clipId) ? 'INVALID_TRACK_TARGET' : 'CLIP_NOT_FOUND'};
     const clip = next[at]!;
     switch (edit.kind) {
       case 'remove':
         next.splice(at, 1);
         break;
+      case 'copy-as-new-shot': {
+        const {newClipId} = edit;
+        if (!newClipId || next.some(item => item.id === newClipId || item.splitGroupId === newClipId)
+          || state.anchored.some(item => item.id === newClipId)) {
+          return {ok: false, code: 'DUPLICATE_CLIP', id: newClipId};
+        }
+        const copy = copySplitPiece(clip, edit.copyNodeId, state.board, nodes, media);
+        if ('ok' in copy) return copy;
+        copiedNode = {fromNodeId: clip.nodeId, toNodeId: copy.nodeId, clipCopy: {fromClipId: clip.id, toClipId: newClipId}};
+        let afterGroup = at + 1;
+        while (next[afterGroup]?.nodeId === clip.nodeId) afterGroup++;
+        next.splice(afterGroup, 0, {...copy, id: newClipId, splitGroupId: newClipId});
+        break;
+      }
       case 'move': {
         if (edit.beforeClipId === clip.id) break;
         next.splice(at, 1);

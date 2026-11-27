@@ -300,6 +300,39 @@ test('moving a whole clip to another track detaches its node and carries a plann
   });
 });
 
+test('copying a split piece inserts after its group, ripples only later anchors and preserves the chosen range', () => {
+  const state = fixture(3);
+  const locked = {...state, clips: state.clips.map((item, index) => index === 0 ? {...item, versionLocked: true} : item)};
+  const split = planAndRoundTrip(locked, {kind: 'track', edit: {kind: 'split', clipId: clip(0), offsetFrames: 15, rightClipId: 'right'}}).after;
+  const edit = {kind: 'copy-as-new-shot', clipId: clip(0), newClipId: 'copy-clip', copyNodeId: 'copy-shot'} as const;
+  const result = planAndRoundTrip(split, {kind: 'track', edit});
+  assert.deepEqual(members(result.after), [shot(0), 'copy-shot', shot(1), shot(2)]);
+  assert.deepEqual(result.copiedNode, {fromNodeId: shot(0), toNodeId: 'copy-shot',
+    clipCopy: {fromClipId: clip(0), toClipId: 'copy-clip'}});
+  assert.deepEqual(result.after.clips, [
+    ...split.clips.slice(0, 2),
+    {...split.clips[0], id: 'copy-clip', startFrame: duration, nodeId: 'copy-shot', splitGroupId: 'copy-clip'},
+    ...split.clips.slice(2).map(item => ({...item, startFrame: item.startFrame + 15})),
+  ]);
+  assert.deepEqual(result.after.anchored, split.anchored.map(item => item.startFrame < duration
+    ? item : {...item, startFrame: item.startFrame + 15}));
+  assert.deepEqual(result.after.media.find(item => item.nodeId === 'copy-shot'), {...media(shot(0)), nodeId: 'copy-shot'});
+});
+
+test('copying from another track or reusing clip and node identities fails before planning writes', () => {
+  const state = fixture(2);
+  const edit = {kind: 'copy-as-new-shot', clipId: clip(0), newClipId: 'copy-clip', copyNodeId: 'copy-shot'} as const;
+  for (const [changes, code, id] of [
+    [{clipId: 'overlay-0-0'}, 'INVALID_TRACK_TARGET', 'overlay-0-0'],
+    [{clipId: 'missing'}, 'CLIP_NOT_FOUND', 'missing'],
+    [{newClipId: 'overlay-0-1'}, 'DUPLICATE_CLIP', 'overlay-0-1'],
+    [{newClipId: clip(1)}, 'DUPLICATE_CLIP', clip(1)],
+    [{copyNodeId: shot(1)}, 'COPY_NODE_EXISTS', shot(1)],
+  ] as const) {
+    assert.deepEqual(planChainSync(state, {kind: 'track', edit: {...edit, ...changes}}), {ok: false, code, id});
+  }
+});
+
 test('moving one split part off main needs a fresh copy node and leaves the other part in the film', () => {
   const state = fixture(3);
   const split = planAndRoundTrip(state, {kind: 'track', edit: {kind: 'split', clipId: clip(0), offsetFrames: 20, rightClipId: 'right'}}).after;

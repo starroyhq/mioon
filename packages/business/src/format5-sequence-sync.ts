@@ -47,6 +47,7 @@ import {planSpeedTimeline, splitSequenceClip, trimTimedSequenceClip} from './for
 import {validateSpeedTransitions} from './format6-transition-fit.ts';
 import {FORMAT6_PROJECT_SCHEMA_VERSION, isSequenceProjectFormat} from './project-file/schema/databases.ts';
 import {copyFormat5ShotDialogue, format5ShotDialogue, projectFormat5DialogueCues} from './format5-dialogue-projection.ts';
+import {dialogueConflictMessage} from './format5-sequence-preview-errors.ts';
 import type {Format5DialogueProjectedShot, Format5DialogueProjectionResult} from './format5-dialogue-projection.ts';
 import type {Format5Clip, Format5Cue, Format5SyncBaseline, Format5Timeline} from '../../contracts/src/project-format5.ts';
 import {format5AnchoredItem, format5ChainNodeKind, format5MainTrackClips} from './project-file/format5-sequence-mapping.ts';
@@ -77,6 +78,7 @@ const emptyCounts = (): SequenceEditAffectedCounts => ({nodes: 0, edges: 0, main
 // Both sides are built by this service in deterministic field order; plain JSON
 // comparison avoids sorting a 500-entry baseline on every action.
 const sameJson = (left: unknown, right: unknown): boolean => JSON.stringify(left) === JSON.stringify(right);
+export const FORMAT5_BOARD_DUPLICATE_OFFSET = 40;
 
 // ---------------------------------------------------------------------------
 // Projection
@@ -875,6 +877,17 @@ function expandMinimalSequenceSync(context: SyncContext, envelope: SequenceEditE
   return {...envelope, intents: [{side: 'timeline', operation: {kind: 'track', edit: overlayEdit}}]};
 }
 
+function copyAsNewShotInputFailure(context: SyncContext,
+  input: {readonly clipId: string; readonly copyNodeId: string}): SequenceEditTransactionFailure | null {
+  const clip = context.timeline.clips.find(item => item.id === input.clipId);
+  if (!clip) return failure('CLIP_NOT_FOUND', [input.clipId]);
+  if (clip.trackId !== context.timeline.mainTrack.trackId) return failure('INVALID_TRACK_TARGET', [input.clipId]);
+  if (context.archivedShots.has(input.copyNodeId) || context.archivedNodes.has(input.copyNodeId)) {
+    return failure('COPY_NODE_EXISTS', [input.copyNodeId]);
+  }
+  return null;
+}
+
 function planEnvelope(context: SyncContext, envelope: SequenceEditEnvelope, sceneCuts?: readonly number[]): SequenceEditPlan | SequenceEditTransactionFailure {
   if (envelope.generateIntent) {
     const operation = envelope.generateIntent.operation;
@@ -907,6 +920,10 @@ function planEnvelope(context: SyncContext, envelope: SequenceEditEnvelope, scen
   }
   if (operation.kind === 'track') {
     const edit = operation.edit;
+    if (edit.kind === 'copy-as-new-shot') {
+      const rejected = copyAsNewShotInputFailure(context, edit);
+      if (rejected) return rejected;
+    }
     const target = 'clipId' in edit ? context.timeline.clips.find(item => item.id === edit.clipId) : undefined;
     if (target?.timing && (edit.kind === 'trim' || edit.kind === 'split')) {
       try {
@@ -1032,8 +1049,7 @@ function nextMainClip(context: SyncContext, clip: ChainSyncClip, existing: Forma
     // node copies the applied version's ownership identity (fenced against the
     // version row/adoption).
     return {...(lineageCopy ? rest : base), ...frames, assetId, versionId: clip.versionId, sourceState: 'ready',
-      shotId: lineageCopy ? version?.shotId ?? clip.nodeId : base.shotId ?? clip.nodeId,
-      ...(lineageCopy && jobId ? {jobId} : {}),
+      ...(lineageCopy ? {shotId: version?.shotId ?? clip.nodeId, ...(jobId ? {jobId} : {})} : {}),
       sequenceSource: {kind: 'shot', nodeId: clip.nodeId, segmentGroupId, versionMode: clip.versionLocked ? 'locked' : 'follow'}};
   }
   const {versionId: _mv, jobId: _mj, shotId: _ms, ...mediaBase} = base;
@@ -1095,8 +1111,19 @@ function patchMainTimeline(context: SyncContext, plan: SequenceEditPlan,
       if (timed.has(clip.id) && meta.shotRows.has(clip.nodeId)) copiedNodes.add(clip.nodeId);
     }
   }
+  const clipCopy = plan.copiedNode?.clipCopy;
   const mainClips = speedTimeline?.clips.filter(clip => clip.trackId === mainTrackId)
-    ?? plan.after.clips.map(clip => nextMainClip(context, clip, timed?.get(clip.id) ?? existing.get(clip.id), planNodes.get(clip.nodeId), copiedNodes));
+    ?? plan.after.clips.map(clip => {
+      if (!clipCopy) return nextMainClip(context, clip, timed?.get(clip.id) ?? existing.get(clip.id), planNodes.get(clip.nodeId), copiedNodes);
+      const isCopy = clip.id === clipCopy.toClipId;
+      const source = existing.get(isCopy ? clipCopy.fromClipId : clip.id)!;
+      if (!isCopy) return {...source, startFrame: clip.startFrame};
+      // Keep saved properties such as timing and applied lineage. Start and
+      // group follow the new timeline position.
+      return {...source, id: clip.id, startFrame: clip.startFrame,
+        sequenceSource: {...source.sequenceSource!, nodeId: clip.nodeId, segmentGroupId: clip.id},
+        ...(source.sourceState === 'placeholder' && source.shotId !== undefined ? {shotId: clip.nodeId} : {})};
+    });
   if (meta) for (const clip of mainClips) {const name = meta.clipNames.get(clip.id); if (name) clip.name = name;}
   // GE-b: a generation placeholder is named after the shot it creates. The new
   // shot is not in `context.shots` yet while the plan is projected, so the
@@ -1180,7 +1207,9 @@ function patchMainTimeline(context: SyncContext, plan: SequenceEditPlan,
       previousCues: new Map((context.timeline.subtitles?.cues ?? []).map(cue => [cue.id, cue] as const)),
       liveShotIds: new Set(plan.after.board.nodes.map(node => node.id).filter(nodeId => mergedShots.has(nodeId))),
     });
-    if (projection.ok === false) return {ok: false, code: projection.code as SequenceEditErrorCode, ids: projection.ids};
+    if (projection.ok === false) {
+      return {...projection, message: dialogueConflictMessage(projection.dialogueConflict, Boolean(clipCopy))};
+    }
     cues = projection.cues as Format5Cue[];
   }
   const clipEnds = clips.map(clip => clip.startFrame + clip.durationFrames);
@@ -1334,6 +1363,13 @@ interface BoardPlanEntities {
 
 const edgeKey = (edge: {readonly fromId: string; readonly toId: string}): string => `${edge.fromId}>${edge.toId}`;
 
+function copiedBoardPlacement(row: Row): {position: {x: number; y: number}; revision: 1} {
+  const point = row.position;
+  const x = Number.isFinite(point?.x) ? Number(point.x) : 0;
+  const y = Number.isFinite(point?.y) ? Number(point.y) : 0;
+  return {position: {x: x + FORMAT5_BOARD_DUPLICATE_OFFSET, y: y + FORMAT5_BOARD_DUPLICATE_OFFSET}, revision: 1};
+}
+
 /** Build the full board half: version selection shot rows, copied nodes/shots and
  * the chain edge rewiring. New edge ids come from the accepted allocation; a
  * missing allocation is a contract error, never a silently invented id. */
@@ -1356,23 +1392,26 @@ function boardPlanEntities(context: SyncContext, plan: SequenceEditPlan, envelop
     writesAfter.push({kind: 'shot', id: String(change.after.id), data: change.after});
     writesBefore.push({kind: 'shot', id: String(change.before.id), data: change.before});
   }
-  // Copied node for a split piece that is moved off its group.
+  // The same row and version adoption path serves split moves and in-place copies.
   if (plan.copiedNode) {
-    const {fromNodeId, toNodeId} = plan.copiedNode;
+    const {fromNodeId, toNodeId, clipCopy} = plan.copiedNode;
     const sourceNode = context.board.nodes.find(node => node.id === fromNodeId);
     if (!sourceNode) return failure('SEQUENCE_EDIT_CONTRACT_INVALID', [fromNodeId]);
     const allocation = envelope.allocation.nodes.find(item => item.fromNodeId === fromNodeId && item.nodeId === toNodeId);
-    if (!allocation) return failure('SEQUENCE_EDIT_CONTRACT_INVALID', [toNodeId]);
+    if (!allocation || clipCopy && !envelope.allocation.clips.some(item => item.nodeId === toNodeId && item.clipId === clipCopy.toClipId)) {
+      return failure('SEQUENCE_EDIT_CONTRACT_INVALID', [toNodeId]);
+    }
     const copiedClip = plan.after.clips.find(clip => clip.nodeId === toNodeId);
     if (!copiedClip) return failure('SEQUENCE_EDIT_CONTRACT_INVALID', [toNodeId]);
     extraNodeKinds.set(toNodeId, sourceNode.kind);
     if (sourceNode.kind === 'shot') {
       const sourceShot = context.shots.get(fromNodeId);
       if (!sourceShot) return failure('INVALID_MEDIA', [fromNodeId]);
-      // Copying a shot generates fresh dialogue line ids (plan §2.4) so the copy
-      // never shares a line identity with its source.
       const shot: Row = copyFormat5ShotDialogue({...sourceShot, id: toNodeId,
         selectedVersionId: copiedClip.versionId ?? null, createdAt: now(), updatedAt: now()}, toNodeId);
+      if (clipCopy) {
+        Object.assign(shot, copiedBoardPlacement(sourceShot), {title: `${nodeName(context, fromNodeId)} 副本`});
+      }
       extraShots.set(toNodeId, shot);
       writesAfter.push({kind: 'shot', id: toNodeId, data: shot});
       removalsBefore.push({kind: 'shot', id: toNodeId, data: shot});
@@ -1386,6 +1425,10 @@ function boardPlanEntities(context: SyncContext, plan: SequenceEditPlan, envelop
       const sourceRow = context.nodeRows.get(fromNodeId);
       if (!sourceRow) return failure('INVALID_MEDIA', [fromNodeId]);
       const nodeRow: Row = {...sourceRow, id: toNodeId};
+      if (clipCopy) {
+        const name = `${sourceRow.name || sourceRow.label || 'Clip'} 副本`;
+        Object.assign(nodeRow, copiedBoardPlacement(sourceRow), {name, label: name, createdAt: now(), updatedAt: now()});
+      }
       extraNodeRows.set(toNodeId, nodeRow);
       writesAfter.push({kind: 'node', id: toNodeId, data: nodeRow});
       removalsBefore.push({kind: 'node', id: toNodeId, data: nodeRow});
@@ -1772,6 +1815,12 @@ function allocationForCommand(context: SyncContext, command: SequenceSyncCommand
         current = rightClipId;
       }
     }
+  } else if (command.kind === 'clip-copy-as-new-shot') {
+    const clip = context.clips.find(item => item.id === command.clipId);
+    if (clip) {
+      allocation.nodes.push({fromNodeId: clip.nodeId, nodeId: command.copyNodeId});
+      allocation.clips.push({nodeId: command.copyNodeId, clipId: command.newClipId});
+    }
   } else if ((command.kind === 'clip-move' || command.kind === 'clip-move-off-track') && command.copyNodeId) {
     const clip = context.clips.find(item => item.id === command.clipId);
     if (clip) allocation.nodes.push({fromNodeId: clip.nodeId, nodeId: command.copyNodeId});
@@ -1872,6 +1921,11 @@ export function previewSequenceSync(store: ProjectStore, command: SequenceSyncCo
   if (!format5(store)) return failure('SEQUENCE_EDIT_CONTRACT_INVALID');
   return store.tx(() => {
     const context = readSyncContext(store);
+    // Reject an unsupported source track before lazily creating history.
+    if (command.kind === 'clip-copy-as-new-shot') {
+      const rejected = copyAsNewShotInputFailure(context, command);
+      if (rejected) return rejected;
+    }
     const intent = sequenceSyncIntent(command);
     let cuts: number[] = [];
     if (command.kind === 'clip-split-scenes') {
@@ -2166,13 +2220,21 @@ export function runSequenceSync(store: ProjectStore, envelope: SequenceEditEnvel
       catch (error) { const failureResult = sceneCutFailure(error); return writeFailure(store, envelope, failureResult.code); }
     }
     const plan = planEnvelope(context, envelope, sceneCuts);
-    if ('ok' in plan && plan.ok === false) return writeFailure(store, envelope, plan.code);
+    if ('ok' in plan && plan.ok === false) {
+      // A rejected source track never yields a confirmable plan or receipt.
+      if (sceneEdit?.kind === 'track' && sceneEdit.edit.kind === 'copy-as-new-shot'
+        && plan.code === 'INVALID_TRACK_TARGET') return plan;
+      return writeFailure(store, envelope, plan.code);
+    }
     const successful = plan as SequenceEditPlan;
     const board = boardPlanEntities(context, successful, envelope);
     if ('ok' in board && board.ok === false) return writeFailure(store, envelope, board.code);
     const boardEntities = board as BoardPlanEntities;
     const projected = patchMainTimeline(context, successful, boardEntities.extraShots);
-    if (projected.ok === false) return writeFailure(store, envelope, projected.code);
+    if (projected.ok === false) {
+      writeSequenceEditFailure(store, envelope, projected.code);
+      return projected;
+    }
     const projection = projected.projection;
     let nextTimeline = projection.timeline;
     const sceneData = sceneCuts.length && sceneEdit?.kind === 'track' && sceneEdit.edit.kind === 'split-at-scenes'
