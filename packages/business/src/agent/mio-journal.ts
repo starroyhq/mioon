@@ -17,6 +17,7 @@ import {parseTaskArguments, taskResponseLocale, taskToolExplanation} from './tas
 import type {TaskModelOutput} from './task-gateway-v2.ts';
 import {createMioAssembly} from './mio-assembly.ts';
 import {updateMioRunUsageSummary} from './mio-run-usage.ts';
+import {isMioEditorExportStart} from './task-editor-export-v2.ts';
 
 type ModelInput = Omit<AgentTaskStepInput, 'kind'>;
 type SafetyWindowStart = {startStepsUsed: number; afterPosition: number};
@@ -207,18 +208,21 @@ export function createMioJournal(store: ProjectStore, options: MioJournalOptions
       ...(text === undefined ? {} : {text})};
   }
   const allRuns = (): AgentTaskRun[] => db.prepare('SELECT id FROM mio_runs WHERE projectId=? ORDER BY rowid').all(projectId).map(row => run(String(row.id)));
-  function background(runId: string): Array<{kind: string; id: string; status: string; stepId: string}> {
+  function background(runId: string): Array<{kind: string; id: string; status: string; stepId: string; operation: string}> {
     records.run(runId);
-    return db.prepare('SELECT kind,jobId,stepId FROM mio_job_origins WHERE runId=? AND projectId=? ORDER BY rowid').all(runId, projectId).map(row => {
+    return db.prepare('SELECT kind,jobId,stepId,operation FROM mio_job_origins WHERE runId=? AND projectId=? ORDER BY rowid').all(runId, projectId).map(row => {
       const kind = String(row.kind), table = {job: 'jobs', export: 'exports', image: 'image_tasks', frame: 'frame_tasks', scene: 'scene_tasks'}[kind];
       if (!table) return fail('AGENT_TASK_STORAGE_CORRUPT');
       const record = db.prepare(`SELECT * FROM ${table} WHERE id=? AND projectId=?`).get(String(row.jobId), projectId);
       const data = record && typeof record.data === 'string' ? decode<Record<string, unknown>>(record.data) : record;
-      return {kind, id: String(row.jobId), stepId: String(row.stepId), status: typeof data?.status === 'string' ? data.status : typeof data?.state === 'string' ? data.state : 'unknown'};
+      return {kind, id: String(row.jobId), stepId: String(row.stepId), operation: String(row.operation), status: typeof data?.status === 'string' ? data.status : typeof data?.state === 'string' ? data.state : 'unknown'};
     });
   }
   function hasPendingBackground(id: string): boolean {
-    return background(id).some(item => !({job: ['succeeded', 'failed', 'cancelled'], export: ['succeeded', 'failed', 'cancelled'], image: ['succeeded', 'failed', 'cancelled_before_dispatch'], frame: ['succeeded', 'failed', 'cancelled_before_start'], scene: ['succeeded', 'undone', 'failed', 'local_result_error', 'interrupted', 'cancelled', 'cancelled_before_start']}[item.kind] ?? []).includes(item.status));
+    return background(id).some(item => {
+      if(item.kind === 'export' && isMioEditorExportStart(item.operation)) return !['done', 'failed', 'cancelled'].includes(item.status);
+      return !({job: ['succeeded', 'failed', 'cancelled'], export: ['succeeded', 'failed', 'cancelled'], image: ['succeeded', 'failed', 'cancelled_before_dispatch'], frame: ['succeeded', 'failed', 'cancelled_before_start'], scene: ['succeeded', 'undone', 'failed', 'local_result_error', 'interrupted', 'cancelled', 'cancelled_before_start']}[item.kind] ?? []).includes(item.status);
+    });
   }
   function snapshot(id: string): AgentTaskSnapshot {
     const value = run(id), execution = content(id, 'host_state').filter(item => item.value.type === 'run_state' && item.value.status !== 'reverted').at(-1);

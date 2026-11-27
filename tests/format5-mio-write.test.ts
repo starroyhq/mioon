@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
+import {lstatSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createProjectStore} from '../packages/business/src/project-file/store.ts';
@@ -28,6 +28,13 @@ import {mioTestPolicy} from './helpers/mio-runtime-fixture.ts';
 import {createTestAgentSettings} from './helpers/secret-codec.ts';
 import {createHash, randomUUID} from 'node:crypto';
 import {format5UserUndoBlocked} from '../apps/web/src/edit-ui/session.ts';
+import {setTimeout as wait} from 'node:timers/promises';
+import {agentTaskJobBinding} from '../packages/business/src/agent/task-effects-v2.ts';
+import {readAgentTaskChecks} from '../packages/business/src/agent/task-checks-v2.ts';
+import {fcpExportStartOutputSchema} from '../packages/contracts/src/fcp-export.ts';
+import {PREMIERE_EXPORT_OPERATIONS} from '../packages/contracts/src/premiere-export.ts';
+import {fcpxmlExportTaskSchema} from '../packages/contracts/src/project-registry.ts';
+import {fcpDisplayPath} from '../packages/business/src/fcp-export-plan.ts';
 
 const at = '2026-01-01T00:00:00.000Z';
 const id = (n: number): string => `91000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -794,4 +801,207 @@ test('the format-5 catalog exposes save-as-audio with the asset tier and approva
   // MCP derives its tool list from the shared public schemas.
   assert.ok(schemas['clip.audio.export']);
   assert.ok(schemas['clip.audio.export.get']);
+});
+
+test('Mio loads Final Cut Pro tools only on format 5 and records the confirmed project export atomically', async t => {
+  const names = ['preview', 'start', 'get', 'cancel'].map(action => `mioon_export_fcpxml_${action}`);
+  const catalog = listAgentTaskTools(false, true);
+  for (const name of names) {
+    assert.ok(catalog.some(tool => tool.name === name), name);
+    for (const frame of [false, true]) assert.equal(listAgentTaskTools(frame, false).some(tool => tool.name === name), false);
+  }
+  const modelParameters = catalog.find(tool => tool.operation === 'export.fcpxml.start')!.parameters as {properties: Record<string, unknown>};
+  assert.deepEqual(modelParameters.properties.destination, {type: 'object', properties: {kind: {type: 'string', const: 'project'}},
+    required: ['kind'], additionalProperties: false});
+  assert.equal(Object.hasOwn(modelParameters.properties, 'requestId'), false);
+  assert.equal(Object.hasOwn(modelParameters.properties, 'projectId'), false);
+
+  const store = fixture(t, {withMioRuntime: true}), services = createServices(store, new Map());
+  const journal = createMioJournal(store, mioTestPolicy), tools = createAgentTaskTools({store, services, journal});
+  const settings = await createTestAgentSettings({persistence: {load: async () => null, save: async () => {}}});
+  const authorizations = createTestAuthorizations(store, settings);
+  const start = {name: 'Mio Film', copyMedia: false, destination: {kind: 'project'}};
+  const chosen = {...start, destination: {kind: 'chosen', token: 'synthetic-desktop-token'}};
+  assert.equal(schemas['export.fcpxml.start'].safeParse({...chosen, projectId, requestId: req(188)}).success, true);
+  assert.throws(() => tools.prepare({projectId, operation: names[1]!, input: chosen}), {code: 'VALIDATION_ERROR'});
+  assert.throws(() => tools.prepare({projectId: randomUUID(), operation: names[1]!, input: start}), {code: 'AGENT_TASK_TOOL_FORBIDDEN'});
+  const prepared = tools.prepare({projectId, operation: names[1]!, input: start});
+  assert.equal(prepared.forceApproval, true);
+  const rounds: AgentTaskToolCall[][] = [
+    [{id: 'load_fcp', name: 'mioon_tools_load', arguments: {names}}],
+    [{id: 'preview_fcp', name: names[0]!, arguments: {copyMedia: false}}],
+    [{id: 'start_fcp', name: names[1]!, arguments: start}],
+  ];
+  const gateway: TaskGateway = async function* (request) {
+    request.beforeSubmit?.();
+    const toolCalls = rounds.shift() ?? [];
+    const text = toolCalls.length ? '' : '已提交导出。';
+    yield {type: 'done', output: {text, toolCalls, providerOutput: {role: 'assistant', content: text || null,
+      ...(toolCalls.length ? {tool_calls: toolCalls.map(call => ({id: call.id, type: 'function',
+        function: {name: call.name, arguments: JSON.stringify(call.arguments)}}))} : {})}}};
+  };
+  const runtime = createMioRuntime({store, journal, policy: mioTestPolicy, tools, agentSettings: settings,
+    authorizations, gateway, selfPort: () => 4318});
+  const done = async (exportId: string) => {
+    let status = services.fcpExport.get({projectId, exportId});
+    for (let i = 0; i < 200 && status.status === 'running'; i++) {
+      await wait(10);
+      status = services.fcpExport.get({projectId, exportId});
+    }
+    assert.equal(status.status, 'done', JSON.stringify(status));
+    return status;
+  };
+  try {
+    await putTestAgentConfiguration(settings, {expectedRevision: 0, configuration: defaultTestAgentConfiguration('chat_completions'),
+      secret: {action: 'replace', storage: 'persistent', value: 'SYNTHETIC_MIO_FCP'}});
+    await authorizeTestScope(authorizations, 'project_agent');
+    const sent = await runtime.send(projectId, {requestId: req(189), text: '把当前成片导出到项目文件夹',
+      locale: 'zh-Hans', expectedSettingsRevision: testAgentExecution(await settings.get()).revision});
+    await runtime.drain();
+    const pending = runtime.get(projectId, sent.run.id);
+    const preview = pending.steps.find(step => step.toolCall?.id === 'preview_fcp');
+    const accepted = pending.steps.find(step => step.toolCall?.id === 'start_fcp');
+    assert.ok(preview?.result && typeof preview.result === 'object');
+    assert.deepEqual(Reflect.get(preview.result, 'projectDestination'), {displayPath: fcpDisplayPath(path.join(store.projectDir, '导出'))});
+    assert.equal(preview.status, 'completed');
+    assert.equal(accepted?.status, 'awaiting_approval');
+    assert.equal(accepted?.tier, 'local_irreversible');
+    assert.deepEqual(store.list('exports', projectId), []);
+    await runtime.action(projectId, sent.run.id, {requestId: req(190), expectedRevision: pending.run.revision, action: 'approve', stepId: accepted.id});
+    await runtime.drain();
+    const completed = runtime.get(projectId, sent.run.id);
+    const recorded = completed.steps.find(step => step.id === accepted.id);
+    const {exportId} = fcpExportStartOutputSchema.parse(recorded?.result);
+    assert.equal(recorded?.status, 'completed');
+    assert.deepEqual(agentTaskJobBinding(store.db, 'export', exportId), {runId: sent.run.id, projectId,
+      requestId: accepted.id, stepId: accepted.id, operation: 'export.fcpxml.start'});
+    assert.equal(completed.changes.filter(change => change.operation === 'export.fcpxml.start').length, 1);
+    const status = await done(exportId);
+    const task = fcpxmlExportTaskSchema.parse(await services.call('export.get', {exportId}));
+    assert.equal(task.title, 'Mio Film');
+    assert.equal(task.status, 'done');
+    const project = await services.call('project.get', {projectId}) as {exports: Array<{id: string}>};
+    assert.deepEqual(project.exports.find(item => item.id === exportId), task);
+    assert.equal(journal.hasPendingBackground(sent.run.id), false);
+    const checks = await readAgentTaskChecks(store, journal.snapshot(sent.run.id));
+    const check = checks.groups.flatMap(group => group.items).find(item => item.target.id === exportId);
+    assert.equal(check?.status, 'passed');
+    assert.deepEqual(check.current, {status: 'done'});
+    assert.doesNotMatch(JSON.stringify(journal.snapshot(sent.run.id).changes), /displayPath|requestHash|publication/u);
+
+    const readWithMio = async (id: string) => {
+      const read = tools.prepare({projectId, operation: names[2]!, input: {exportId: id}}), stepId = randomUUID();
+      return (await tools.execute(read, {runId: sent.run.id, stepId, requestId: stepId, beforeEffect() {},
+        recordInside() {assert.fail('An FCPXML observation must not record a mutation');}})).result;
+    };
+    assert.deepEqual(await readWithMio(exportId), status);
+    const outside = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-fcp-private-output-'));
+    t.after(() => rmSync(outside, {recursive: true, force: true}));
+    const info = lstatSync(outside, {bigint: true}), {token} = services.fcpExport.chooseDestination({projectId,
+      directory: outside, device: String(info.dev), inode: String(info.ino), token: randomUUID()});
+    const externalStart = services.fcpExport.start({...start, projectId, requestId: req(191), destination: {kind: 'chosen', token}});
+    const external = await done(externalStart.exportId);
+    assert.equal(external.result?.displayPath, fcpDisplayPath(path.join(outside, 'Mio Film.fcpxmld')));
+    assert.deepEqual(await readWithMio(externalStart.exportId), {...external,
+      result: {...external.result, displayPath: '[项目外路径已隐藏]'}});
+  } finally {
+    runtime.close();
+    await runtime.drain();
+    tools.dispose();
+    await services.drain();
+    await settings.close();
+  }
+});
+
+test('Mio approves and tracks Premiere exports only for format 5 without exposing an external destination', async t => {
+  const names = PREMIERE_EXPORT_OPERATIONS.map(operation => `mioon_${operation.replaceAll('.', '_')}`);
+  const catalog = listAgentTaskTools(false, true);
+  for (const name of names) {
+    assert.ok(catalog.some(tool => tool.name === name), name);
+    for (const frame of [false, true]) assert.equal(listAgentTaskTools(frame, false).some(tool => tool.name === name), false);
+  }
+  const modelParameters = catalog.find(tool => tool.operation === 'export.premiere.start')!.parameters;
+  assert.deepEqual(modelParameters, catalog.find(tool => tool.operation === 'export.fcpxml.start')!.parameters);
+
+  const store = fixture(t, {withMioRuntime: true}), services = createServices(store, new Map());
+  const journal = createMioJournal(store, mioTestPolicy), tools = createAgentTaskTools({store, services, journal});
+  const settings = await createTestAgentSettings({persistence: {load: async () => null, save: async () => {}}});
+  const authorizations = createTestAuthorizations(store, settings);
+  const start = {name: 'Mio Film', copyMedia: false, destination: {kind: 'project' as const}};
+  const rounds: AgentTaskToolCall[][] = [
+    [{id: 'load_premiere', name: 'mioon_tools_load', arguments: {names}}],
+    [{id: 'start_premiere', name: names[1]!, arguments: start}],
+  ];
+  const gateway: TaskGateway = async function* (request) {
+    request.beforeSubmit?.();
+    const toolCalls = rounds.shift() ?? [];
+    const text = toolCalls.length ? '' : '已提交导出。';
+    yield {type: 'done', output: {text, toolCalls, providerOutput: {role: 'assistant', content: text || null,
+      ...(toolCalls.length ? {tool_calls: toolCalls.map(call => ({id: call.id, type: 'function',
+        function: {name: call.name, arguments: JSON.stringify(call.arguments)}}))} : {})}}};
+  };
+  const runtime = createMioRuntime({store, journal, policy: mioTestPolicy, tools, agentSettings: settings,
+    authorizations, gateway, selfPort: () => 4318});
+  const done = async (id: string) => {
+    let status = services.premiereExport.get({projectId, exportId: id});
+    for (let i = 0; i < 200 && status.status === 'running'; i++) {
+      await wait(10);
+      status = services.premiereExport.get({projectId, exportId: id});
+    }
+    assert.equal(status.status, 'done', JSON.stringify(status));
+    return status;
+  };
+  try {
+    const chosen = {...start, destination: {kind: 'chosen', token: 'synthetic-desktop-token'}};
+    assert.equal(schemas['export.premiere.start'].safeParse({...chosen, projectId, requestId: req(192)}).success, true);
+    assert.throws(() => tools.prepare({projectId, operation: names[1]!, input: chosen}), {code: 'VALIDATION_ERROR'});
+    assert.throws(() => tools.prepare({projectId: randomUUID(), operation: names[1]!, input: start}), {code: 'AGENT_TASK_TOOL_FORBIDDEN'});
+    const prepared = tools.prepare({projectId, operation: names[1]!, input: start});
+    assert.equal(prepared.forceApproval, true);
+    assert.equal(prepared.risk, 'local_irreversible');
+    assert.equal(tools.prepare({projectId, operation: names[0]!, input: {copyMedia: false}}).risk, 'read_only');
+
+    await putTestAgentConfiguration(settings, {expectedRevision: 0, configuration: defaultTestAgentConfiguration('chat_completions'),
+      secret: {action: 'replace', storage: 'persistent', value: 'SYNTHETIC_MIO_PREMIERE'}});
+    await authorizeTestScope(authorizations, 'project_agent');
+    const sent = await runtime.send(projectId, {requestId: req(194), text: '把时间线导出到 Premiere Pro',
+      locale: 'zh-Hans', expectedSettingsRevision: testAgentExecution(await settings.get()).revision});
+    await runtime.drain();
+    const pending = runtime.get(projectId, sent.run.id);
+    const step = pending.steps.find(item => item.toolCall?.id === 'start_premiere');
+    assert.equal(step?.status, 'awaiting_approval');
+    assert.deepEqual(store.list('exports', projectId), []);
+    await runtime.action(projectId, sent.run.id, {requestId: req(195), expectedRevision: pending.run.revision, action: 'approve', stepId: step.id});
+    await runtime.drain();
+    const recorded = runtime.get(projectId, sent.run.id).steps.find(item => item.id === step.id);
+    const {exportId: projectExportId} = fcpExportStartOutputSchema.parse(recorded?.result);
+    assert.equal(recorded?.status, 'completed');
+    assert.deepEqual(agentTaskJobBinding(store.db, 'export', projectExportId), {runId: sent.run.id, projectId,
+      requestId: step.id, stepId: step.id, operation: 'export.premiere.start'});
+    await done(projectExportId);
+    assert.equal(journal.hasPendingBackground(sent.run.id), false);
+    const checks = await readAgentTaskChecks(store, journal.snapshot(sent.run.id));
+    const check = checks.groups.flatMap(group => group.items).find(item => item.target.id === projectExportId);
+    assert.equal(check?.status, 'passed');
+    assert.deepEqual(check.current, {status: 'done'});
+
+    const outside = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-premiere-private-output-'));
+    t.after(() => rmSync(outside, {recursive: true, force: true}));
+    const info = lstatSync(outside, {bigint: true}), {token} = services.premiereExport.chooseDestination({projectId,
+      directory: outside, device: String(info.dev), inode: String(info.ino), token: randomUUID()});
+    const {exportId} = services.premiereExport.start({...start, projectId, requestId: req(193), destination: {kind: 'chosen', token}});
+    const status = await done(exportId);
+    assert.equal(status.result?.displayPath, fcpDisplayPath(path.join(outside, 'Mio Film Premiere')));
+    assert.equal(tools.prepare({projectId, operation: names[3]!, input: {exportId}}).forceApproval, true);
+    const read = tools.prepare({projectId, operation: names[2]!, input: {exportId}}), stepId = randomUUID();
+    const observed = await tools.execute(read, {runId: sent.run.id, stepId, requestId: stepId, beforeEffect() {},
+      recordInside() {assert.fail('Premiere observation must not record a mutation');}});
+    assert.deepEqual(observed.result, {...status, result: {...status.result, displayPath: '[项目外路径已隐藏]'}});
+  } finally {
+    runtime.close();
+    await runtime.drain();
+    tools.dispose();
+    await services.drain();
+    await settings.close();
+  }
 });

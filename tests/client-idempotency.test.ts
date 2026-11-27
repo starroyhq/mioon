@@ -4,6 +4,7 @@ import { prepareSubmission, readPending, writePending, clearPending, pendingForP
 import type {PendingEntry} from '../apps/web/src/submissions.ts';
 import { rpc } from '../apps/web/src/api.ts';
 import { OUTPUT_LOCALE_HEADER } from '../packages/contracts/src/output-locale.ts';
+import { PREMIERE_EXPORT_TASK_KIND } from '../packages/contracts/src/premiere-export.ts';
 
 class MemorySessionStorage {
   values = new Map<string, string>();
@@ -77,6 +78,22 @@ test('generation, explicit failed-job retry, and export each have separate stabl
   assert.equal(pendingForProject('project-a').length, 2);
   assert.equal(readPending('project-a', 'export'), null);
   clearPending('project-a', retry.key); assert.deepEqual(pendingForProject('project-a'), [generation]);
+});
+
+test('Premiere exports with the same request ID preserve a pending MP4 export', (t: TestContext) => {
+  fixture(t);
+  const projectId = 'project-a', requestId = 'shared-export-request';
+  const original = entry({projectId, key: 'export', operation: 'export.create', input: {projectId, requestId}});
+  prepareSubmission(original);
+  for (const marker of ['mode', 'kind']) {
+    reconcilePending(projectId, {exports: [{projectId, requestId, [marker]: PREMIERE_EXPORT_TASK_KIND}]});
+    assert.deepEqual(readPending(projectId, original.key), original);
+  }
+  reconcilePending(projectId, {exports: [
+    {projectId, requestId, mode: PREMIERE_EXPORT_TASK_KIND, kind: PREMIERE_EXPORT_TASK_KIND},
+    {projectId, requestId, orderedVersionIds: ['version-a']},
+  ]});
+  assert.equal(readPending(projectId, original.key), null);
 });
 
 test('unavailable storage prevents an unprotected submission before network dispatch', (t: TestContext) => {

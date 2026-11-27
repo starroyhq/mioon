@@ -264,6 +264,67 @@ test('read errors keep exit classifications and sanitization across real CLI and
   }
 });
 
+test('CLI and MCP expose all four Final Cut Pro operations and recover the exact start request after wire loss', {timeout: 30000}, async t => {
+  const f = await fixture(t, 'fcpxml-export');
+  const projectId = randomUUID(), exportId = randomUUID(), requestId = 'synthetic-fcp-replay';
+  const start = {projectId, requestId, name: 'Film', copyMedia: false, destination: {kind: 'project'}};
+  const progress = {files: 0, totalFiles: 0, bytes: 0, totalBytes: 0};
+  const cases = [
+    ['export.fcpxml.preview', {projectId, copyMedia: false}, {timeline: {width: 1920, height: 1080, fps: 24, durationFrames: 24, clipCount: 1},
+      defaultName: 'Film', projectDestination: {displayPath: '~/synthetic/Exports'}, mediaFiles: 0, mediaBytes: 0, missing: [], approximations: []}],
+    ['export.fcpxml.start', start, {exportId}],
+    ['export.fcpxml.get', {projectId, exportId}, {status: 'running', progress}],
+    ['export.fcpxml.cancel', {projectId, exportId}, {status: 'cancelled'}],
+  ] as const;
+  for (const kind of ['CLI', 'MCP']) {
+    for (const [operation, input, data] of cases) {
+      const body = {ok: true, data};
+      f.set({body});
+      assert.deepEqual(await f.call(kind, operation, input, 0), body);
+    }
+    for (const fault of ['drop', 'truncate', 'bad-review'] as const) {
+      f.set({body: {ok: true, data: {exportId}}, fault});
+      const failed = await f.call(kind, 'export.fcpxml.start', start, 4);
+      assert.equal(failed.error?.code, fault === 'drop' ? 'BACKEND_UNAVAILABLE' : 'BACKEND_PROTOCOL_ERROR');
+      uncertain(failed, 'export.fcpxml.start', requestId);
+    }
+    f.set({body: {ok: true, data: {exportId}}});
+    assert.deepEqual(await f.call(kind === 'CLI' ? 'MCP' : 'CLI', 'export.fcpxml.start', start, 0), {ok: true, data: {exportId}});
+  }
+});
+
+test('CLI and MCP share project-routed Premiere Pro operations and the same start replay key', {timeout: 30000}, async t => {
+  const f = await fixture(t, 'premiere-export');
+  const projectId = randomUUID(), exportId = randomUUID(), requestId = 'synthetic-premiere-replay';
+  const start = {projectId, requestId, name: 'Film', copyMedia: false, destination: {kind: 'project'}};
+  const progress = {files: 0, totalFiles: 0, bytes: 0, totalBytes: 0};
+  const cases = [
+    ['export.premiere.preview', {projectId, copyMedia: false}, {
+      timeline: {width: 1080, height: 1920, fps: 30, durationFrames: 30, clipCount: 1},
+      defaultName: 'Film', projectDestination: {displayPath: '~/synthetic/Exports'}, mediaFiles: 0, mediaBytes: 0,
+      missing: [{code: 'SUBTITLES', clips: [{id: 'subtitle-a', name: 'Synthetic caption'}]}], approximations: [],
+    }],
+    ['export.premiere.start', start, {exportId}],
+    ['export.premiere.get', {projectId, exportId}, {status: 'running', progress}],
+    ['export.premiere.cancel', {projectId, exportId}, {status: 'cancelled'}],
+  ] as const;
+  for (const kind of ['CLI', 'MCP']) {
+    for (const [operation, input, data] of cases) {
+      const body = {ok: true, data};
+      f.set({body});
+      assert.deepEqual(await f.call(kind, operation, input, 0), body);
+    }
+    for (const fault of ['drop', 'bad-review'] as const) {
+      f.set({body: {ok: true, data: {exportId}}, fault});
+      const failed = await f.call(kind, 'export.premiere.start', start, 4);
+      assert.equal(failed.error?.code, fault === 'drop' ? 'BACKEND_UNAVAILABLE' : 'BACKEND_PROTOCOL_ERROR');
+      uncertain(failed, 'export.premiere.start', requestId);
+    }
+    f.set({body: {ok: true, data: {exportId}}});
+    assert.deepEqual(await f.call(kind === 'CLI' ? 'MCP' : 'CLI', 'export.premiere.start', start, 0), {ok: true, data: {exportId}});
+  }
+});
+
 test('backend-controlled error code and detail keys cannot expose the connection credential', {timeout: 15000}, async (t: TestContext) => {
   const f = await fixture(t, 'error-field-credential-redaction');
   for (const kind of ['CLI', 'MCP']) for (const field of ['code', 'detail-key']) await t.test(`${kind}: credential in ${field}`, async () => {

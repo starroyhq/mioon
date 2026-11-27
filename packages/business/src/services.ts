@@ -1,3 +1,7 @@
+import {createFcpExportServices} from './fcp-export.ts';
+import {createPremiereExportServices} from './premiere-export.ts';
+import {discloseEditorExportTask} from './fcpxml-export-task.ts';
+import type {AppOperationReceiptStore} from './app-db/stores.ts';
 import {mioTable} from './agent/mio-table-layout.ts';
 import {createProjectBackgroundState} from './background-task-state.ts';
 import {createWorkspaceConfiguration} from './workspace-configuration.ts';
@@ -135,6 +139,7 @@ export type ServiceHandlers=Record<string,(input: never,context?: ServiceHandler
  * lifecycle under its content directory. */
 export interface ServiceApplicationPorts {
  outsidePaths: OutsidePathConfirmationStore;
+ receipts: AppOperationReceiptStore;
  configuration: ReturnType<typeof createWorkspaceConfiguration>;
  assertMutationAllowed(): void;
 }
@@ -169,6 +174,8 @@ type GenerationResultProvider=Pick<Provider,'capabilities'|'poll'|'download'> & 
 /** Ordinary backend surface returned by createServices. */
 export interface OrdinaryServices {
  activateBackground: ()=>void;
+ fcpExport: ReturnType<typeof createFcpExportServices>;
+ premiereExport: ReturnType<typeof createPremiereExportServices>;
  handlers: ServiceHandlers;
  call: (operation: string,input: unknown,context?: ServiceHandlerContext)=>Promise<unknown>;
  drain: ()=>Promise<void>;
@@ -275,6 +282,13 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  const sequenceEditing = isProjectStore(store) ? createSequenceEditing(store) : undefined;
  const configuration=application.configuration;
  const assertApplicationMutationAllowed=()=>application.assertMutationAllowed();
+ const editorExportOptions={outsidePaths:applicationPorts.outsidePaths,receipts:applicationPorts.receipts,signal:ownerSignal,
+  assertMutationAllowed:()=>{assertApplicationMutationAllowed();assertMutationAllowed?.();}};
+ const fcpExport=createFcpExportServices(store,editorExportOptions);
+ const premiereExport=createPremiereExportServices(store,editorExportOptions);
+ const editorExports=[fcpExport,premiereExport];
+ const recoverEditorExports=():void=>{for(const exporter of editorExports)exporter.recover();};
+ if(!deferBackgroundRecovery)recoverEditorExports();
  const configurationHandlers={
   'workspace.settings.get':()=>configuration.get(),
   'workspace.settings.set':(input:never)=>{assertApplicationMutationAllowed();return configuration.set(input);},
@@ -786,7 +800,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  // Registered after images: finished variant images become subject versions in
  // the image service's publishing transaction.
  const subjectVariants=createSubjectVariantServices(store,{deferRecovery:deferBackgroundRecovery,mockAllowed});
- const activateBackground=():void=>{images.activateBackground();frames.activateBackground();scenes.activateBackground();subjectVariants.activateBackground();backgroundTasks.refresh();};
+ const activateBackground=():void=>{images.activateBackground();frames.activateBackground();scenes.activateBackground();subjectVariants.activateBackground();recoverEditorExports();backgroundTasks.refresh();};
  const previs=createPrevisServices(store,{now});
  // Read disclosure verifies only retained subject ownership/provenance. It
  // never evaluates current provider lifecycle, quota, enabled state or POST policy.
@@ -809,8 +823,10 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  }
  // Retain the source row identity when disclosing exports; a decoded body
  // must not borrow another export's valid request receipt. No write/normalization.
+ const discloseExport=(row:ServiceRow,id:string,projectId?:string):ServiceRow=>
+  discloseEditorExportTask(row,{id,projectId})??subjectDisclosure('exports',row,projectId,id);
  const exportValues=(projectId: string): ServiceRow[]=>db.prepare('SELECT id,projectId,data FROM exports WHERE projectId=?').all(projectId)
-  .map(row=>subjectDisclosure('exports',JSON.parse(String(row.data)) as ServiceRow,stringValue(row.projectId),stringValue(row.id)));
+  .map(row=>discloseExport(JSON.parse(String(row.data)) as ServiceRow,String(row.id),String(row.projectId)));
  const handlers: ServiceHandlers={
  ...configurationHandlers,
  ...(createExportControlServices(store,{signal:ownerSignal}).handlers),
@@ -841,6 +857,14 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   ...timeline.handlers,
   ...sequenceInspection.handlers,
   'clip.audio.export':(input: ServiceRow)=>startClipAudioExport(store,input),
+  'export.fcpxml.preview':(input:never,context?:ServiceHandlerContext)=>fcpExport.preview(input,context?.signal??undefined),
+  'export.fcpxml.start':fcpExport.start,
+  'export.fcpxml.get':fcpExport.get,
+  'export.fcpxml.cancel':fcpExport.cancel,
+  'export.premiere.preview':(input:never,context?:ServiceHandlerContext)=>premiereExport.preview(input,context?.signal??undefined),
+  'export.premiere.start':premiereExport.start,
+  'export.premiere.get':premiereExport.get,
+  'export.premiere.cancel':premiereExport.cancel,
   'clip.audio.export.get':(input: ServiceRow)=>getClipAudioExport(store,input),
   'sequence.preview':(input: ServiceRow)=>sequenceEdit.preview(input as never),
   'sequence.action.edit':previewSequenceAction('sequence.tool.edit'),
@@ -1062,7 +1086,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   },
   'version.list':(input: ServiceRow)=>{const s=required('shots',stringValue(input.shotId) as string);return list('versions',stringValue(s.projectId)).filter(v=>property(v,'shotId')===s.id).map(value=>subjectDisclosure('versions',value as ServiceRow,stringValue(s.projectId))).sort((a,b)=>(Number(a.number)||0)-(Number(b.number)||0));},
   'export.create':(input: ServiceRow,{outputLocale}: ServiceHandlerContext={})=>tx(()=>{const h=hash(input),prior=dedupe('export',stringValue(input.requestId) as string,h,'exports');if(prior)return prior;required('projects',stringValue(input.projectId) as string);const shots=liveCanvas('shots',stringValue(input.projectId) as string).sort((a: unknown,b: unknown)=>(Number(property(a,'orderIndex'))||0)-(Number(property(b,'orderIndex'))||0));if(!shots.length||shots.some((s: unknown)=>!property(s,'selectedVersionId')))throw new AppError('MISSING_SELECTION','请为每个镜头选择已生成的视频版本');const versions=shots.map((s: unknown): ServiceRow=>{const shot=s as ServiceRow;const version=required('versions',String(property(shot,'selectedVersionId')));return version;});const e={id:randomUUID(),projectId:stringValue(input.projectId),requestId:stringValue(input.requestId),status:'queued',outputGeometry:freezeStoryboardOutputGeometry(db,stringValue(input.projectId) as string),orderedVersionIds:versions.map(v=>v.id),snapshot:versions.map(v=>({versionId:v.id,assetId:v.assetId,sha256:v.sha256,shotId:v.shotId})),assetId:null,url:null,error:null,createdAt:now(),updatedAt:now()};put('exports',e);bindAgentTaskJobInside(db,'export',e.id);idem('export',stringValue(input.requestId) as string,h,String(e.id));recordOutputLocale(db,e.id,h,outputLocale);return e;}),
-  'export.get':(input: ServiceRow)=>subjectDisclosure('exports',required('exports',stringValue(input.exportId) as string),undefined,stringValue(input.exportId)),
+  'export.get':(input: ServiceRow)=>discloseExport(required('exports',String(input.exportId)),String(input.exportId)),
  } as unknown as ServiceHandlers;
  // Public handlers are the same invocation boundary as RPC. Raw internal
  // mutation closures remain protected at their shared transaction precondition.
@@ -1127,7 +1151,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   removeJobStopper();removeExportStopper();
   // Derived cache work may outlive its quick queued RPC acknowledgement. Stop
   // and join its explicit owner before SQLite can close, including late decode.
-  const ownerDrains=[waveforms.drain(),preflight.drain(),images.drain(),frames.drain(),scenes.drain(),subjectVariants.drain(),exportAdmission.drain(),samplePeak.drain(),loudness.drain(),mixLoudness.drain(),clipLoudness.drain(),audioPreview.drain(),colourSource.drain(),imageColourSource.drain()];
+  const ownerDrains=[...editorExports.map(exporter=>exporter.drain()),waveforms.drain(),preflight.drain(),images.drain(),frames.drain(),scenes.drain(),subjectVariants.drain(),exportAdmission.drain(),samplePeak.drain(),loudness.drain(),mixLoudness.drain(),clipLoudness.drain(),audioPreview.drain(),colourSource.drain(),imageColourSource.drain()];
   const results=await boundedShutdown(Promise.allSettled([...ownerDrains,...active]),'SERVICE_STOP_TIMEOUT');
   if(shutdownFailure)throw shutdownFailure;
   for(const result of results.slice(0,ownerDrains.length))if(result.status==='rejected')throw result.reason;
@@ -1191,7 +1215,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
    return saveJob(current as JobRecord,patch);
   });
  }
- const isBusy=():boolean=>active.size>0||images.isBusy()||frames.isBusy()||scenes.isBusy()||backgroundTasks.snapshot().some(task=>task.keepAlive);
+ const isBusy=():boolean=>active.size>0||editorExports.some(exporter=>exporter.isBusy())||images.isBusy()||frames.isBusy()||scenes.isBusy()||backgroundTasks.snapshot().some(task=>task.keepAlive);
  const assertImageMutationAllowed=():void=>{checkpoint(ownerSignal);assertApplicationMutationAllowed();assertMutationAllowed?.();};
  const generationImageServices=(operation:string,input:unknown,outputLocale?:OutputLocale):unknown=>{
   checkpoint(ownerSignal);
@@ -1201,5 +1225,5 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   if(op==='image.service.review.prepare')assertImageMutationAllowed();
   return publicValue(images.generationServices(op,parsed.data,outputLocale));
  };
- return {activateBackground,compensateAgentTimelineInside:timeline.compensateAgentTargetsInside,call,drain,isQuiescent:()=>active.size===0,isBusy,configuration,generationAvailability,createGenerationJobInside,assertMutationAllowed:assertApplicationMutationAllowed,audioPreview,saveGenerationGuarded,validateGenerationDispatch,resolveGenerationProvider,resolveGenerationResultProvider,updateShotInProject:updateShotInProject,moveTimelineClipInProject:moveTimelineClipInProject,setTimelineClipGainInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:(input:unknown)=>{assertImageMutationAllowed();return images.approveReviewed(input);},imageRejection:(input:unknown)=>{assertImageMutationAllowed();return images.rejectReview(input);},generationImageServices} as OrdinaryServices;
+ return {activateBackground,fcpExport,premiereExport,compensateAgentTimelineInside:timeline.compensateAgentTargetsInside,call,drain,isQuiescent:()=>active.size===0,isBusy,configuration,generationAvailability,createGenerationJobInside,assertMutationAllowed:assertApplicationMutationAllowed,audioPreview,saveGenerationGuarded,validateGenerationDispatch,resolveGenerationProvider,resolveGenerationResultProvider,updateShotInProject:updateShotInProject,moveTimelineClipInProject:moveTimelineClipInProject,setTimelineClipGainInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:(input:unknown)=>{assertImageMutationAllowed();return images.approveReviewed(input);},imageRejection:(input:unknown)=>{assertImageMutationAllowed();return images.rejectReview(input);},generationImageServices} as OrdinaryServices;
 }
