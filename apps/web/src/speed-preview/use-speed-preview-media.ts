@@ -181,6 +181,14 @@ export function createSpeedPreviewMediaController(options: {
   };
 }
 
+export function previewProcessingStateKey(clipId: string, items: readonly SpeedProcessingItem[]): string {
+  // Progress updates from the list must leave the media reader's backoff timer intact.
+  return items.filter(item => item.clipId === clipId)
+    .map(item => `${item.taskId}:${item.kind}:${item.status}:${item.reason ?? ''}`)
+    .sort()
+    .join('|');
+}
+
 export interface UseSpeedPreviewMediaResult {
   readonly media: PreviewMedia | null;
   readonly clipId: string | null;
@@ -209,13 +217,7 @@ export function useSpeedPreviewMedia(options: {
   const clipId = eligible && clip ? clip.id : null;
   const timingSignature = clip?.timing ? JSON.stringify(clip.timing) : 'none';
   const bindingKey = clipId ? JSON.stringify([projectId, clipId, timeline?.revision, timingSignature]) : null;
-  const clipProcessingSignature = clipId
-    ? processingItems
-        .filter(item => item.clipId === clipId)
-        .map(item => `${item.taskId}:${item.kind}:${item.status}:${item.progress ?? ''}:${item.reason ?? ''}`)
-        .sort()
-        .join('|')
-    : '';
+  const clipProcessingSignature = clipId ? previewProcessingStateKey(clipId, processingItems) : '';
 
   const [state, setState] = useState<{readonly bindingKey: string; readonly media: PreviewMedia | null} | null>(null);
   const controllerRef = useRef<SpeedPreviewMediaController | null>(null);

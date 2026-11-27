@@ -21,6 +21,7 @@ import type {PreviewMedia} from '../apps/web/src/speed-preview/speed-preview-mod
 import {
   SPEED_PREVIEW_POLL_INTERVAL_MS,
   createSpeedPreviewMediaController,
+  previewProcessingStateKey,
 } from '../apps/web/src/speed-preview/use-speed-preview-media.ts';
 import {
   createWaveformController,
@@ -335,6 +336,15 @@ test('createSpeedPreviewMediaController polls every 2000ms while queued/running,
   await Promise.resolve();
   assert.equal(observed.length, 3);
   controller.dispose();
+});
+
+test('processing progress does not restart a preview media reader in backoff', () => {
+  const running: SpeedProcessingItem = {taskId: TASK_ID, clipId: CLIP_ID, kind: 'preview', status: 'running', progress: 42};
+  const key = previewProcessingStateKey(CLIP_ID, [running]);
+  assert.equal(previewProcessingStateKey(CLIP_ID, [{...running, progress: 80}]), key);
+  assert.equal(previewProcessingStateKey(CLIP_ID, [running, {...running, clipId: PROJECT_ID}]), key);
+  assert.notEqual(previewProcessingStateKey(CLIP_ID, [{...running, status: 'ready'}]), key);
+  assert.notEqual(previewProcessingStateKey(CLIP_ID, [{...running, taskId: PROJECT_ID}]), key);
 });
 
 test('createSpeedPreviewMediaController backs off on retryable 503, stops as unknown after consecutive failures, and cancels on clip leave/close', async () => {
