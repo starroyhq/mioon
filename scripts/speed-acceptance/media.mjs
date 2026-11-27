@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {createHash, randomUUID} from 'node:crypto';
 import {closeSync, openSync} from 'node:fs';
-import {access, mkdir, readFile, writeFile} from 'node:fs/promises';
+import {access, readFile, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 
@@ -68,7 +68,7 @@ async function inspectClock(file, frameCount, run) {
   return timeBase;
 }
 
-async function inspectFrames(file, frameCount, {run, runStreaming}) {
+async function readFrameMarkers(file, frameCount, {run, runStreaming}) {
   const timeBase = await inspectClock(file, frameCount, run);
   const chunks = [];
   const bytesPerFrame = 4;
@@ -77,8 +77,12 @@ async function inspectFrames(file, frameCount, {run, runStreaming}) {
     '-f', 'rawvideo', 'pipe:1'], {maxStdoutBytes: frameCount * bytesPerFrame, onStdout: chunk => chunks.push(chunk)});
   const bytes = Buffer.concat(chunks);
   assert.equal(bytes.length, frameCount * bytesPerFrame);
-  const ordinals = Array.from({length: frameCount}, (_, index) => {
-    const level = bytes[index * bytesPerFrame];
+  return {timeBase, levels: Array.from({length: frameCount}, (_, index) => bytes[index * bytesPerFrame])};
+}
+
+async function inspectFrames(file, frameCount, media) {
+  const {timeBase, levels} = await readFrameMarkers(file, frameCount, media);
+  const ordinals = levels.map((level, index) => {
     const ordinal = Math.round((level - marker(0)) / 8);
     assert.ok(ordinal >= 0 && ordinal < sourceFrames && Math.abs(level - marker(ordinal)) <= 3, `unreadable frame marker at ${index}`);
     return ordinal === 0 ? 0 : ordinal;
@@ -90,11 +94,14 @@ async function comparePicturePipelines(ctx) {
   const previewModule = 'packages/business/src/timeline-processing/preview.ts';
   await requireFeature(ctx, previewModule, 'SP-V preview proxy renderer');
   await requireFeature(ctx, 'packages/business/src/timeline-speed-export-video.ts', 'SP-E export picture staging');
-  const [maps, clipTiming, media, preview, {prepareSpeedExportVideo}] = await Promise.all([
+  const [maps, clipTiming, media, {timelinePreviewProcessingRenderer: preview}, {prepareSpeedExportVideo},
+    {createProcessingCache}] = await Promise.all([
     ctx.load('packages/contracts/src/timeline-time-map.ts'), ctx.load('packages/contracts/src/timeline-clip-timing.ts'),
     ctx.load('packages/business/src/media-runtime.ts'), ctx.load(previewModule),
     ctx.load('packages/business/src/timeline-speed-export-video.ts'),
+    ctx.load('packages/business/src/timeline-processing/cache.ts'),
   ]);
+  if (!preview) ctx.blocked('Requires SP-V processing renderer with owned preview staging');
   const {file, sha256} = await syntheticMarkers(ctx.scratch, media.run);
   const reverse = {file: path.join(ctx.scratch, 'reverse-input.mkv'), firstSourceOrdinal: 0, frameCount: sourceFrames, storage: 'matroska'};
   await media.run('ffmpeg', [...toolArgs, '-n', '-i', file, '-an', '-filter_threads', '1', '-vf', 'reverse,settb=1/30,setpts=N',
@@ -108,6 +115,8 @@ async function comparePicturePipelines(ctx) {
   const verified = [];
   const signal = AbortSignal.timeout(120_000);
   const beforeEffect = () => signal.throwIfAborted();
+  const cache = createProcessingCache(ctx.scratch);
+  const projectId = randomUUID();
   for (const [name, {timing, plan}] of modes) {
     const clip = {id: randomUUID(), timing, startFrame: 0, durationFrames: plan.durationFrames, sourceInFrame: 0};
     const expected = Array.from({length: plan.durationFrames}, (_, ordinal) =>
@@ -123,14 +132,18 @@ async function comparePicturePipelines(ctx) {
     // above use the actual sampler called by preview. Decode the real H.264
     // proxy for modes that require it; this still uses a private renderer stage.
     if (name === 'curve' || name === 'reverse') {
-      const stagingDirectory = path.join(ctx.scratch, `preview-${name}`);
-      await mkdir(stagingDirectory, {mode: 0o700});
       const input = {source, sourceSha256: sha256, interpolation: 'off', plan};
-      const prepared = await preview.preparePreviewProxy(input, {signal, beforeEffect});
-      const result = await preview.renderPreviewProxy(input, prepared, {signal, beforeEffect, stagingDirectory});
-      assert.equal(result.frameCount, plan.durationFrames);
-      const seen = await inspectFrames(path.join(stagingDirectory, 'preview.mp4'), plan.durationFrames, media);
-      assert.deepEqual(seen.ordinals, exported.ordinals, `${name} proxy and export select the same source frames`);
+      const prepared = await preview.prepare(input, {signal, beforeEffect});
+      const stage = cache.stage(projectId, sha256, prepared.reservationBytes, beforeEffect, {taskId: randomUUID(), requestId: randomUUID()});
+      try {
+        assert.ok(stage.writer, 'preview stage has an owned writer');
+        const result = await preview.render(input, prepared, {signal, beforeEffect, stagingDirectory: stage.directory, writer: stage.writer});
+        assert.equal(result.frameCount, plan.durationFrames);
+        const seen = await inspectFrames(path.join(stage.directory, 'preview.mp4'), plan.durationFrames, media);
+        assert.deepEqual(seen.ordinals, exported.ordinals, `${name} proxy and export select the same source frames`);
+      } finally {
+        stage.discard();
+      }
     }
     verified.push({mode: name, frames: plan.durationFrames, output: exportStage.path,
       preview: name === 'curve' || name === 'reverse' ? 'rendered H.264 proxy' : 'shared source-frame sampling',
@@ -240,6 +253,7 @@ async function withHostedMedia(ctx, exercise) {
     const expectedOrdinals = (clip, saved) => Array.from({length: clip.durationFrames}, (_, offset) =>
       unwrap(clipTiming.timelineClipSourceAtFrame(clip, saved, clip.startFrame + offset)).sourceFrame);
     return await exercise({maps, media, server, projectId, clipId, preview, clipSpeed, current, data, downloadMedia, exportMedia,
+      processing: () => rpc('timeline.processing.list'),
       expectedOrdinals, original: () => downloadMedia(new URL(projectMediaPath(projectId, imported.id), server.url), 'native-source')});
   } finally { await server.close(); }
 }
@@ -261,58 +275,88 @@ function verifyNativeProjectExport(ctx) {
   });
 }
 
+const gentleCurve = {kind: 'curve', presetId: 'custom', interpolation: 'log-pchip-v1', points: [
+  {sourceFrame: 0, rate: rate(1, 2).rate}, {sourceFrame: sourceFrames, rate: rate(11, 20).rate},
+]};
+
+async function fetchHostedPreview(host, mode) {
+  const {server, projectId, clipId, preview, current, data, downloadMedia, expectedOrdinals} = host;
+  const expiresAt = Date.now() + 20_000;
+  let ready;
+  do {
+    const reply = await preview();
+    const code = reply.error?.code;
+    if (!reply.ok && (code === 'SPEED_PROCESSING_UNAVAILABLE' || (mode === 'blend' && code === 'UNSUPPORTED_FORMAT'))) return {reason: code};
+    const observed = data(reply, 'timeline.preview.media');
+    assert.equal(observed.mode, 'proxy', `${mode} must name its preview proxy`);
+    if (observed.status === 'ready') { ready = observed; break; }
+    assert.ok(['queued', 'running'].includes(observed.status), `${mode} task: ${observed.reason ?? observed.status}`);
+    await delay(75);
+  } while (Date.now() < expiresAt);
+  assert.ok(ready, `${mode} preview proxy did not become ready before deadline`);
+  const proxy = new URL(ready.url, server.url);
+  assert.equal(proxy.origin, new URL(server.url).origin);
+  assert.ok(proxy.pathname.startsWith(`/api/projects/${projectId}/`));
+  assert.equal((await fetch(proxy, {method: 'HEAD', signal: AbortSignal.timeout(15_000)})).status, 401);
+  const file = await downloadMedia(proxy, `${mode}-owned-preview`);
+  const saved = await current();
+  const clip = saved.clips.find(item => item.id === clipId);
+  assert.ok(clip);
+  assert.equal(ready.durationFrames, clip.durationFrames);
+  return {file, frames: clip.durationFrames, expected: expectedOrdinals(clip, saved)};
+}
+
+async function countInterpolatedMarkers({file, frames, expected}, media) {
+  const {levels} = await readFrameMarkers(file, frames, media);
+  // An original sample on this gray ramp survives H.264 within three levels.
+  return levels.filter((level, index) => Math.abs(level - marker(expected[index])) > 3).length;
+}
+
 function verifyProjectPreview(ctx) {
-  return withHostedMedia(ctx, async ({maps, media, server, projectId, clipId, preview, clipSpeed, current, data,
-    downloadMedia, expectedOrdinals}) => {
-    const curve = unwrap(maps.instantiateSpeedPreset('slowMiddle', 0, sourceFrames));
-    const gentleCurve = {kind: 'curve', presetId: 'custom', interpolation: 'log-pchip-v1', points: [
-      {sourceFrame: 0, rate: rate(1, 2).rate}, {sourceFrame: sourceFrames, rate: rate(11, 20).rate},
-    ]};
+  return withHostedMedia(ctx, async host => {
+    const curve = unwrap(host.maps.instantiateSpeedPreset('slowMiddle', 0, sourceFrames));
     const missing = [];
     const result = [];
     for (const [mode, speed, direction, interpolation] of [
       ['curve', curve, 'forward', 'off'], ['reverse', rate(3, 2), 'reverse', 'off'],
-      ['blend', gentleCurve, 'forward', 'blend'], ['optical', gentleCurve, 'forward', 'optical'],
+      ['blend', gentleCurve, 'forward', 'blend'],
     ]) {
-      await clipSpeed(speed, direction, interpolation);
-      const expiresAt = Date.now() + 20_000;
-      let ready;
-      do {
-        const reply = await preview();
-        const code = reply.error?.code;
-        if (!reply.ok && (code === 'SPEED_PROCESSING_UNAVAILABLE' || (mode === 'blend' && code === 'UNSUPPORTED_FORMAT'))) {
-          missing.push(`${mode}: ${code}`);
-          break;
-        }
-        const observed = data(reply, 'timeline.preview.media');
-        assert.equal(observed.mode, 'proxy', `${mode} must name its preview proxy`);
-        if (observed.status === 'ready') { ready = observed; break; }
-        assert.ok(['queued', 'running'].includes(observed.status), `${mode} task: ${observed.reason ?? observed.status}`);
-        await delay(75);
-      } while (Date.now() < expiresAt);
-      if (missing.some(item => item.startsWith(`${mode}:`))) continue;
-      assert.ok(ready, `${mode} preview proxy did not become ready before deadline`);
-      const proxy = new URL(ready.url, server.url);
-      assert.equal(proxy.origin, new URL(server.url).origin);
-      assert.ok(proxy.pathname.startsWith(`/api/projects/${projectId}/`));
-      assert.equal((await fetch(proxy, {method: 'HEAD', signal: AbortSignal.timeout(15_000)})).status, 401);
-      const file = await downloadMedia(proxy, `${mode}-owned-preview`);
-      const saved = await current();
-      const clip = saved.clips.find(item => item.id === clipId);
-      assert.ok(clip);
-      assert.equal(ready.durationFrames, clip.durationFrames);
-      // Interpolated preview may have synthetic samples between source markers.
-      // The off modes must reproduce the exact physical source ordinals.
+      await host.clipSpeed(speed, direction, interpolation);
+      const preview = await fetchHostedPreview(host, mode);
+      if (preview.reason) {missing.push(`${mode}: ${preview.reason}`); continue;}
       if (interpolation === 'off') {
-        const seen = await inspectFrames(file, clip.durationFrames, media);
-        assert.deepEqual(seen.ordinals, expectedOrdinals(clip, saved));
+        const seen = await inspectFrames(preview.file, preview.frames, host.media);
+        assert.deepEqual(seen.ordinals, preview.expected);
       } else {
-        await inspectClock(file, clip.durationFrames, media.run);
+        assert.ok(await countInterpolatedMarkers(preview, host.media), 'blend preview kept every off-mode frame marker');
       }
-      result.push({mode, frames: clip.durationFrames});
+      result.push({mode, frames: preview.frames});
     }
     if (missing.length) ctx.blocked(`SP-V/SP-P project preview proxy unavailable (${missing.join(', ')}); native read and ${result.length} ready proxies verified`);
     return {native: 'HTTP RPC', proxyFetch: 'authenticated project media', verified: result};
+  });
+}
+
+function verifyHostedOpticalPreview(ctx) {
+  return withHostedMedia(ctx, async host => {
+    await host.clipSpeed(gentleCurve, 'forward', 'optical');
+    const begin = await host.preview();
+    if (begin.error?.code === 'SPEED_PROCESSING_UNAVAILABLE') ctx.blocked('Requires the SP-V optical preview and SP-I processing host');
+    const deadline = Date.now() + 20_000;
+    let task;
+    do {
+      const {items} = await host.processing();
+      task = items.find(item => item.clipId === host.clipId && item.kind === 'optical');
+      if (task?.status === 'ready') break;
+      assert.notEqual(task?.status, 'failed', `optical task: ${task?.reason ?? 'failed'}`);
+      await delay(75);
+    } while (Date.now() < deadline);
+    assert.equal(task?.status, 'ready', 'the optical processing task did not become ready');
+    const preview = await fetchHostedPreview(host, 'optical');
+    assert.ok(!preview.reason, `optical preview unavailable after processing: ${preview.reason}`);
+    const interpolated = await countInterpolatedMarkers(preview, host.media);
+    assert.ok(interpolated, 'optical task is ready but every low-resolution preview frame still matches off');
+    return {frames: preview.frames, interpolatedMarkers: interpolated, transport: 'authenticated project media'};
   });
 }
 
@@ -321,5 +365,6 @@ export const scenarios = [
   {id: 'preview-export-audio-pcm', run: comparePreviewPcm},
   {id: 'export-interpolation-modes', run: verifyInterpolationExports},
   {id: 'project-preview-proxy-media', run: verifyProjectPreview},
+  {id: 'project-optical-preview-parity', run: verifyHostedOpticalPreview},
   {id: 'project-native-preview-export', run: verifyNativeProjectExport},
 ];

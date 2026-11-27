@@ -17,7 +17,8 @@ node scripts/speed-acceptance/run.mjs --repo /path/to/integration-checkout --cas
 | `preview-export-frame-ordinals` | 逐帧解码并对比常速、正／倒放曲线、定格的源帧和输出 PTS。 |
 | `preview-export-audio-pcm` | 比较连续及按片预览与实际导出准备的 PCM 样本，检查常速保音调、曲线变调、倒放以及定格静音。 |
 | `export-interpolation-modes` | 复用正式渲染的 off、blend、optical 合成样片，检查三档及缺失或无效代理的拒绝。 |
-| `project-preview-proxy-media` | 真实项目预览 RPC，检查原生预览速率及各模式的代理。就绪后读取媒体并核对源帧。所需 SP-P／SP-V 接线未就绪时记录具体模式及错误。 |
+| `project-preview-proxy-media` | 用真实项目预览 RPC 获取原生预览速率及曲线、倒放、帧混合的代理。鉴权读取就绪媒体并核对解码帧。所需 SP-P／SP-V 接线未就绪时记录具体模式及错误。 |
+| `project-optical-preview-parity` | 等真实光流任务就绪，再从预览 RPC 鉴权下载代理，检查是否仍停在等待时使用的原帧采样。 |
 | `project-native-preview-export` | 导入合成素材，验证真实素材读取、1.5× 原生预览、导出预检、公开导出及解码帧号。首次预检拒绝会记录为失败。 |
 | `processing-worker-killed` | 在真实倒放处理进行中强杀该场景自己的 FFmpeg 子进程，核对失败、清理、重开及原任务 ID 上的显式重试。 |
 | `processing-disk-and-source-faults` | 用隔离的缓存预算替身注入无磁盘余量，并在排队至执行之间改变合成源文件。 |
