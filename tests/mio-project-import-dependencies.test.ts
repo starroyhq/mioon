@@ -501,9 +501,9 @@ test('outstanding format 6 processing uses its frozen asset even after the clip 
   assert.deepEqual(f.store.tx(() => readMioProjectImportDependenciesInside(f.store, f.assetId)), blocked);
   f.store.db.exec("UPDATE main.timeline_processing_tasks SET state='failed'");
   f.store.db.prepare('INSERT INTO main.timeline_processing_retries(requestId,taskId) VALUES(?,?)').run(randomUUID(), taskId);
-  // The v13 editor/sequence proof still declines compensation, but the
-  // terminal processing row and receipt are no longer an active reference.
-  assert.deepEqual(f.read(), {status: 'unproven', reason: 'unsupported'});
+  // Native history can now prove absence in format 6. A terminal attempt
+  // and its retry receipt cannot read the source without a current demand.
+  assert.deepEqual(f.read(), {status: 'clear'});
 });
 
 test('an unrecognized active processing input cannot prove asset absence', t => {
