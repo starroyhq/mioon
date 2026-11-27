@@ -20,7 +20,7 @@ import {sequenceEditEnvelopeSchema} from '../packages/contracts/src/sequence-edi
 import type {SequenceEditEnvelope} from '../packages/contracts/src/sequence-edit.ts';
 import {TIMELINE_EXPORT_DEFAULT_SETTINGS} from '../packages/contracts/src/timeline-export-profile.ts';
 import {compileInterpolationPhase} from '../packages/contracts/src/timeline-interpolation.ts';
-import type {SequenceEditSpeedIntent, SpeedSetting} from '../packages/contracts/src/timeline-speed.ts';
+import type {MioSequenceAction} from '../packages/contracts/src/mio-sequence.ts';
 import {compileTimeMap, initialTimeMap, projectTimeMapToCurrentClipFields} from '../packages/contracts/src/timeline-time-map.ts';
 import type {CompiledTimeMap, TimeMapSourceBoundary} from '../packages/contracts/src/timeline-time-map.ts';
 import {projectDatabasePath, projectDirFor} from './helpers/project-database.ts';
@@ -35,7 +35,7 @@ const fps = {fpsNumerator: 30, fpsDenominator: 1};
 const exportSettings = {...TIMELINE_EXPORT_DEFAULT_SETTINGS, resolution: 'short_360'} as const;
 const errorCode = 'INTERPOLATION_UNAVAILABLE';
 const boundary = (frame: number): TimeMapSourceBoundary => ({kind: 'rational', numerator: String(frame), denominator: '1'});
-type SpeedOperation = Extract<SequenceEditSpeedIntent['operation'], {kind: 'clip-speed'}>;
+type SpeedOperation = Extract<MioSequenceAction, {kind: 'clip-speed'}>;
 type Plan = {envelope: SequenceEditEnvelope; planDigest: string};
 type PhaseIssue = {code: string; clipId?: string};
 type ExportPreflight = {status: 'ready' | 'blocked'; snapshotHash: string; issues: PhaseIssue[]};
@@ -65,7 +65,7 @@ async function sourceVideo(directory: string, sourceFps: number, pixel = 'yuv420
 }
 
 function editSpeed(durationFrames: number, clipId: string): SpeedOperation {
-  const setting: SpeedSetting = {direction: 'forward', pitchShift: false, interpolation: 'blend', speed: {
+  const setting: SpeedOperation['setting'] = {direction: 'forward', pitchShift: false, interpolation: 'blend', speed: {
     kind: 'curve', interpolation: 'log-pchip-v1', presetId: 'analytic-control-points', points: [
       {sourceFrame: 0, rate: {numerator: 1, denominator: 4}}, {sourceFrame: durationFrames, rate: {numerator: 2, denominator: 1}},
     ],
