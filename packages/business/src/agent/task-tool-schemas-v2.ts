@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="479ff032f69a0192fc1d9a80374e93d1311419213e4f89d55b3b4aaa42623262";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="718bae3b97212158276a14e859af682166e423977448b7ba4a60c7925c21e19f";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "sequence.preview": {
   "type": "object",
@@ -991,6 +991,34 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
               "kind",
               "clipId",
               "startFrame"
+             ],
+             "additionalProperties": false
+            },
+            {
+             "type": "object",
+             "properties": {
+              "kind": {
+               "type": "string",
+               "const": "copy-as-new-shot"
+              },
+              "clipId": {
+               "type": "string",
+               "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+              },
+              "newClipId": {
+               "type": "string",
+               "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+              },
+              "copyNodeId": {
+               "type": "string",
+               "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+              }
+             },
+             "required": [
+              "kind",
+              "clipId",
+              "newClipId",
+              "copyNodeId"
              ],
              "additionalProperties": false
             },
@@ -7556,6 +7584,24 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
      "kind",
      "clipId",
      "assetId"
+    ],
+    "additionalProperties": false
+   },
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "const": "copy-as-new-shot"
+     },
+     "clipId": {
+      "type": "string",
+      "format": "uuid"
+     }
+    },
+    "required": [
+     "kind",
+     "clipId"
     ],
     "additionalProperties": false
    }
@@ -18918,6 +18964,24 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
      "kind",
      "clipId",
      "assetId"
+    ],
+    "additionalProperties": false
+   },
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "const": "copy-as-new-shot"
+     },
+     "clipId": {
+      "type": "string",
+      "format": "uuid"
+     }
+    },
+    "required": [
+     "kind",
+     "clipId"
     ],
     "additionalProperties": false
    }

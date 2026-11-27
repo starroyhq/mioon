@@ -406,8 +406,8 @@ test('the format-5 unconfirmed bar is mounted for both canvas and editing worksp
   assert.match(app, /\{format5 && format5Unresolved && format5Unresolved\.projectId === data\.project\?\.id && <EditUiUnknownBar/u);
   assert.match(app, /onRetry=\{\(\) => \{ void format5RetryUnconfirmed\(\); \}\} onAbandon=\{format5AbandonUnconfirmed\}/u);
   // Both sessions share exactly one tracker, and switching projects drops it.
-  assert.match(app, /new BoardUiSession\(rpc, \(\) => currentProject\.current, format5LostDeps\(\)\)/u);
-  assert.match(app, /new Format5EditSession\(rpc, \(\) => currentProject\.current, format5LostDeps\(\)\)/u);
+  assert.match(app, /new BoardUiSession\(format5Rpc, \(\) => currentProject\.current, format5LostDeps\(\)\)/u);
+  assert.match(app, /new Format5EditSession\(format5Rpc, \(\) => currentProject\.current, format5LostDeps\(\)\)/u);
   assert.equal((app.match(/format5LostRef\.current!\.clear\(\)/gu) ?? []).length, 2);
   assert.match(app, /readOutcome: \(input, options\) => requestOutcomeClientRef\.current!\.read\(input, options\)/u);
   assert.match(app, /t\('editUi\.notice\.resultApplied'\)/u);

@@ -3,7 +3,7 @@ import {StdioServerTransport} from '@modelcontextprotocol/sdk/server/stdio.js';
 import {ListToolsRequestSchema, CallToolRequestSchema} from '@modelcontextprotocol/sdk/types.js';
 import {createClient, schemas, operationDefinition, discoverySchemas, discoveryEffects, effectAnnotations, discoverSchema, validateDiscovery, jsonSchema, splitProjectAddress, successEnvelope, errorEnvelope, ClientError, VERSION} from '@mioon/client';
 
-import {translate} from '@mioon/i18n';
+import {translate, translateSequenceEditDiagnostic, localizeSequenceEditReceipt} from '@mioon/i18n';
 import type {Locale, MessageKey} from '@mioon/i18n';
 import {localizeToolDescription} from '@mioon/i18n/presentation';
 
@@ -88,8 +88,14 @@ export async function runMcp(transport?: StdioServerTransport): Promise<Server |
       const tool = tools.get(request.params.name);
       if (!tool) throw new ClientError('UNKNOWN_OPERATION', 'Unknown tool. Use tools/list to discover supported tools.');
       if(request.params.name!=='mioon_schema')await (await import('@mioon/node-host/private-storage-bootstrap')).initializeNodePrivateStorage();
-      result = successEnvelope(await tool.call(request.params.arguments ?? {}, {signal: extra.signal}));
-    } catch (error) { result = errorEnvelope(error); }
+      const data = await tool.call(request.params.arguments ?? {}, {signal: extra.signal});
+      result = successEnvelope(request.params.name === operationDefinition('sequence.action.commit').toolName ? localizeSequenceEditReceipt(locale, data) : data);
+    } catch (error) {
+      const failure = errorEnvelope(error);
+      const message = translateSequenceEditDiagnostic(locale, failure.error.code, failure.error.details);
+      if (message) failure.error.message = message;
+      result = failure;
+    }
     return {content: [{type: 'text', text: JSON.stringify(result)}], structuredContent: result, isError: !result.ok};
   });
   try { await server.connect(transport ?? new StdioServerTransport()); return server; }

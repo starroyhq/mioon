@@ -3,8 +3,10 @@
 import {isClipTransition, canonicalClipTransition} from '../../../../packages/contracts/src/timeline-clip-transition.ts';
 import type {ClipTransition} from '../../../../packages/contracts/src/timeline-clip-transition.ts';
 import {isClipTransform} from '../../../../packages/contracts/src/timeline-clip-transform.ts';
+import {sequenceEditFailureMessageKey} from '../../../../packages/i18n/src/index.ts';
 import {sameClipDraftValue} from '../clip-draft-state.ts';
 import type {SubtitleIntent} from '../subtitle-state.ts';
+import type {SequenceDialogueConflict} from './lost-response.ts';
 
 type Row = Record<string, unknown>;
 
@@ -147,13 +149,14 @@ export function format5SubtitleEdit(intent: SubtitleIntent, newCueId: string): F
 }
 
 /** Codes the panels can meet; the shared map keeps one reason per code. */
-export function format5PanelErrorKey(code: string | undefined): string {
+export function format5PanelErrorKey(code: string | undefined, reason?: string): string {
+  const messageKey = sequenceEditFailureMessageKey(code, reason);
+  if (messageKey) return messageKey;
   switch (code) {
-    case 'SEQUENCE_EDIT_ANCHOR_CONFLICT': return 'editUi.error.SEQUENCE_EDIT_ANCHOR_CONFLICT';
+    case 'SEQUENCE_EDIT_DIALOGUE_CONFLICT': return 'editUi.error.SEQUENCE_EDIT_DIALOGUE_CONFLICT';
     case 'SEQUENCE_EDIT_REVISION_CONFLICT': return 'editUi.error.SEQUENCE_EDIT_REVISION_CONFLICT';
     case 'SEQUENCE_EDIT_PATCH_INVALID': return 'editUi.error.SEQUENCE_EDIT_PATCH_INVALID';
     case 'SEQUENCE_EDIT_HISTORY_CONFLICT': return 'editUi.error.SEQUENCE_EDIT_HISTORY_CONFLICT';
-    case 'SEQUENCE_EDIT_NOOP': return 'editUi.error.SEQUENCE_EDIT_NOOP';
     case 'SEQUENCE_EDIT_CONTRACT_INVALID': return 'editUi.error.SEQUENCE_EDIT_CONTRACT_INVALID';
     case 'SEQUENCE_EDIT_CLIP_PROPERTIES_INVALID': return 'editUi.error.CLIP_PROPERTIES_INVALID';
     case 'SEQUENCE_EDIT_SUBTITLE_INVALID': return 'editUi.error.SUBTITLE_INVALID';
@@ -215,5 +218,74 @@ export function format5AnchorConflictPresentation(
   return {
     message: t('editUi.error.SEQUENCE_EDIT_ANCHOR_CONFLICT_MANY', {name: matched[0]!.name, count: matched.length}),
     highlightIds,
+  };
+}
+
+export interface Format5DialogueConflictPresentation {
+  readonly message: string;
+  readonly highlightIds: readonly string[];
+  readonly locateCue: {readonly cueId: string; readonly startFrame: number} | null;
+}
+
+/** Resolves SEQUENCE_EDIT_DIALOGUE_CONFLICT details into one plain-language
+ * reason plus optional blocking-subtitle highlight and locate target. */
+export function format5DialogueConflictPresentation(
+  conflict: SequenceDialogueConflict | undefined,
+  timeline: {readonly subtitles?: {readonly cues?: readonly Row[]} | null} | null | undefined,
+  t: (key: string, params?: Record<string, unknown>) => string,
+  options: {readonly copying?: boolean} = {},
+): Format5DialogueConflictPresentation {
+  const copying = options.copying === true;
+  if (!conflict) {
+    return {
+      message: t(copying ? 'editUi.error.SEQUENCE_EDIT_DIALOGUE_CONFLICT_COPY' : 'editUi.error.SEQUENCE_EDIT_DIALOGUE_CONFLICT'),
+      highlightIds: [],
+      locateCue: null,
+    };
+  }
+  if (conflict.blockerCount === 0) {
+    return {
+      message: t(
+        copying ? 'editUi.error.SEQUENCE_EDIT_DIALOGUE_CONFLICT_COPY_SPACE' : 'editUi.error.SEQUENCE_EDIT_DIALOGUE_CONFLICT_SPACE',
+        {required: conflict.requiredFrames, available: conflict.availableFrames},
+      ),
+      highlightIds: [],
+      locateCue: null,
+    };
+  }
+  const highlightIds = [...new Set(conflict.blockers.map(item => item.cueId))];
+  const first = conflict.blockers[0] ?? null;
+  let text = first?.textExcerpt.trim() ?? '';
+  if (!text && first) {
+    const live = timeline?.subtitles?.cues?.find(item => item.id === first.cueId);
+    const raw = typeof live?.text === 'string' ? live.text.replace(/\s+/gu, ' ').trim() : '';
+    const chars = [...raw];
+    text = chars.slice(0, 12).join('') + (chars.length > 12 ? '…' : '');
+  }
+  const locateCue = first ? {cueId: first.cueId, startFrame: first.startFrame} : null;
+  if (!text) {
+    return {
+      message: t(copying ? 'editUi.error.SEQUENCE_EDIT_DIALOGUE_CONFLICT_COPY_BLOCKED' : 'editUi.error.SEQUENCE_EDIT_DIALOGUE_CONFLICT_BLOCKED'),
+      highlightIds,
+      locateCue,
+    };
+  }
+  if (conflict.blockerCount > 1) {
+    return {
+      message: t(
+        copying ? 'editUi.error.SEQUENCE_EDIT_DIALOGUE_CONFLICT_COPY_MANY' : 'editUi.error.SEQUENCE_EDIT_DIALOGUE_CONFLICT_MANY',
+        {text, count: conflict.blockerCount},
+      ),
+      highlightIds,
+      locateCue,
+    };
+  }
+  return {
+    message: t(
+      copying ? 'editUi.error.SEQUENCE_EDIT_DIALOGUE_CONFLICT_COPY_ONE' : 'editUi.error.SEQUENCE_EDIT_DIALOGUE_CONFLICT_ONE',
+      {text},
+    ),
+    highlightIds,
+    locateCue,
   };
 }
