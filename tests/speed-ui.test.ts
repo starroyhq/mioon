@@ -21,6 +21,8 @@ import {
 import type {ClipTiming, SpeedProcessingItem, SpeedProcessingReason, SpeedSetting} from '../packages/contracts/src/timeline-speed.ts';
 import {LOCALES, translate} from '../packages/i18n/src/index.ts';
 import {timelineSpeedMessages} from '../packages/i18n/src/catalogs/timeline-speed.ts';
+import {Format5EditSession} from '../apps/web/src/edit-ui/session.ts';
+import {format5DialogueConflictPresentation} from '../apps/web/src/edit-ui/format5-panel-edits.ts';
 import {
   DEFAULT_FREEZE_DURATION_FRAMES,
   SPEED_SLIDER_TICKS,
@@ -434,7 +436,7 @@ test('A3/F2: all 8 curve presets match shared instantiateSpeedPreset and enforce
   }
 });
 
-test('A5/A6/F4/F5: speed label formatting, freeze clip classification, playhead gating, and 6-item context menu order', () => {
+test('A5/A6/F4/F5: speed label formatting, freeze clip classification, playhead gating, and 6-item context menu order', async () => {
   assert.equal(formatSpeedRateLabel({numerator: 2, denominator: 1}), '2.0×');
   assert.equal(formatSpeedRateLabel({numerator: 1, denominator: 2}), '0.5×');
   assert.equal(formatSpeedRateLabel({numerator: 5, denominator: 4}), '1.25×');
@@ -497,7 +499,32 @@ test('A5/A6/F4/F5: speed label formatting, freeze clip classification, playhead 
   const copyBody = appSrc.slice(copyStart, copyEnd);
   assert.ok(copyBody.includes("kind: 'copy-as-new-shot'"), 'format5CopyClipAsNewShot must dispatch copy-as-new-shot');
   assert.equal(copyBody.includes('format5PasteClipCommand'), false, 'format5CopyClipAsNewShot must not fall back to paste-clip');
+  assert.ok(copyBody.includes('{copying: true}'), 'format5CopyClipAsNewShot must surface copy-specific dialogue conflict messages');
   assert.ok(appSrc.includes('isMainTrackClip ? {onCopyAsNewShot:'), 'copy-as-new-shot menu entry is restricted to main-track clips');
+  assert.ok(appSrc.includes('format5DialogueConflictPresentation('));
+  assert.ok(appSrc.includes('data-testid="global-toast-action"'));
+
+  for (const locale of LOCALES) {
+    const tLoc = (key: string, params?: Record<string, unknown>) => translate(locale, key as never, params as never);
+    const conflict = format5DialogueConflictPresentation({
+      blockers: [{cueId: 'cue-1', startFrame: 60, endFrame: 119, textExcerpt: '挡住的字幕'}],
+      blockerCount: 1, requiredFrames: 2, availableFrames: 1,
+    }, null, tLoc, {copying: true});
+    assert.ok(conflict.message.includes('挡住的字幕'), locale);
+    assert.deepEqual(conflict.locateCue, {cueId: 'cue-1', startFrame: 60});
+  }
+  const conflictSession = new Format5EditSession(async () => ({
+    ok: false, code: 'SEQUENCE_EDIT_DIALOGUE_CONFLICT', ids: ['shot-copy'],
+    dialogueConflict: {
+      blockers: [{cueId: 'cue-7', startFrame: 30, endFrame: 90, textExcerpt: '占用字幕'}],
+      blockerCount: 1, requiredFrames: 2, availableFrames: 0,
+    },
+  }), () => 'project-1');
+  const conflictOutcome = await conflictSession.runPayload({intents: []});
+  assert.equal(conflictOutcome.ok, false);
+  if (!conflictOutcome.ok && !('unconfirmed' in conflictOutcome)) {
+    assert.equal(conflictOutcome.dialogueConflict?.blockers[0]?.cueId, 'cue-7');
+  }
 });
 
 test('A7/F6: processing poller polls every 2s while active, stops once ready/failed, and fences stale responses', async () => {

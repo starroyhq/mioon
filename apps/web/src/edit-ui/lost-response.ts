@@ -27,8 +27,23 @@ export interface RetainedSequenceEdit {
 /** What the App needs to render the unconfirmed bar. */
 export interface LostResponseView {readonly projectId: string; readonly requestId: string}
 
+export interface SequenceDialogueBlocker {
+  readonly cueId: string;
+  readonly startFrame: number;
+  readonly endFrame: number;
+  readonly textExcerpt: string;
+}
+
+export interface SequenceDialogueConflict {
+  readonly blockers: readonly SequenceDialogueBlocker[];
+  readonly blockerCount: number;
+  readonly requiredFrames: number;
+  readonly availableFrames: number;
+}
+
 export type CommitFailure =
-  | {readonly kind: 'rejected'; readonly code: string; readonly ids?: readonly string[]; readonly reason?: string}
+  | {readonly kind: 'rejected'; readonly code: string; readonly ids?: readonly string[]; readonly reason?: string;
+    readonly dialogueConflict?: SequenceDialogueConflict}
   | {readonly kind: 'unknown'};
 
 export type LostVerdict =
@@ -60,6 +75,26 @@ export function extractSequenceErrorIds(error: unknown): readonly string[] | und
   return ids.length ? ids : undefined;
 }
 
+export function extractSequenceDialogueConflict(error: unknown): SequenceDialogueConflict | undefined {
+  if (!isRecord(error)) return undefined;
+  const details = isRecord(error.details) ? error.details : undefined;
+  const raw = isRecord(error.dialogueConflict) ? error.dialogueConflict
+    : details && isRecord(details.dialogueConflict) ? details.dialogueConflict : null;
+  if (!raw || !Array.isArray(raw.blockers)) return undefined;
+  if (typeof raw.blockerCount !== 'number' || !Number.isInteger(raw.blockerCount) || raw.blockerCount < 0) return undefined;
+  if (typeof raw.requiredFrames !== 'number' || !Number.isInteger(raw.requiredFrames) || raw.requiredFrames <= 0) return undefined;
+  if (typeof raw.availableFrames !== 'number' || !Number.isInteger(raw.availableFrames) || raw.availableFrames < 0) return undefined;
+  const blockers: SequenceDialogueBlocker[] = [];
+  for (const item of raw.blockers) {
+    if (!isRecord(item) || typeof item.cueId !== 'string' || !item.cueId) continue;
+    if (typeof item.startFrame !== 'number' || !Number.isInteger(item.startFrame) || item.startFrame < 0) continue;
+    if (typeof item.endFrame !== 'number' || !Number.isInteger(item.endFrame) || item.endFrame < item.startFrame) continue;
+    const textExcerpt = typeof item.textExcerpt === 'string' ? item.textExcerpt : '';
+    blockers.push({cueId: item.cueId, startFrame: item.startFrame, endFrame: item.endFrame, textExcerpt});
+  }
+  return {blockers, blockerCount: raw.blockerCount, requiredFrames: raw.requiredFrames, availableFrames: raw.availableFrames};
+}
+
 /** Only a definite rejection (HTTP 4xx business error) counts as the server
  * having decided. Network failures, timeouts, 5xx and protocol errors stay
  * unknown: the write may already be applied, so its envelope is retained. */
@@ -70,9 +105,11 @@ export function classifyCommitFailure(error: unknown): CommitFailure {
     || (typeof status === 'number' && status >= 400 && status < 500 && definitive !== false);
   if (!rejected) return {kind: 'unknown'};
   const ids = extractSequenceErrorIds(error);
+  const dialogueConflict = extractSequenceDialogueConflict(error);
   const details = isRecord(error) ? error.details : error instanceof ApiError ? error.details : undefined;
   const reason = isRecord(details) && typeof details.reason === 'string' && details.reason ? details.reason : undefined;
-  return {kind: 'rejected', code: codeOf(error) ?? 'GENERIC', ...(ids && ids.length ? {ids} : {}), ...(reason ? {reason} : {})};
+  return {kind: 'rejected', code: codeOf(error) ?? 'GENERIC', ...(ids && ids.length ? {ids} : {}),
+    ...(reason ? {reason} : {}), ...(dialogueConflict ? {dialogueConflict} : {})};
 }
 
 /** An explicit `not_applied` receipt is a definite conclusion; a missing
@@ -161,7 +198,8 @@ export class LostResponseState {
 export type ParsedSequenceCommit =
   | {readonly kind: 'success'; readonly actionId: string | null; readonly operation: string;
       readonly patch: unknown; readonly receipt?: SequenceEditReceipt}
-  | {readonly kind: 'failure'; readonly code: string; readonly ids?: readonly string[]}
+  | {readonly kind: 'failure'; readonly code: string; readonly ids?: readonly string[];
+      readonly dialogueConflict?: SequenceDialogueConflict}
   | {readonly kind: 'unknown'};
 
 /** Parse one `sequence.commit` response into its three honest states. Both the
@@ -169,8 +207,12 @@ export type ParsedSequenceCommit =
  * accepted are understood; anything else is unknown, never a rejection. */
 export function parseSequenceCommit(value: unknown): ParsedSequenceCommit {
   if (isRecord(value)) {
-    if (value.ok === false) return {kind: 'failure', code: String(value.code ?? 'SEQUENCE_EDIT_PATCH_INVALID'),
-      ids: Array.isArray(value.ids) ? value.ids as string[] : undefined};
+    if (value.ok === false) {
+      const dialogueConflict = extractSequenceDialogueConflict(value);
+      return {kind: 'failure', code: String(value.code ?? 'SEQUENCE_EDIT_PATCH_INVALID'),
+        ids: Array.isArray(value.ids) ? value.ids as string[] : undefined,
+        ...(dialogueConflict ? {dialogueConflict} : {})};
+    }
     const receipt = isRecord(value.receipt) ? value.receipt : null;
     if (receipt) return {kind: 'success', actionId: String(value.actionId ?? receipt.actionId),
       operation: String(value.operation ?? receipt.operation), patch: value.patch,
@@ -179,8 +221,12 @@ export function parseSequenceCommit(value: unknown): ParsedSequenceCommit {
       actionId: value.actionId === undefined ? null : String(value.actionId),
       operation: String(value.operation ?? 'sequence.edit'), patch: undefined,
       receipt: value as unknown as SequenceEditReceipt};
-    if (value.status === 'not_applied') return {kind: 'failure', code: String(value.code ?? 'SEQUENCE_EDIT_NOOP'),
-      ids: Array.isArray(value.ids) ? value.ids as string[] : undefined};
+    if (value.status === 'not_applied') {
+      const dialogueConflict = extractSequenceDialogueConflict(value);
+      return {kind: 'failure', code: String(value.code ?? 'SEQUENCE_EDIT_NOOP'),
+        ids: Array.isArray(value.ids) ? value.ids as string[] : undefined,
+        ...(dialogueConflict ? {dialogueConflict} : {})};
+    }
   }
   return {kind: 'unknown'};
 }
