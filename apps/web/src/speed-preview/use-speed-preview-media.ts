@@ -38,12 +38,30 @@ export interface SpeedPreviewMediaController {
   getState(): SpeedProcessingPollState;
 }
 
+export interface SpeedPreviewMediaScopeInput {
+  readonly eligible: boolean;
+  readonly projectId: string | null;
+  readonly clipId: string | null;
+  readonly timelineRevision: number | null;
+  readonly timingSignature: string;
+}
+
+export interface ScopedSpeedPreviewMediaController {
+  update(scope: SpeedPreviewMediaScopeInput): void;
+  notifyProcessingSignature(clipId: string | null, signature: string): void;
+  refresh(): void;
+  dispose(): void;
+  getState(): SpeedProcessingPollState;
+  getActiveClipId(): string | null;
+}
+
 export function createSpeedPreviewMediaController(options: {
   readonly projectId: string;
   readonly clipId: string;
   readonly read: (signal: AbortSignal) => Promise<unknown>;
-  readonly onMedia: (media: PreviewMedia | null) => void;
+  readonly onMedia: (media: PreviewMedia | null, clipId: string) => void;
   readonly onStateChange?: (state: SpeedProcessingPollState, error?: unknown) => void;
+  readonly isCurrent?: (clipId: string) => boolean;
   readonly intervalMs?: number;
   readonly maxBackoffMs?: number;
   readonly maxConsecutiveFailures?: number;
@@ -79,6 +97,12 @@ export function createSpeedPreviewMediaController(options: {
       abortController.abort();
       abortController = null;
     }
+  }
+
+  function isResponseCurrent(requestSeq: number, ac: AbortController): boolean {
+    if (disposed || !running || requestSeq !== seq || ac.signal.aborted) return false;
+    if (options.isCurrent && !options.isCurrent(options.clipId)) return false;
+    return true;
   }
 
   function handlePollFailure(error: unknown): void {
@@ -118,14 +142,14 @@ export function createSpeedPreviewMediaController(options: {
     void requestPromise
       .then(
         response => {
-          if (disposed || !running || requestSeq !== seq || ac.signal.aborted) return;
+          if (!isResponseCurrent(requestSeq, ac)) return;
           const media = parsePreviewMediaForClip(response, options.projectId, options.clipId);
           if (media === null) {
             handlePollFailure(new Error('INVALID_PREVIEW_MEDIA_RESPONSE'));
             return;
           }
           consecutiveFailures = 0;
-          options.onMedia(media);
+          options.onMedia(media, options.clipId);
           if (previewMediaNeedsPolling(media)) {
             setState('polling');
             timer = schedule(() => {
@@ -138,7 +162,7 @@ export function createSpeedPreviewMediaController(options: {
           }
         },
         error => {
-          if (disposed || !running || requestSeq !== seq || ac.signal.aborted) return;
+          if (!isResponseCurrent(requestSeq, ac)) return;
           handlePollFailure(error);
         },
       )
@@ -181,9 +205,130 @@ export function createSpeedPreviewMediaController(options: {
   };
 }
 
+/** Scope-aware preview media poller: immediately clears timers & aborts in-flight
+ * requests on clip switch or preview close, discards late replies by both clip ID
+ * and monotonic generation, and avoids duplicate refresh on clip change. */
+export function createScopedSpeedPreviewMediaController(options: {
+  readonly read: (projectId: string, clipId: string, signal: AbortSignal) => Promise<unknown>;
+  readonly onMedia: (clipId: string | null, media: PreviewMedia | null) => void;
+  readonly onStateChange?: (state: SpeedProcessingPollState, error?: unknown) => void;
+  readonly intervalMs?: number;
+  readonly maxBackoffMs?: number;
+  readonly maxConsecutiveFailures?: number;
+  readonly setTimeoutFn?: typeof setTimeout;
+  readonly clearTimeoutFn?: typeof clearTimeout;
+}): ScopedSpeedPreviewMediaController {
+  let disposed = false;
+  let generation = 0;
+  let state: SpeedProcessingPollState = 'idle';
+  let activeClipId: string | null = null;
+  let controller: SpeedPreviewMediaController | null = null;
+  let lastScopeKey = '';
+  let lastProcKey: {clipId: string | null; signature: string | null} = {clipId: null, signature: null};
+
+  function publishState(next: SpeedProcessingPollState, error?: unknown): void {
+    if (state === next && error === undefined) return;
+    state = next;
+    options.onStateChange?.(next, error);
+  }
+
+  function disposeCurrent(): void {
+    generation += 1;
+    if (controller) {
+      controller.dispose();
+      controller = null;
+    }
+  }
+
+  function update(scope: SpeedPreviewMediaScopeInput): void {
+    if (disposed) return;
+    if (!scope.eligible || !scope.projectId || !scope.clipId) {
+      disposeCurrent();
+      activeClipId = null;
+      lastScopeKey = '';
+      lastProcKey = {clipId: null, signature: null};
+      publishState('idle');
+      options.onMedia(null, null);
+      return;
+    }
+    const nextScopeKey = `${scope.projectId}:${scope.clipId}:${scope.timelineRevision ?? ''}:${scope.timingSignature}`;
+    if (nextScopeKey === lastScopeKey && controller) return;
+
+    const clipChanged = activeClipId !== scope.clipId;
+    disposeCurrent();
+    const myGeneration = generation;
+    const projectId = scope.projectId;
+    const clipId = scope.clipId;
+    activeClipId = clipId;
+    lastScopeKey = nextScopeKey;
+    if (clipChanged) {
+      lastProcKey = {clipId, signature: null};
+      options.onMedia(clipId, null);
+    }
+
+    const nextController = createSpeedPreviewMediaController({
+      projectId,
+      clipId,
+      intervalMs: options.intervalMs,
+      maxBackoffMs: options.maxBackoffMs,
+      maxConsecutiveFailures: options.maxConsecutiveFailures,
+      setTimeoutFn: options.setTimeoutFn,
+      clearTimeoutFn: options.clearTimeoutFn,
+      read: signal => options.read(projectId, clipId, signal),
+      isCurrent: responseClipId =>
+        !disposed && myGeneration === generation && controller === nextController && activeClipId === responseClipId,
+      onMedia: (media, responseClipId) => {
+        if (disposed || myGeneration !== generation || controller !== nextController || activeClipId !== responseClipId) return;
+        options.onMedia(responseClipId, media);
+      },
+      onStateChange: (nextState, error) => {
+        if (disposed || myGeneration !== generation || controller !== nextController || activeClipId !== clipId) return;
+        publishState(nextState, error);
+      },
+    });
+    controller = nextController;
+    nextController.start();
+  }
+
+  function notifyProcessingSignature(clipId: string | null, signature: string): void {
+    if (disposed) return;
+    const sameClip = clipId !== null && clipId === activeClipId && lastProcKey.clipId === clipId;
+    const prevSig = lastProcKey.signature;
+    lastProcKey = {clipId, signature};
+    if (sameClip && prevSig !== null && signature && prevSig !== signature) {
+      controller?.refresh();
+    }
+  }
+
+  function refresh(): void {
+    if (disposed) return;
+    controller?.refresh();
+  }
+
+  function dispose(): void {
+    if (disposed) return;
+    disposed = true;
+    disposeCurrent();
+    activeClipId = null;
+    lastScopeKey = '';
+    lastProcKey = {clipId: null, signature: null};
+    publishState('idle');
+  }
+
+  return {
+    update,
+    notifyProcessingSignature,
+    refresh,
+    dispose,
+    getState: () => state,
+    getActiveClipId: () => activeClipId,
+  };
+}
+
 export interface UseSpeedPreviewMediaResult {
   readonly media: PreviewMedia | null;
   readonly clipId: string | null;
+  readonly pollState: SpeedProcessingPollState;
   readonly refresh: () => void;
 }
 
@@ -207,6 +352,7 @@ export function useSpeedPreviewMedia(options: {
     && clipNeedsPreviewMediaRpc(timeline, clip, asset),
   );
   const clipId = eligible && clip ? clip.id : null;
+  const timelineRevision = timeline?.revision ?? null;
   const timingSignature = clip?.timing ? JSON.stringify(clip.timing) : 'none';
   const clipProcessingSignature = clipId
     ? processingItems
@@ -220,53 +366,50 @@ export function useSpeedPreviewMedia(options: {
     clipId: null,
     media: null,
   });
-  const controllerRef = useRef<SpeedPreviewMediaController | null>(null);
+  const [pollState, setPollState] = useState<SpeedProcessingPollState>('idle');
+  const managerRef = useRef<ScopedSpeedPreviewMediaController | null>(null);
   const rpcRef = useRef(rpc);
   rpcRef.current = rpc;
 
   useEffect(() => {
-    if (!eligible || !projectId || !clipId) {
-      controllerRef.current?.dispose();
-      controllerRef.current = null;
-      setState(prev => (prev.clipId === null && prev.media === null ? prev : {clipId: null, media: null}));
-      return;
-    }
-    setState(prev => (prev.clipId === clipId ? prev : {clipId, media: null}));
-    const controller = createSpeedPreviewMediaController({
+    const manager = createScopedSpeedPreviewMediaController({
+      read: (pid, cid, signal) => rpcRef.current('timeline.preview.media', {projectId: pid, clipId: cid}, {signal}),
+      onMedia: (nextClipId, media) => setState(prev => (
+        prev.clipId === nextClipId && JSON.stringify(prev.media) === JSON.stringify(media)
+          ? prev
+          : {clipId: nextClipId, media}
+      )),
+      onStateChange: nextState => setPollState(nextState),
+    });
+    managerRef.current = manager;
+    return () => {
+      manager.dispose();
+      if (managerRef.current === manager) managerRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    managerRef.current?.update({
+      eligible,
       projectId,
       clipId,
-      read: signal => rpcRef.current('timeline.preview.media', {projectId, clipId}, {signal}),
-      onMedia: media => setState(prev => (
-        prev.clipId === clipId && JSON.stringify(prev.media) === JSON.stringify(media)
-          ? prev
-          : {clipId, media}
-      )),
+      timelineRevision,
+      timingSignature,
     });
-    controllerRef.current = controller;
-    controller.start();
-    return () => {
-      controller.dispose();
-      if (controllerRef.current === controller) controllerRef.current = null;
-    };
-  }, [eligible, projectId, clipId, timeline?.revision, timingSignature]);
+  }, [eligible, projectId, clipId, timelineRevision, timingSignature]);
 
-  // Re-check media URL when processing list reports a clip's task changed state (e.g. ready or retried).
-  const prevProcSig = useRef<string>(clipProcessingSignature);
   useEffect(() => {
-    if (prevProcSig.current === clipProcessingSignature) return;
-    prevProcSig.current = clipProcessingSignature;
-    if (eligible && clipId && clipProcessingSignature) {
-      controllerRef.current?.refresh();
-    }
-  }, [eligible, clipId, clipProcessingSignature]);
+    managerRef.current?.notifyProcessingSignature(clipId, clipProcessingSignature);
+  }, [clipId, clipProcessingSignature]);
 
   const refresh = useCallback(() => {
-    controllerRef.current?.refresh();
+    managerRef.current?.refresh();
   }, []);
 
   return {
     media: state.clipId === clipId ? state.media : null,
     clipId,
+    pollState,
     refresh,
   };
 }

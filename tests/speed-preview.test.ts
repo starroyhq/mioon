@@ -20,6 +20,7 @@ import {
 import type {PreviewMedia} from '../apps/web/src/speed-preview/speed-preview-model.ts';
 import {
   SPEED_PREVIEW_POLL_INTERVAL_MS,
+  createScopedSpeedPreviewMediaController,
   createSpeedPreviewMediaController,
 } from '../apps/web/src/speed-preview/use-speed-preview-media.ts';
 import {
@@ -412,6 +413,95 @@ test('createSpeedPreviewMediaController backs off on retryable 503, stops as unk
     h.controller.dispose();
     assert.equal(h.activeTimers().length, 0);
     assert.equal(h.controller.getState(), 'idle');
+  }
+});
+
+test('createScopedSpeedPreviewMediaController aborts & discards late replies on clip switch, cancels 503 backoff, handles rapid A->B->A, and avoids duplicate refresh on switch', async () => {
+  const flush = async () => { for (let i = 0; i < 6; i++) await Promise.resolve(); };
+  const CLIP_B = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+  const makeScoped = () => {
+    const timers: Array<{fn: () => void; ms: number; cleared: boolean}> = [];
+    const reqs: Array<{clipId: string; signal: AbortSignal; resolve: (v: unknown) => void; reject: (e: unknown) => void}> = [];
+    const observed: Array<{clipId: string | null; media: PreviewMedia | null}> = [];
+    const manager = createScopedSpeedPreviewMediaController({
+      read: (_projectId, clipId, signal) => new Promise((resolve, reject) => {
+        reqs.push({clipId, signal, resolve, reject});
+      }),
+      onMedia: (clipId, media) => observed.push({clipId, media}),
+      setTimeoutFn: ((fn: () => void, ms: number) => {
+        const entry = {fn, ms, cleared: false};
+        timers.push(entry);
+        return entry as unknown as ReturnType<typeof setTimeout>;
+      }) as typeof setTimeout,
+      clearTimeoutFn: ((handle: ReturnType<typeof setTimeout>) => {
+        (handle as unknown as {cleared: boolean}).cleared = true;
+      }) as typeof clearTimeout,
+    });
+    const activeTimers = () => timers.filter(t => !t.cleared);
+    return {manager, timers, activeTimers, reqs, observed};
+  };
+
+  // 1) Late old reply after A -> B switch is aborted and discarded; B queries once without duplicate refresh from signature change.
+  {
+    const h = makeScoped();
+    h.manager.update({eligible: true, projectId: PROJECT_ID, clipId: CLIP_ID, timelineRevision: 1, timingSignature: 'a'});
+    h.manager.notifyProcessingSignature(CLIP_ID, 't1:running:42');
+    assert.equal(h.reqs.length, 1);
+    assert.equal(h.reqs[0]!.clipId, CLIP_ID);
+
+    // Switch A -> B while A's request is in-flight; signature changes to B's task in the same commit -> must NOT abort B's first request!
+    h.manager.update({eligible: true, projectId: PROJECT_ID, clipId: CLIP_B, timelineRevision: 1, timingSignature: 'b'});
+    h.manager.notifyProcessingSignature(CLIP_B, 't2:running:64');
+    assert.equal(h.reqs[0]!.signal.aborted, true, 'A in-flight request aborted immediately');
+    assert.equal(h.reqs.length, 2, 'switching clips must fire exactly one query for B without duplicate refresh');
+    assert.equal(h.reqs[1]!.clipId, CLIP_B);
+    assert.equal(h.reqs[1]!.signal.aborted, false);
+
+    // Late A response resolves anyway -> discarded by clip ID & generation.
+    h.reqs[0]!.resolve({mode: 'proxy', status: 'running', taskId: TASK_ID, progress: 71});
+    await flush();
+    assert.equal(h.observed.some(e => e.media?.mode === 'proxy' && e.media.status === 'running' && e.media.progress === 71), false);
+
+    // B's response arrives cleanly.
+    h.reqs[1]!.resolve({mode: 'proxy', status: 'running', taskId: TASK_ID, progress: 64});
+    await flush();
+    const lastEntry = h.observed.at(-1);
+    assert.equal(lastEntry?.clipId, CLIP_B);
+    assert.equal(lastEntry?.media?.mode === 'proxy' && lastEntry.media.status === 'running' ? lastEntry.media.progress : null, 64);
+
+    // Same-clip processing signature update DOES trigger a refresh.
+    h.manager.notifyProcessingSignature(CLIP_B, 't2:ready:');
+    assert.equal(h.reqs.length, 3);
+    assert.equal(h.reqs[2]!.clipId, CLIP_B);
+    h.manager.dispose();
+  }
+
+  // 2) 503 during switch + rapid A -> B -> A + closing preview (eligible: false).
+  {
+    const h = makeScoped();
+    h.manager.update({eligible: true, projectId: PROJECT_ID, clipId: CLIP_ID, timelineRevision: 1, timingSignature: 'a'});
+    h.reqs[0]!.reject(Object.assign(new Error('503'), {status: 503, definitive: false}));
+    await flush();
+    assert.equal(h.activeTimers().length, 1);
+
+    // Rapid A -> B -> A cancels backoff & aborts B; late A1/B1 replies ignored; only A2 applies.
+    h.manager.update({eligible: true, projectId: PROJECT_ID, clipId: CLIP_B, timelineRevision: 1, timingSignature: 'b'});
+    assert.equal(h.activeTimers().length, 0);
+    assert.equal(h.reqs.length, 2);
+    h.manager.update({eligible: true, projectId: PROJECT_ID, clipId: CLIP_ID, timelineRevision: 1, timingSignature: 'a'});
+    assert.equal(h.reqs[1]!.signal.aborted, true);
+    assert.equal(h.reqs.length, 3);
+    h.reqs[1]!.reject(Object.assign(new Error('503'), {status: 503, definitive: false}));
+    await flush();
+    assert.equal(h.manager.getState(), 'polling');
+
+    // Closing preview immediately aborts A2 and clears state.
+    h.manager.update({eligible: false, projectId: PROJECT_ID, clipId: null, timelineRevision: 1, timingSignature: 'none'});
+    assert.equal(h.reqs[2]!.signal.aborted, true);
+    assert.equal(h.activeTimers().length, 0);
+    assert.equal(h.manager.getState(), 'idle');
+    assert.equal(h.observed.at(-1)?.media, null);
+    h.manager.dispose();
   }
 });
 
