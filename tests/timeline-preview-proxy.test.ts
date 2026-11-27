@@ -11,6 +11,7 @@ import {createProcessingCache} from '../packages/business/src/timeline-processin
 import {timelinePreviewProcessingRenderer} from '../packages/business/src/timeline-processing/preview.ts';
 import {TIMELINE_PREVIEW_CACHE_PROFILE} from '../packages/business/src/timeline-processing/preview-port.ts';
 import type {PreviewProcessingInput} from '../packages/business/src/timeline-processing/preview-port.ts';
+import {compileInterpolationPhase} from '../packages/contracts/src/timeline-interpolation.ts';
 import {compileTimeMap, initialTimeMap, instantiateSpeedPreset, timeMapPlanFrames, timeMapSourceAtOutputFrame} from '../packages/contracts/src/timeline-time-map.ts';
 import type {TimeMapResult, TimeMapSpeed} from '../packages/contracts/src/timeline-time-map.ts';
 import {speedProcessingItemSchema} from '../packages/contracts/src/timeline-processing.ts';
@@ -24,7 +25,7 @@ const authority = (signal = new AbortController().signal) => ({signal, beforeEff
 const renderer = timelinePreviewProcessingRenderer;
 function unwrap<T>(result: TimeMapResult<T>): T {assert.ok(result.ok, JSON.stringify(result)); return result.value;}
 
-async function fixture(t: test.TestContext, {frames = 24, width = 24, height = 16, vfr = false} = {}) {
+async function fixture(t: test.TestContext, {frames = 24, width = 24, height = 16, vfr = false, blendLayout = false} = {}) {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'mioon-preview-proxy-')));
   t.after(() => rm(root, {recursive: true, force: true}));
   const source = path.join(root, 'source.mov');
@@ -32,7 +33,8 @@ async function fixture(t: test.TestContext, {frames = 24, width = 24, height = 1
     `nullsrc=size=${width}x${height}:rate=30,format=gray,geq=lum='24+mod(N,24)*8'`,
     ...(vfr ? ['-vf', `settb=1/300,setpts='N*10+if(eq(N,${frames - 1}),0,if(eq(mod(N,3),1),-2,3*eq(mod(N,3),2)))'`,
       '-fps_mode', 'passthrough', '-enc_time_base', '1/300', '-video_track_timescale', '300'] : []),
-    '-frames:v', String(frames), '-c:v', 'png', '-threads:v', '1', source]);
+    '-frames:v', String(frames), ...(blendLayout ? ['-c:v', 'libx264', '-crf', '0', '-pix_fmt', 'yuv420p']
+      : ['-c:v', 'png']), '-threads:v', '1', source]);
   const sourceSha256 = sha(await readFile(source));
   const projectId = randomUUID();
   const cache = createProcessingCache(root);
@@ -135,19 +137,17 @@ test('a steep curve selects the correct physical VFR frame before the next prese
   stage.discard();
 });
 
-test('preview scales to 960 and optical waiting uses the exact off-mode frames', async t => {
+test('the off preview used during optical processing scales to 960 and preserves the selected frames', async t => {
   const {makeInput, render} = await fixture(t, {frames: 4, width: 1200, height: 800});
-  for (const interpolation of ['off', 'optical'] as const) {
-    const input = makeInput(rate(1, 2), 'forward', interpolation);
-    const {prepared, stage, file} = await render(input);
-    const {width, height, effectiveInterpolation} = prepared.profile;
-    assert.equal(width, 960);
-    assert.equal(height, 640);
-    assert.equal(effectiveInterpolation, 'off');
-    const expected = Array.from(unwrap(timeMapPlanFrames(input.plan)), frame => 24 + 8 * frame);
-    nearLevels(await readLevels(file, width, height, input.plan.durationFrames), expected);
-    stage.discard();
-  }
+  const input = makeInput(rate(1, 2), 'forward', 'off');
+  const {prepared, stage, file} = await render(input);
+  const {width, height, effectiveInterpolation} = prepared.profile;
+  assert.equal(width, 960);
+  assert.equal(height, 640);
+  assert.equal(effectiveInterpolation, 'off');
+  const expected = Array.from(unwrap(timeMapPlanFrames(input.plan)), frame => 24 + 8 * frame);
+  nearLevels(await readLevels(file, width, height, input.plan.durationFrames), expected);
+  stage.discard();
 });
 
 test('SP-P publishes preview clock and media only after the owned encoder exits', async t => {
@@ -173,18 +173,47 @@ test('SP-P publishes preview clock and media only after the owned encoder exits'
   await assert.rejects(readFile(`${stage.directory}.owner.json`), {code: 'ENOENT'});
 });
 
-test('blend without the shared phase processor is rejected before any preview staging', async t => {
+test('optical rendering requires a held proxy before any media tool starts', async t => {
   const {cache, makeInput, projectId, render, root} = await fixture(t, {frames: 4});
   let started = 0;
   const unobserve = onMediaProcess(event => {if (event.type === 'started') started++;});
   try {
     for (const direction of ['forward', 'reverse'] as const) {
-      await assert.rejects(render(makeInput(rate(1, 2), direction, 'blend')), {code: 'UNSUPPORTED_FORMAT'});
+      await assert.rejects(render(makeInput(rate(1, 2), direction, 'optical')), {code: 'UNSUPPORTED_FORMAT'});
     }
   } finally {unobserve();}
   assert.equal(started, 0);
   assert.equal(cache.stats(projectId).usedBytes, 0);
   assert.deepEqual(await readdir(root), ['source.mov']);
+});
+
+test('blend probes the native pixel layout and rejects unsupported sources before reserving staging', async t => {
+  const {cache, makeInput, projectId, render, root} = await fixture(t, {frames: 4});
+  for (const direction of ['forward', 'reverse'] as const) {
+    await assert.rejects(render(makeInput(rate(1, 2), direction, 'blend')), {code: 'UNSUPPORTED_FORMAT'});
+  }
+  assert.equal(cache.stats(projectId).usedBytes, 0);
+  assert.deepEqual(await readdir(root), ['source.mov']);
+});
+
+test('forward and reverse blend preview use the shared adjacent frames and phase before cleaning up', async t => {
+  const {cache, makeInput, projectId, render} = await fixture(t, {frames: 8, blendLayout: true});
+  for (const direction of ['forward', 'reverse'] as const) {
+    const input = makeInput(rate(1, 2), direction, 'blend');
+    const source = await readLevels(input.source.path, 24, 16, 8);
+    const {frames} = unwrap(compileInterpolationPhase(input.plan));
+    const off = unwrap(timeMapPlanFrames(input.plan));
+    const expected = frames.map(({active, fromFrame, toFrame, weight}, offset) => active
+      ? Math.round(source[fromFrame]! + (source[toFrame]! - source[fromFrame]!) * weight) : source[off[offset]!]!);
+    assert.ok(expected.some((level, offset) => level !== source[off[offset]!]));
+    const {prepared, stage, file} = await render(input);
+    assert.equal(prepared.profile.effectiveInterpolation, 'blend');
+    nearLevels(await readLevels(file, 24, 16, input.plan.durationFrames), expected);
+    stage.discard();
+    await assert.rejects(readdir(stage.directory), {code: 'ENOENT'});
+    await assert.rejects(readFile(`${stage.directory}.owner.json`), {code: 'ENOENT'});
+    assert.equal(cache.stats(projectId).usedBytes, 0);
+  }
 });
 
 test('an aborted preview attempt stops its child before the SP-P staging owner discards files', async t => {
