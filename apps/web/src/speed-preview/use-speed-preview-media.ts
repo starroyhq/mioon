@@ -9,6 +9,13 @@ import {useCallback, useEffect, useRef, useState} from 'react';
 import type {SpeedProcessingItem} from '../../../../packages/contracts/src/timeline-speed.ts';
 import type {SpeedAssetLike, SpeedClipLike, SpeedTimelineLike} from '../speed-ui/speed-model.ts';
 import {
+  SPEED_PROCESSING_MAX_CONSECUTIVE_FAILURES,
+  SPEED_PROCESSING_RETRY_MAX_BACKOFF_MS,
+  isRetryableProcessingPollError,
+  speedProcessingBackoffDelayMs,
+} from '../speed-ui/use-speed-processing.ts';
+import type {SpeedProcessingPollState} from '../speed-ui/use-speed-processing.ts';
+import {
   clipNeedsPreviewMediaRpc,
   parsePreviewMediaForClip,
   previewMediaNeedsPolling,
@@ -28,6 +35,7 @@ export interface SpeedPreviewMediaController {
   refresh(): void;
   stop(): void;
   dispose(): void;
+  getState(): SpeedProcessingPollState;
 }
 
 export function createSpeedPreviewMediaController(options: {
@@ -35,19 +43,32 @@ export function createSpeedPreviewMediaController(options: {
   readonly clipId: string;
   readonly read: (signal: AbortSignal) => Promise<unknown>;
   readonly onMedia: (media: PreviewMedia | null) => void;
+  readonly onStateChange?: (state: SpeedProcessingPollState, error?: unknown) => void;
   readonly intervalMs?: number;
+  readonly maxBackoffMs?: number;
+  readonly maxConsecutiveFailures?: number;
   readonly setTimeoutFn?: typeof setTimeout;
   readonly clearTimeoutFn?: typeof clearTimeout;
 }): SpeedPreviewMediaController {
   const intervalMs = options.intervalMs ?? SPEED_PREVIEW_POLL_INTERVAL_MS;
+  const maxBackoffMs = options.maxBackoffMs ?? SPEED_PROCESSING_RETRY_MAX_BACKOFF_MS;
+  const maxConsecutiveFailures = Math.max(1, options.maxConsecutiveFailures ?? SPEED_PROCESSING_MAX_CONSECUTIVE_FAILURES);
   const schedule = options.setTimeoutFn ?? ((fn: () => void, ms: number) => setTimeout(fn, ms));
   const cancelTimer = options.clearTimeoutFn ?? ((handle: ReturnType<typeof setTimeout>) => clearTimeout(handle));
 
   let running = false;
   let disposed = false;
   let seq = 0;
+  let consecutiveFailures = 0;
+  let state: SpeedProcessingPollState = 'idle';
   let timer: ReturnType<typeof setTimeout> | null = null;
   let abortController: AbortController | null = null;
+
+  function setState(next: SpeedProcessingPollState, error?: unknown): void {
+    if (state === next && error === undefined) return;
+    state = next;
+    options.onStateChange?.(next, error);
+  }
 
   function clearPending(): void {
     if (timer !== null) {
@@ -60,27 +81,65 @@ export function createSpeedPreviewMediaController(options: {
     }
   }
 
+  function handlePollFailure(error: unknown): void {
+    if (disposed || !running) return;
+    if (!isRetryableProcessingPollError(error)) {
+      running = false;
+      consecutiveFailures = 0;
+      setState('failed', error);
+      return;
+    }
+    consecutiveFailures += 1;
+    if (consecutiveFailures >= maxConsecutiveFailures) {
+      running = false;
+      setState('unknown', error);
+      return;
+    }
+    setState('retrying', error);
+    const delayMs = speedProcessingBackoffDelayMs(consecutiveFailures, intervalMs, maxBackoffMs);
+    timer = schedule(() => {
+      timer = null;
+      fetchOnce();
+    }, delayMs);
+  }
+
   function fetchOnce(): void {
     if (disposed || !running) return;
     clearPending();
     const requestSeq = ++seq;
     const ac = new AbortController();
     abortController = ac;
-    void Promise.resolve(options.read(ac.signal))
+    let requestPromise: Promise<unknown>;
+    try {
+      requestPromise = Promise.resolve(options.read(ac.signal));
+    } catch (syncError) {
+      requestPromise = Promise.reject(syncError);
+    }
+    void requestPromise
       .then(
         response => {
           if (disposed || !running || requestSeq !== seq || ac.signal.aborted) return;
           const media = parsePreviewMediaForClip(response, options.projectId, options.clipId);
+          if (media === null) {
+            handlePollFailure(new Error('INVALID_PREVIEW_MEDIA_RESPONSE'));
+            return;
+          }
+          consecutiveFailures = 0;
           options.onMedia(media);
           if (previewMediaNeedsPolling(media)) {
+            setState('polling');
             timer = schedule(() => {
               timer = null;
               fetchOnce();
             }, intervalMs);
+          } else {
+            running = false;
+            setState('idle');
           }
         },
-        () => {
-          // Transient RPC failure keeps fallback playback/scrubbing usable without crashing.
+        error => {
+          if (disposed || !running || requestSeq !== seq || ac.signal.aborted) return;
+          handlePollFailure(error);
         },
       )
       .finally(() => {
@@ -91,25 +150,34 @@ export function createSpeedPreviewMediaController(options: {
   return {
     start() {
       if (disposed) return;
+      consecutiveFailures = 0;
       running = true;
+      setState('polling');
       fetchOnce();
     },
     refresh() {
       if (disposed) return;
+      consecutiveFailures = 0;
       running = true;
+      setState('polling');
       fetchOnce();
     },
     stop() {
       running = false;
+      consecutiveFailures = 0;
       seq += 1;
       clearPending();
+      setState('idle');
     },
     dispose() {
       running = false;
+      consecutiveFailures = 0;
       seq += 1;
       clearPending();
+      setState('idle');
       disposed = true;
     },
+    getState: () => state,
   };
 }
 

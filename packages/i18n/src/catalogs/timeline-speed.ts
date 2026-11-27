@@ -329,6 +329,12 @@ export const timelineSpeedMessages = {
     en: 'Ready',
     ja: '完了',
   },
+  'speed.processing.statusUnknown': {
+    'zh-Hans': '状态未知',
+    'zh-Hant': '狀態未知',
+    en: 'Status unknown',
+    ja: '状況不明',
+  },
   'speed.processing.retry': {
     'zh-Hans': '重试',
     'zh-Hant': '重試',

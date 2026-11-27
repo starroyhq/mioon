@@ -21,6 +21,8 @@ import {speedProcessingItemSchema, timelineProcessingResponseSchemas} from '../p
 import type {ClipTiming, SpeedProcessingItem, SpeedProcessingReason, SpeedSetting} from '../packages/contracts/src/timeline-speed.ts';
 import {LOCALES, translate} from '../packages/i18n/src/index.ts';
 import {timelineSpeedMessages} from '../packages/i18n/src/catalogs/timeline-speed.ts';
+import {Format5EditSession} from '../apps/web/src/edit-ui/session.ts';
+import {format5DialogueConflictPresentation} from '../apps/web/src/edit-ui/format5-panel-edits.ts';
 import {
   DEFAULT_FREEZE_DURATION_FRAMES,
   SPEED_SLIDER_TICKS,
@@ -28,8 +30,12 @@ import {
   buildClipSpeedIntent,
   buildFreezeFrameIntent,
   canFreezeClipAtPlayhead,
+  clientPointToCurveSvg,
   clipNeedsSpeedProcessing,
   clipSupportsSpeed,
+  curveDragTargetCoords,
+  curvePointsEqual,
+  curveSvgPointToCoords,
   defaultSpeedSetting,
   deleteCurveControlPoint,
   formatOriginalSeconds,
@@ -42,6 +48,8 @@ import {
   logNormToRate,
   moveCurveControlPoint,
   normalizeSpeedSettingForSubmit,
+  nudgeCurveControlPointFrame,
+  nudgeCurveControlPointRate,
   parseRateToRational,
   playheadSourceNormOnClip,
   previewLocalSpeedSetting,
@@ -65,9 +73,17 @@ import {
   speedProcessingItemTitle,
 } from '../apps/web/src/speed-ui/speed-presentation.ts';
 import {
+  SPEED_PROCESSING_MAX_CONSECUTIVE_FAILURES,
   SPEED_PROCESSING_POLL_INTERVAL_MS,
+  SPEED_PROCESSING_RETRY_MAX_BACKOFF_MS,
   createSpeedProcessingPoller,
+  isRetryableProcessingPollError,
+  speedProcessingBackoffDelayMs,
 } from '../apps/web/src/speed-ui/use-speed-processing.ts';
+import type {SpeedProcessingPollState} from '../apps/web/src/speed-ui/use-speed-processing.ts';
+import {ApiError} from '../apps/web/src/api.ts';
+import {lenientFunction} from './helpers/eval-source.ts';
+import {timelineSplitState} from '../apps/web/src/timeline-split.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const read = (file: string) => readFileSync(join(root, file), 'utf8');
@@ -205,6 +221,118 @@ test('A1/F7: capabilities.speed !== true hides all timeline badges, overview tas
   assert.equal(c1?.processingActive, true);
   assert.equal(c1?.processingPercent, 42);
   assert.equal(c1?.processingLabel, '处理中 42%');
+});
+
+test('A1: right-click and Shift+F10 intentionally preserve playhead across formats 3/4/5/6 regardless of speed switch', async () => {
+  const appSrc = read('apps/web/src/App.tsx');
+  const timelineSrc = read('apps/web/src/Timeline.tsx');
+  const extractSection = (start: string, end: string): string => {
+    const first = appSrc.indexOf(start);
+    const last = appSrc.indexOf(end, first + start.length);
+    assert.ok(first >= 0 && last > first, `Missing App section: ${start}`);
+    assert.equal(appSrc.indexOf(start, first + start.length), -1, `Ambiguous App section: ${start}`);
+    return appSrc.slice(first, last);
+  };
+
+  // Timeline routes both contextmenu and Shift+F10 / ContextMenu / Apps to onClipContextMenu without resetting playhead.
+  assert.ok(timelineSrc.includes("event.shiftKey && event.key === 'F10'"));
+  assert.ok(timelineSrc.includes('onClipContextMenu?.(clip.id, {x: e.clientX, y: e.clientY})'));
+  assert.ok(appSrc.includes('onClipContextMenu={openClipContextMenu}'));
+
+  const openMenuSource = extractSection('  function openClipContextMenu(', '  /** One bounded retry');
+  const selectClipSource = extractSection('  async function selectClip(', '  async function addTimelineAsset(');
+
+  for (const formatVersion of [3, 4, 5, 6] as const) {
+    for (const speedSwitch of [false, true] as const) {
+      const clipId = `clip-fmt-${formatVersion}-${speedSwitch ? 'on' : 'off'}`;
+      const projectId = `proj-${formatVersion}`;
+      const timeline = {
+        id: `tl-${formatVersion}`,
+        projectId,
+        revision: 1,
+        fps: 30,
+        capabilities: speedSwitch ? {speed: true} : {speed: false},
+        tracks: [{id: 'v1', kind: 'video', orderIndex: 0}],
+        clips: [{id: clipId, trackId: 'v1', assetId: 'a1', startFrame: 0, durationFrames: 120, sourceInFrame: 0}],
+      };
+      const viewEditing: Record<string, unknown> = {
+        selectedClipId: null,
+        quickAssetId: null,
+        playhead: 20,
+        previewKind: 'timeline',
+      };
+      let menuState: {clipId: string; x: number; y: number} | null = null;
+      const env = {
+        clipDraftRef: {current: null},
+        context: () => ({projectId}),
+        panelIntent: {current: 1},
+        isCurrent: () => true,
+        dataRef: {current: {projectFormatVersion: formatVersion, timeline}},
+        selectedClipId: null as string | null,
+        quickAssetId: null as string | null,
+        workspaceMode: 'editing',
+        subtitlesRef: {current: null},
+        guardNavigation: async () => true,
+        msg: (key: string) => key,
+        setPropertiesPage: () => {},
+        navigationEpoch: {current: 0},
+        setNavigationPresentation: () => {},
+        leaveReferencePage: () => {},
+        updateView: (area: string, patch: unknown) => {
+          if (area === 'editing' && patch && typeof patch === 'object') {
+            Object.assign(viewEditing, patch);
+          }
+        },
+        setMobilePanel: () => {},
+        setClipContextMenu: (next: {clipId: string; x: number; y: number} | null) => { menuState = next; },
+      };
+      const api = lenientFunction(
+        ...Object.keys(env),
+        `${openMenuSource}\n${selectClipSource}\nreturn { openClipContextMenu, selectClip };`,
+      )(...Object.values(env)) as {
+        openClipContextMenu: (id: string, point: {x: number; y: number}) => void;
+        selectClip: (id: string, showPreview?: boolean, options?: {preservePlayhead?: boolean}) => Promise<void>;
+      };
+
+      // Right-click / Shift+F10 keeps playhead at frame 20 instead of resetting to frame 0.
+      api.openClipContextMenu(clipId, {x: 120, y: 80});
+      await Promise.resolve();
+      await Promise.resolve();
+      assert.equal(viewEditing.selectedClipId, clipId, `fmt=${formatVersion} speed=${speedSwitch}`);
+      assert.equal(viewEditing.playhead, 20, `context menu must preserve playhead for fmt=${formatVersion} speed=${speedSwitch}`);
+      assert.equal(viewEditing.previewKind, 'source');
+      assert.deepEqual(menuState, {clipId, x: 120, y: 80});
+
+      // Because playhead remains at 20 inside [0, 120), split stays enabled at frame 20.
+      const split = timelineSplitState({
+        projectId,
+        timeline: timeline as never,
+        history: {
+          projectId,
+          timelineId: timeline.id,
+          revision: timeline.revision,
+          cursor: 0,
+          length: 0,
+          canUndo: false,
+          canRedo: false,
+          undoEntry: null,
+          redoEntry: null,
+        },
+        busy: false,
+        pending: false,
+        dirty: false,
+        online: true,
+        selectedClipId: clipId,
+        playhead: viewEditing.playhead as number,
+        mode: 'editing',
+      });
+      assert.equal(split.canSplit, true, `split must stay enabled at frame 20 for fmt=${formatVersion} speed=${speedSwitch}`);
+
+      // Contrast: normal left-click selectClip still jumps playhead to clip.startFrame (0).
+      await api.selectClip(clipId);
+      assert.equal(viewEditing.playhead, 0, `direct selectClip still jumps to startFrame for fmt=${formatVersion} speed=${speedSwitch}`);
+    }
+  }
 });
 
 test('A2/F1: logarithmic slider mapping, reduced rational parsing, live duration, interpolation, and reset', () => {
@@ -435,7 +563,92 @@ test('A3/F2: all 8 curve presets match shared instantiateSpeedPreset and enforce
   }
 });
 
-test('A5/A6/F4/F5: speed label formatting, freeze clip classification, playhead gating, and 6-item context menu order', () => {
+test('A3/F2: curve keyboard bounds reject locally with zero commit, and vertical drag keeps sourceFrame exact under SVG letterbox', () => {
+  // 10× endpoint + ArrowUp and 0.1× endpoint/interior + ArrowDown reject locally (zero preview/commit).
+  const atBounds = [
+    {sourceFrame: 0, rate: {numerator: 10, denominator: 1}},
+    {sourceFrame: 60, rate: {numerator: 1, denominator: 10}},
+    {sourceFrame: 120, rate: {numerator: 1, denominator: 1}},
+  ];
+  assert.deepEqual(nudgeCurveControlPointRate(atBounds, 0, 'up', false), {ok: false, error: 'INVALID_RATE'});
+  assert.deepEqual(nudgeCurveControlPointRate(atBounds, 0, 'up', true), {ok: false, error: 'INVALID_RATE'});
+  assert.deepEqual(nudgeCurveControlPointRate(atBounds, 1, 'down', false), {ok: false, error: 'INVALID_RATE'});
+  assert.deepEqual(nudgeCurveControlPointRate(atBounds, 1, 'down', true), {ok: false, error: 'INVALID_RATE'});
+
+  // Moving away from 10× / 0.1× still succeeds, and reaching 10× then pressing up again rejects locally.
+  const downFrom10 = nudgeCurveControlPointRate(atBounds, 0, 'down', false);
+  assert.equal(downFrom10.ok, true);
+  if (downFrom10.ok) {
+    assert.ok(downFrom10.points[0]!.rate.numerator / downFrom10.points[0]!.rate.denominator < 10);
+    const backTo10 = nudgeCurveControlPointRate(downFrom10.points, 0, 'up', true);
+    assert.equal(backTo10.ok, true);
+    if (backTo10.ok) {
+      assert.deepEqual(backTo10.points[0]!.rate, {numerator: 10, denominator: 1});
+      assert.deepEqual(nudgeCurveControlPointRate(backTo10.points, 0, 'up', false), {ok: false, error: 'INVALID_RATE'});
+    }
+  }
+
+  // Horizontal nudges on fixed endpoints or neighbor-clamped interior points report changed: false (no NOOP commit).
+  const leftEnd = nudgeCurveControlPointFrame(atBounds, 0, 'right', false);
+  assert.equal(leftEnd.ok, true);
+  if (leftEnd.ok) assert.equal(leftEnd.changed, false);
+  const tight = [
+    {sourceFrame: 0, rate: {numerator: 1, denominator: 1}},
+    {sourceFrame: 1, rate: {numerator: 2, denominator: 1}},
+    {sourceFrame: 120, rate: {numerator: 1, denominator: 1}},
+  ];
+  const clampedLeft = nudgeCurveControlPointFrame(tight, 1, 'left', false);
+  assert.equal(clampedLeft.ok, true);
+  if (clampedLeft.ok) assert.equal(clampedLeft.changed, false);
+
+  // Vertical drag on flashIn [0, 120] interior point at frame 30 inside 292×132 letterboxed SVG (1440×900 viewport):
+  const flashIn120 = instantiatePresetForClip('flashIn', 0, 120);
+  assert.equal(flashIn120.ok, true);
+  if (!flashIn120.ok || flashIn120.speed.kind !== 'curve') throw new Error('expected flashIn curve');
+  const interior = flashIn120.speed.points[1]!;
+  assert.equal(interior.sourceFrame, 30);
+
+  const rect = {left: 1128, top: 178.84375, width: 292, height: 132};
+  const ctm = {a: 1.03125, b: 0, c: 0, d: 1.03125, e: 1137.875, f: 178.84375};
+
+  for (const activeCtm of [ctm, null] as const) {
+    // Center click at frame 30 (clientX=1229.140625), pure vertical drag 15 CSS px upward.
+    const startSvg = clientPointToCurveSvg(1229.140625, 244.84375, rect, activeCtm);
+    const endSvg = clientPointToCurveSvg(1229.140625, 229.84375, rect, activeCtm);
+    assert.ok(startSvg && endSvg);
+    assert.equal(curveSvgPointToCoords(startSvg!, 0, 120).frame, 30);
+    const dragged = curveDragTargetCoords(interior, startSvg!, endSvg!, 0, 120);
+    assert.equal(dragged.frame, 30, 'vertical drag must keep sourceFrame at 30 instead of drifting to 32');
+    assert.ok(dragged.rate > 1, 'upward drag must increase rate');
+    const moved = moveCurveControlPoint(flashIn120.speed.points, 1, dragged.frame, dragged.rate);
+    assert.equal(moved.ok, true);
+    if (moved.ok) assert.equal(moved.points[1]!.sourceFrame, 30);
+
+    // Off-center click inside the 11px hit target (+4 CSS px X) + pure vertical drag still keeps sourceFrame at 30.
+    const offStart = clientPointToCurveSvg(1233.140625, 244.84375, rect, activeCtm);
+    const offEnd = clientPointToCurveSvg(1233.140625, 229.84375, rect, activeCtm);
+    assert.ok(offStart && offEnd);
+    const offDragged = curveDragTargetCoords(interior, offStart!, offEnd!, 0, 120);
+    assert.equal(offDragged.frame, 30, 'off-center vertical drag must keep sourceFrame exact');
+    assert.ok(offDragged.rate > 1);
+
+    // Pure horizontal drag updates sourceFrame while keeping rate exact.
+    const horizEnd = clientPointToCurveSvg(1249.140625, 244.84375, rect, activeCtm);
+    const horizDragged = curveDragTargetCoords(interior, startSvg!, horizEnd!, 0, 120);
+    assert.ok(horizDragged.frame > 30);
+    assert.equal(horizDragged.rate, 1);
+  }
+
+  // Click without movement is detected as equal and skips commit in ClipSpeedSection.
+  assert.equal(curvePointsEqual(flashIn120.speed.points, flashIn120.speed.points), true);
+  const sectionSrc = read('apps/web/src/speed-ui/ClipSpeedSection.tsx');
+  assert.ok(sectionSrc.includes('nudgeCurveControlPointRate('));
+  assert.ok(sectionSrc.includes('clientPointToCurveSvg('));
+  assert.ok(sectionSrc.includes('curveDragTargetCoords('));
+  assert.ok(sectionSrc.includes('if (!movedAny) return;'));
+});
+
+test('A5/A6/F4/F5: speed label formatting, freeze clip classification, playhead gating, and 6-item context menu order', async () => {
   assert.equal(formatSpeedRateLabel({numerator: 2, denominator: 1}), '2.0×');
   assert.equal(formatSpeedRateLabel({numerator: 1, denominator: 2}), '0.5×');
   assert.equal(formatSpeedRateLabel({numerator: 5, denominator: 4}), '1.25×');
@@ -489,6 +702,41 @@ test('A5/A6/F4/F5: speed label formatting, freeze clip classification, playhead 
   const views = buildTimelineClipSpeedViews({capabilities: {speed: true}, clips: [freezeClip]}, [], tZh);
   assert.equal(views?.get('f1')?.isFreeze, true);
   assert.equal(views?.get('f1')?.freezeTitle, '定格');
+
+  // Copy-as-new-shot uses the dedicated copy-as-new-shot command (not paste-clip) and only on main-track clips
+  const appSrc = read('apps/web/src/App.tsx');
+  const copyStart = appSrc.indexOf('async function format5CopyClipAsNewShot(');
+  const copyEnd = appSrc.indexOf('async function format5ToggleClipMute(', copyStart);
+  assert.ok(copyStart > 0 && copyEnd > copyStart);
+  const copyBody = appSrc.slice(copyStart, copyEnd);
+  assert.ok(copyBody.includes('format5CopyAsNewShotCommand('), 'format5CopyClipAsNewShot must dispatch format5CopyAsNewShotCommand');
+  assert.equal(copyBody.includes('format5PasteClipCommand'), false, 'format5CopyClipAsNewShot must not fall back to paste-clip');
+  assert.ok(copyBody.includes('{copying: true}'), 'format5CopyClipAsNewShot must surface copy-specific dialogue conflict messages');
+  assert.ok(appSrc.includes('isMainTrackClip ? {onCopyAsNewShot:'), 'copy-as-new-shot menu entry is restricted to main-track clips');
+  assert.ok(appSrc.includes('format5DialogueConflictPresentation('));
+  assert.ok(appSrc.includes('data-testid="global-toast-action"'));
+
+  for (const locale of LOCALES) {
+    const tLoc = (key: string, params?: Record<string, unknown>) => translate(locale, key as never, params as never);
+    const conflict = format5DialogueConflictPresentation({
+      blockers: [{cueId: 'cue-1', startFrame: 60, endFrame: 119, textExcerpt: '挡住的字幕'}],
+      blockerCount: 1, requiredFrames: 2, availableFrames: 1,
+    }, null, tLoc, {copying: true});
+    assert.ok(conflict.message.includes('挡住的字幕'), locale);
+    assert.deepEqual(conflict.locateCue, {cueId: 'cue-1', startFrame: 60});
+  }
+  const conflictSession = new Format5EditSession(async () => ({
+    ok: false, code: 'SEQUENCE_EDIT_DIALOGUE_CONFLICT', ids: ['shot-copy'],
+    dialogueConflict: {
+      blockers: [{cueId: 'cue-7', startFrame: 30, endFrame: 90, textExcerpt: '占用字幕'}],
+      blockerCount: 1, requiredFrames: 2, availableFrames: 0,
+    },
+  }), () => 'project-1');
+  const conflictOutcome = await conflictSession.runPayload({intents: []});
+  assert.equal(conflictOutcome.ok, false);
+  if (!conflictOutcome.ok && !('unconfirmed' in conflictOutcome)) {
+    assert.equal(conflictOutcome.dialogueConflict?.blockers[0]?.cueId, 'cue-7');
+  }
 });
 
 test('A7/F6: processing poller polls every 2s while active, stops once ready/failed, and fences stale responses', async () => {
@@ -604,6 +852,175 @@ test('A7/F6: processing poller polls every 2s while active, stops once ready/fai
   responses[2]!.resolve({items: [{taskId, clipId, kind: 'reverse', status: 'running', progress: 99}]});
   await Promise.resolve();
   assert.equal(snapshots.length, 2);
+});
+
+test('A7/F6: processing poller recovers after retryable 503, backs off to unknown on consecutive failures, and stops on clip switch/leave', async () => {
+  const taskId = randomUUID();
+  const clipId = randomUUID();
+  const flushMicrotasks = async () => {
+    for (let i = 0; i < 6; i++) await Promise.resolve();
+  };
+
+  // Error classification: 5xx / 429 / 408 / network are retryable; 4xx definitive & AbortError stop immediately.
+  assert.equal(isRetryableProcessingPollError(new ApiError('Unavailable', 'UNAVAILABLE', undefined, false, 503)), true);
+  assert.equal(isRetryableProcessingPollError(new ApiError('Bad Gateway', 'BAD_GATEWAY', undefined, false, 502)), true);
+  assert.equal(isRetryableProcessingPollError(new ApiError('Too Many Requests', 'RATE_LIMIT', undefined, true, 429)), true);
+  assert.equal(isRetryableProcessingPollError(new ApiError('Timeout', 'TIMEOUT', undefined, true, 408)), true);
+  assert.equal(isRetryableProcessingPollError(new TypeError('Failed to fetch')), true);
+  assert.equal(isRetryableProcessingPollError(new ApiError('Unauthorized', 'UNAUTHORIZED', undefined, true, 401)), false);
+  assert.equal(isRetryableProcessingPollError(new ApiError('Not found', 'NOT_FOUND', undefined, true, 404)), false);
+  assert.equal(isRetryableProcessingPollError(Object.assign(new Error('Aborted'), {name: 'AbortError'})), false);
+  assert.equal(speedProcessingBackoffDelayMs(1), 2000);
+  assert.equal(speedProcessingBackoffDelayMs(2), 4000);
+  assert.equal(speedProcessingBackoffDelayMs(3), 8000);
+  assert.equal(speedProcessingBackoffDelayMs(4), 16000);
+  assert.equal(speedProcessingBackoffDelayMs(5), SPEED_PROCESSING_RETRY_MAX_BACKOFF_MS);
+
+  const makeHarness = (maxConsecutiveFailures = SPEED_PROCESSING_MAX_CONSECUTIVE_FAILURES) => {
+    let nextId = 1;
+    const timers = new Map<number, {fn: () => void; ms: number}>();
+    const delays: number[] = [];
+    const requests: Array<{signal: AbortSignal; resolve: (val: unknown) => void; reject: (err: unknown) => void}> = [];
+    const snapshots: Array<readonly SpeedProcessingItem[]> = [];
+    const states: SpeedProcessingPollState[] = [];
+    const poller = createSpeedProcessingPoller({
+      projectId: 'p1',
+      maxConsecutiveFailures,
+      setTimeoutFn: ((fn: () => void, ms: number) => {
+        const id = nextId++;
+        delays.push(ms);
+        timers.set(id, {fn, ms});
+        return id as unknown as ReturnType<typeof setTimeout>;
+      }) as unknown as typeof setTimeout,
+      clearTimeoutFn: ((id: ReturnType<typeof setTimeout>) => {
+        timers.delete(id as unknown as number);
+      }) as unknown as typeof clearTimeout,
+      list: signal => new Promise((resolve, reject) => { requests.push({signal, resolve, reject}); }),
+      onItems: items => snapshots.push(items),
+      onStateChange: state => states.push(state),
+    });
+    const fireTimer = () => {
+      assert.equal(timers.size, 1, 'expected exactly one scheduled poll timer');
+      const [tid, entry] = [...timers.entries()][0]!;
+      timers.delete(tid);
+      entry.fn();
+    };
+    return {poller, timers, delays, requests, snapshots, states, fireTimer};
+  };
+
+  // 1) Recovery after transient HTTP 503 while running at 42%: retries with backoff and recovers to 80% -> ready.
+  {
+    const h = makeHarness();
+    h.poller.start();
+    h.requests[0]!.resolve({items: [{taskId, clipId, kind: 'reverse', status: 'running', progress: 42}]});
+    await flushMicrotasks();
+    assert.equal(h.snapshots[0]![0]!.progress, 42);
+    assert.deepEqual(h.delays, [2000]);
+
+    h.fireTimer();
+    h.requests[1]!.reject(new ApiError('Service Unavailable', 'UNAVAILABLE', undefined, false, 503));
+    await flushMicrotasks();
+    assert.equal(h.poller.getState(), 'retrying');
+    assert.equal(h.timers.size, 1, 'transient 503 must schedule a backoff retry instead of stopping');
+    assert.deepEqual(h.delays, [2000, 2000]);
+
+    h.fireTimer();
+    h.requests[2]!.resolve({items: [{taskId, clipId, kind: 'reverse', status: 'running', progress: 80}]});
+    await flushMicrotasks();
+    assert.equal(h.poller.getState(), 'polling');
+    assert.equal(h.snapshots[1]![0]!.progress, 80);
+    assert.deepEqual(h.delays, [2000, 2000, 2000]);
+
+    h.fireTimer();
+    h.requests[3]!.resolve({items: [{taskId, clipId, kind: 'reverse', status: 'ready'}]});
+    await flushMicrotasks();
+    assert.equal(h.poller.getState(), 'idle');
+    assert.equal(h.timers.size, 0, 'polling stops once task is ready');
+  }
+
+  // 2) Consecutive retryable 503 failures back off exponentially and stop in 'unknown' after cap.
+  {
+    const h = makeHarness(5);
+    h.poller.start();
+    h.requests[0]!.resolve({items: [{taskId, clipId, kind: 'reverse', status: 'running', progress: 42}]});
+    await flushMicrotasks();
+
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      h.fireTimer();
+      h.requests[attempt]!.reject(new ApiError('Service Unavailable', 'UNAVAILABLE', undefined, false, 503));
+      await flushMicrotasks();
+    }
+    assert.deepEqual(h.delays, [2000, 2000, 4000, 8000, 16000]);
+    assert.equal(h.poller.getState(), 'unknown');
+    assert.equal(h.timers.size, 0, 'poller must stop scheduling once consecutive failures reach unknown cap');
+
+    // Timeline view switches from stale 42% to statusUnknown when pollState is 'unknown'.
+    const clip = {
+      id: clipId, name: 'Shot 1', trackId: 'v1', startFrame: 0, durationFrames: 120, sourceInFrame: 0,
+      timing: makeSpeedTiming({direction: 'reverse'}),
+    };
+    const unknownViews = buildTimelineClipSpeedViews(
+      {capabilities: {speed: true}, clips: [clip]},
+      [{taskId, clipId, kind: 'reverse', status: 'running', progress: 42}],
+      tZh,
+      'unknown',
+    );
+    assert.equal(unknownViews?.get(clipId)?.processingLabel, '状态未知');
+    assert.equal(unknownViews?.get(clipId)?.processingUnknown, true);
+    assert.equal(unknownViews?.get(clipId)?.processingPercent, null);
+
+    // Explicit refresh from 'unknown' resets consecutive failures and recovers on 200 OK.
+    h.poller.refresh();
+    h.requests[6]!.resolve({items: [{taskId, clipId, kind: 'reverse', status: 'ready'}]});
+    await flushMicrotasks();
+    assert.equal(h.poller.getState(), 'idle');
+    assert.equal(h.timers.size, 0);
+  }
+
+  // 3) Definitive non-retryable 401/404 stops immediately with 'failed' and zero retries.
+  {
+    const h = makeHarness();
+    h.poller.start();
+    h.requests[0]!.reject(new ApiError('Unauthorized', 'UNAUTHORIZED', undefined, true, 401));
+    await flushMicrotasks();
+    assert.equal(h.poller.getState(), 'failed');
+    assert.equal(h.timers.size, 0);
+    assert.deepEqual(h.delays, []);
+  }
+
+  // 4) Switching clip / leaving clip or closing preview cancels pending backoff timers, aborts in-flight requests, and ignores late replies.
+  {
+    const clipAPoller = makeHarness();
+    clipAPoller.poller.start();
+    clipAPoller.requests[0]!.resolve({items: [{taskId, clipId, kind: 'reverse', status: 'running', progress: 42}]});
+    await flushMicrotasks();
+    clipAPoller.fireTimer();
+    clipAPoller.requests[1]!.reject(new ApiError('Service Unavailable', 'UNAVAILABLE', undefined, false, 503));
+    await flushMicrotasks();
+    assert.equal(clipAPoller.timers.size, 1, 'clip A has pending backoff timer');
+
+    // Leave clip A / switch to clip B mid-backoff: timer cancelled immediately.
+    clipAPoller.poller.dispose();
+    assert.equal(clipAPoller.timers.size, 0);
+    assert.equal(clipAPoller.poller.getState(), 'idle');
+
+    // Clip B starts polling, then closes preview / switches away mid-request: aborts and ignores late 503 or 200.
+    const clipBPoller = makeHarness();
+    clipBPoller.poller.start();
+    assert.equal(clipBPoller.requests.length, 1);
+    clipBPoller.poller.stop();
+    assert.equal(clipBPoller.requests[0]!.signal.aborted, true);
+    clipBPoller.requests[0]!.reject(new ApiError('Service Unavailable', 'UNAVAILABLE', undefined, false, 503));
+    await flushMicrotasks();
+    assert.equal(clipBPoller.timers.size, 0, 'late 503 after stop/leave must never reschedule polling');
+    assert.equal(clipBPoller.poller.getState(), 'idle');
+
+    // Hook wires active/scopeKey/clipTriggerKey cleanup so leaving or closing stops polling cleanly.
+    const hookSrc = read('apps/web/src/speed-ui/use-speed-processing.ts');
+    assert.ok(hookSrc.includes('active = true'));
+    assert.ok(hookSrc.includes('scopeKey'));
+    assert.ok(hookSrc.includes('poller.dispose()'));
+  }
 });
 
 test('A4/A8/F8: all preview failure codes, processing reasons, and catalog keys are complete across 4 locales', () => {
