@@ -81,7 +81,7 @@ async function inspectFrames(file, frameCount, {run, runStreaming}) {
     const level = bytes[index * bytesPerFrame];
     const ordinal = Math.round((level - marker(0)) / 8);
     assert.ok(ordinal >= 0 && ordinal < sourceFrames && Math.abs(level - marker(ordinal)) <= 3, `unreadable frame marker at ${index}`);
-    return ordinal;
+    return ordinal === 0 ? 0 : ordinal;
   });
   return {ordinals, timeBase};
 }
@@ -227,7 +227,7 @@ async function withHostedMedia(ctx, exercise) {
         preflightSnapshotHash: report.snapshotHash});
       const expiresAt = Date.now() + 40_000;
       do {
-        const record = await rpc('export.get', {exportId: queued.id});
+        const record = data(await post(projectRpcPath(projectId), 'export.get', {exportId: queued.id}), 'export.get');
         if (record.status === 'succeeded') {
           assert.ok(record.assetId);
           return downloadMedia(new URL(projectMediaPath(projectId, record.assetId), server.url), label);
