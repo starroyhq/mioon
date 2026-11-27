@@ -164,10 +164,10 @@ function sourceFrames(store: ProjectStore, clipId = clipA): Int32Array {
 
 test('the properties RPC admits blend by physical source PTS in the requested output window', async t => {
   const cases = [
-    {fps: 24, admitted: [false, false]},
-    {fps: 25, admitted: [false, false]},
-    {fps: 30, admitted: [false, true]},
-    {fps: 60, admitted: [true, true]},
+    {fps: 24, admitted: [false, false, true]},
+    {fps: 25, admitted: [false, false, true]},
+    {fps: 30, admitted: [false, true, true]},
+    {fps: 60, admitted: [true, true, true]},
   ];
   for (const {fps, admitted} of cases) {
     await t.test(`${fps} fps`, async t => {
@@ -189,7 +189,7 @@ test('the properties RPC admits blend by physical source PTS in the requested ou
           duration: 2, hasAudio: false, reference: {...reference, fullSha256: sha256}, referenceRevision: 1,
           sha256, sizeBytes: reference.sizeBytes}));
         await service.call('sequence.history.get', {projectId: store.projectId});
-        for (const [index, durationFrames] of [22, 27].entries()) {
+        for (const [index, durationFrames] of [22, 27, 45].entries()) {
           const clip = {id: clipId, trackId: videoTrack2, name: 'Phase source', startFrame: 0, durationFrames,
             sourceInFrame: 0, rect: {x: 0, y: 0, width: 720, height: 1280}, gain: 1, assetId,
             sourceState: 'ready', anchor: null};
