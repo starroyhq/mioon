@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash, randomUUID} from 'node:crypto';
+import {spawn} from 'node:child_process';
+import {once} from 'node:events';
+import {fileURLToPath} from 'node:url';
 import {existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -15,7 +18,7 @@ import {createTimelineProcessingService} from '../packages/business/src/timeline
 import type {ProcessingServiceOptions} from '../packages/business/src/timeline-processing/service.ts';
 import {createFormat5SequenceEditService} from '../packages/business/src/format5-sequence-edit-service.ts';
 import type {Format5Clip, Format5Timeline} from '../packages/contracts/src/project-format5.ts';
-import {processingCacheReceiptSchema, processingResultSchema} from '../packages/contracts/src/timeline-processing-storage.ts';
+import {processingCacheReceiptSchema, processingResultSchema, processingStageMarkerSchema} from '../packages/contracts/src/timeline-processing-storage.ts';
 import {timeMapPlanInfo} from '../packages/contracts/src/timeline-time-map.ts';
 import {compileClipTimeMap} from '../packages/contracts/src/timeline-clip-timing.ts';
 import {run} from '../packages/business/src/media-runtime.ts';
@@ -27,6 +30,7 @@ import type {PreviewProcessingRenderer} from '../packages/business/src/timeline-
 import {reversePictureCoverage} from '../packages/business/src/timeline-processing/picture-coverage.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import type {SpeedInterpolation} from '../packages/contracts/src/timeline-speed.ts';
+import {testEnv} from './helpers/test-env.ts';
 
 const at = '2026-01-01T00:00:00.000Z';
 const sha = (value: string | Buffer): string => createHash('sha256').update(value).digest('hex');
@@ -93,7 +97,8 @@ async function until<T>(read: () => T | undefined): Promise<T> {
 
 async function fixture(t: test.TestContext, options: {enabled?: boolean; format?: 5 | 6;
   engine?: ProcessingServiceOptions['engine'] | 'real'; scheduler?: ProcessingServiceOptions['scheduler'];
-  cache?: Parameters<typeof createProcessingCache>[1]; video?: boolean; optical?: boolean; previewRenderer?: PreviewProcessingRenderer} = {}) {
+  cache?: Parameters<typeof createProcessingCache>[1]; video?: boolean; optical?: boolean; previewRenderer?: PreviewProcessingRenderer;
+  clipFrames?: number; deferActivation?: boolean} = {}) {
   const parent = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-processing-lifecycle-'));
   const projectId = randomUUID(), projectFile = path.join(parent, 'project.mioon');
   const locate = () => ({localDir: path.join(parent, 'local'), cacheDir: path.join(parent, 'cache'), tempDir: path.join(parent, 'tmp')});
@@ -108,42 +113,49 @@ async function fixture(t: test.TestContext, options: {enabled?: boolean; format?
     ...(previewRenderer ? {previewRenderer} : {}),
     ...(options.engine === 'real' ? {} : {engine: options.engine ?? fakeEngine}),
   });
-  let processing = createService();
-  async function reopen(renderer = previewRenderer) {
+  let processing = createService(), closed = false;
+  async function close() {
+    if (closed) return;
     await processing.close(); unregister(); store.close();
+    closed = true;
+  }
+  async function reopen(renderer = previewRenderer) {
+    await close();
     store = openProjectStore(opening);
+    closed = false;
     unregister = registerProjectMediaStore(store);
     previewRenderer = renderer;
     processing = createService(); processing.activate();
   }
-  t.after(async () => {await processing.close(); unregister(); store.close(); rmSync(parent, {recursive: true, force: true});});
+  t.after(async () => {await close(); rmSync(parent, {recursive: true, force: true});});
   const assetId = randomUUID(), mainTrackId = randomUUID(), rootId = randomUUID();
   const auxiliaryTrack = {id: randomUUID(), name: options.video ? 'V2' : 'A1', kind: options.video ? 'video' as const : 'audio' as const,
     orderIndex: 1, hidden: false, muted: false};
   const media = path.join(parent, 'media'); mkdirSync(media, {mode: 0o700});
   const file = path.join(media, options.video ? 'processing-source.mp4' : 'processing-source.wav');
   const dimension = options.optical ? 64 : 24;
+  const durationFrames = options.clipFrames ?? 30, sourceFrames = Math.max(60, durationFrames);
   if (options.video) {
     const sourceFilter = options.optical ? 'testsrc2=s=64x64:r=30' : 'color=s=24x24:r=30';
-    await run('ffmpeg', ['-v', 'error', '-nostdin', '-f', 'lavfi', '-i', sourceFilter, '-frames:v', '60',
+    await run('ffmpeg', ['-v', 'error', '-nostdin', '-f', 'lavfi', '-i', sourceFilter, '-frames:v', String(sourceFrames),
       '-c:v', 'libx264', '-threads', '1', '-pix_fmt', 'yuv420p', '-n', file], {timeout: 30_000});
   } else writeFileSync(file, silentWave(), {mode: 0o600});
   const source = await referenceForPublishedMedia(store, file);
-  const initialClip: Format5Clip = {id: randomUUID(), trackId: auxiliaryTrack.id, name: 'Synthetic source', startFrame: 0, durationFrames: 30,
+  const initialClip: Format5Clip = {id: randomUUID(), trackId: auxiliaryTrack.id, name: 'Synthetic source', startFrame: 0, durationFrames,
     sourceInFrame: 0, rect: {x: 0, y: 0, width: 720, height: 1280}, gain: 1, assetId, sourceState: 'ready', anchor: null};
   const timeline: Format5Timeline = {id: randomUUID(), projectId, revision: 1, width: 720, height: 1280, fps: 30,
-    durationFrames: 30, createdAt: at, updatedAt: at, mainTrack: {trackId: mainTrackId, sequenceNodeId: rootId},
+    durationFrames, createdAt: at, updatedAt: at, mainTrack: {trackId: mainTrackId, sequenceNodeId: rootId},
     tracks: [{id: mainTrackId, name: 'V1', kind: 'video', orderIndex: 0, hidden: false, muted: false}, auxiliaryTrack], clips: [initialClip]};
   store.tx(() => {
     store.put('projects', {id: projectId, name: 'Processing lifecycle', createdAt: at, updatedAt: at, revision: 1});
     store.put('nodes', {id: rootId, projectId, type: 'sequence_root', name: 'Timeline', position: {x: 0, y: 0}, createdAt: at});
     store.put('assets', {id: assetId, projectId, name: path.basename(file), mimeType: options.video ? 'video/mp4' : 'audio/wav',
-      duration: 2, hasAudio: !options.video, hasVideo: options.video ?? false, width: options.video ? dimension : null, height: options.video ? dimension : null, createdAt: at, ...source});
+      duration: sourceFrames / 30, hasAudio: !options.video, hasVideo: options.video ?? false, width: options.video ? dimension : null, height: options.video ? dimension : null, createdAt: at, ...source});
     store.put('timelines', timeline);
     store.db.prepare('INSERT INTO project.sequence_sync_state(timelineId,projectId,sequenceNodeId,revision,baseline) VALUES(?,?,?,?,?)')
       .run(timeline.id, projectId, rootId, 1, JSON.stringify({version: 1, board: [], track: []}));
   });
-  processing.activate();
+  if (!options.deferActivation) processing.activate();
   function direction(direction: 'forward' | 'reverse', numerator = 1, clipId = initialClip.id, denominator = 1, interpolation: SpeedInterpolation = 'off') {
     const service = createFormat5SequenceEditService(store);
     const reviewed = service.preview({projectId, requestId: randomUUID(), speedIntent: {side: 'timeline',
@@ -152,7 +164,7 @@ async function fixture(t: test.TestContext, options: {enabled?: boolean; format?
     assert.ok('envelope' in reviewed, JSON.stringify(reviewed));
     return service.commit({projectId, envelope: reviewed.envelope, expectedPlanDigest: reviewed.planDigest});
   }
-  return {projectId, file, cacheRoot, assetId, clipId: initialClip.id, direction, reopen,
+  return {projectId, file, cacheRoot, assetId, clipId: initialClip.id, direction, close, reopen, projectFile, locate,
     get processing() { return processing; }, get store() { return store; }};
 }
 
@@ -600,6 +612,51 @@ test('a real optical task reopens with an authenticated output lease and retries
   frozenAgain.release();
   frozen.release();
   assert.ok(f.processing.cacheClear(f).freedBytes > 0);
+});
+
+test('optical chunks left by SIGKILL count after reopen, are reaped, and the same task retries', {timeout: 180_000}, async t => {
+  // 31 seconds of source covers 16 two-second blocks at 30 fps.
+  const f = await fixture(t, {video: true, optical: true, clipFrames: 930, deferActivation: true});
+  f.direction('forward', 1, f.clipId, 2, 'optical');
+  await f.close();
+
+  const worker = fileURLToPath(new URL('./helpers/timeline-processing-optical-crash-worker.ts', import.meta.url));
+  const child = spawn(process.execPath, [worker, JSON.stringify({projectFile: f.projectFile, locations: f.locate(), cacheRoot: f.cacheRoot})],
+    {env: testEnv(), signal: t.signal, stdio: ['ignore', 'ignore', 'inherit']});
+  const closed = new Promise<void>(resolve => child.once('close', () => resolve()));
+  try {
+    const [, signal] = await once(child, 'exit');
+    assert.equal(signal, 'SIGKILL');
+  } finally {await closed;}
+
+  const root = path.join(f.cacheRoot, 'timeline-processing');
+  const stage = readdirSync(root, {withFileTypes: true}).find(entry => entry.isDirectory() && entry.name.startsWith('stage-'));
+  assert.ok(stage);
+  const stageDir = path.join(root, stage.name), marker = stageDir + '.owner.json';
+  const files = readdirSync(stageDir).sort();
+  const chunks = Array.from({length: 15}, (_, index) => `optical-${String(index).padStart(5, '0')}.mkv`);
+  assert.deepEqual(files, [...chunks, 'video-block.raw', 'video.raw']);
+  for (const name of chunks) assert.ok(statSync(path.join(stageDir, name)).size > 0);
+  const retainedBytes = files.reduce((sum, name) => sum + statSync(path.join(stageDir, name)).size, 0);
+  const {ownership} = processingStageMarkerSchema.parse(JSON.parse(readFileSync(marker, 'utf8')));
+  assert.deepEqual(ownership.writers, [], 'the real FFmpeg writers closed before the owner was killed');
+  const {taskId} = ownership;
+  const reopenedCache = createProcessingCache(f.cacheRoot);
+  assert.equal(reopenedCache.stats(f.projectId).usedBytes, retainedBytes);
+  t.diagnostic(`Recovered ${retainedBytes} staged bytes from ${chunks.length} completed optical chunks and two scratch files.`);
+
+  await f.reopen();
+  assert.equal(reopenedCache.stats(f.projectId).usedBytes, 0);
+  assert.equal(existsSync(stageDir), false);
+  assert.equal(existsSync(marker), false);
+  assert.deepEqual(f.processing.inspect({projectId: f.projectId, taskId}).item,
+    {taskId, clipId: f.clipId, kind: 'optical', status: 'failed', reason: 'PROCESSING_FAILED'});
+  assert.deepEqual(f.processing.retry({projectId: f.projectId, taskId, requestId: randomUUID()}), {taskId});
+  const finished = await f.processing.wait({projectId: f.projectId, taskId, timeoutMs: 60_000});
+  assert.equal(finished.item.status, 'ready', JSON.stringify(finished));
+  assert.equal(finished.item.taskId, taskId);
+  assert.ok(f.processing.opticalProxy.lookup(opticalRequest(f))?.readySha256);
+  assert.equal(readdirSync(root).some(name => name.startsWith('stage-')), false);
 });
 
 test('cancelling an active optical encoder reaps its owned process and discards the stage', async t => {
