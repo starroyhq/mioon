@@ -12,6 +12,7 @@ import type {ProcessingCache} from '../packages/business/src/timeline-processing
 import {PROCESSING_PREVIEW_PROXY_PROFILE as previewProfile, PROCESSING_REVERSE_PROXY_PROFILE as reverseProfile,
   processingProxyResultSchema} from '../packages/contracts/src/timeline-processing-storage.ts';
 import type {ProcessingCacheReceipt} from '../packages/contracts/src/timeline-processing-storage.ts';
+import {testEnv} from './helpers/test-env.ts';
 
 const quota = 4000;
 const reservedBytes = 1700;
@@ -314,7 +315,7 @@ test('a killed stage owner is reaped only after its recorded writer exits', {tim
     process.send({directory:stage.directory, pid: child.pid});`;
   const taskId = randomUUID(), requestId = randomUUID(), cacheKey = digest('killed owner');
   const host = spawn(process.execPath, ['--input-type=module', '-e', hostScript, parent, projectId, cacheKey, taskId, requestId, stop, pidFile],
-    {stdio: ['ignore', 'ignore', 'inherit', 'ipc']});
+    {env: testEnv(), stdio: ['ignore', 'ignore', 'inherit', 'ipc']});
   let writerPid: number | undefined;
   try {
     const [message] = await once(host, 'message', {signal: AbortSignal.timeout(5000)}) as [{directory: string; pid: number}];
@@ -393,7 +394,7 @@ test('a killed owner with an unresolved spawn slot leaves its bytes and issued p
     writeFileSync(path.join(stage.directory, 'proxy.mkv'), 'unconfirmed', {mode: 0o600});
     stage.writer.begin();
     process.kill(process.pid,'SIGKILL');`;
-  const host = spawn(process.execPath, ['--input-type=module', '-e', script, parent, projectId], {stdio: 'inherit'});
+  const host = spawn(process.execPath, ['--input-type=module', '-e', script, parent, projectId], {env: testEnv(), stdio: 'inherit'});
   const [, signal] = await once(host, 'exit');
   assert.equal(signal, 'SIGKILL');
   const before = readdirSync(root), cache = open();
