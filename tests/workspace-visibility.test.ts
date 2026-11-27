@@ -12,6 +12,7 @@ import { LOCAL_SHOT_TEXT_LIMITS } from '@mioon/contracts/local-shot-text';
 import * as exportSettings from '../apps/web/src/export-settings-state.ts';
 import * as sourceRanges from '../apps/web/src/source-range-state.ts';
 import * as previewPlayback from '../apps/web/src/preview-playback.ts';
+import {buildClipSpeedPreviewBinding} from '../apps/web/src/speed-preview/speed-preview-model.ts';
 import {DEFAULT_UI_PREFERENCES} from '../packages/contracts/src/ui-preferences.ts';
 import {imageEditSourceIssueDescriptor} from '../apps/web/src/image-generation.ts';
 import {generationParameters, providerStatus} from '../apps/web/src/generation-settings.ts';
@@ -254,6 +255,53 @@ test('Preview applies a changed playhead deferred while hidden, without publishi
   h.mediaNode().props.onSeeked({ currentTarget: element }); assert.deepEqual(seeks, []);
   element.currentTime = 6;
   h.mediaNode().props.onSeeked({ currentTarget: element }); assert.deepEqual(seeks, [210]);
+});
+
+test('0.1×, 0.25× and 0.5× preview seek on heard PCM sample boundaries', async () => {
+  const samplesPerFrame = 1600;
+  const maxSampleError = 2 * samplesPerFrame;
+  for (const denominator of [10, 4, 2]) {
+    const h = createHarness('Preview.tsx');
+    const startFrame = 300, sourceInFrame = 40, durationFrames = 120 * denominator;
+    const clip = {id: 'clip-one', trackId: 'track-one', startFrame, sourceInFrame, durationFrames,
+      timing: {profile: 'timeline-speed-v1', basis: {profile: 'timeline-speed-v1',
+        sourceFps: {fpsNumerator: 30, fpsDenominator: 1}, outputFps: {fpsNumerator: 30, fpsDenominator: 1},
+        sourceRange: {start: {kind: 'rational', numerator: '40', denominator: '1'}, end: {kind: 'rational', numerator: '160', denominator: '1'}},
+        speed: {kind: 'constant', rate: {numerator: 1, denominator}}},
+        view: {direction: 'forward', loTime: {anchor: 'start', offsetOutputFrames: 0}, hiTime: {anchor: 'end', offsetOutputFrames: 0}},
+        outputWindow: {fromFrame: 0, toFrame: durationFrames}, pitchShift: true, interpolation: 'off'}} as const;
+    const timeline = {id: 'timeline', revision: 1, fps: 30, durationFrames: startFrame + durationFrames,
+      capabilities: {speed: true}};
+    const playhead = startFrame + 30 * denominator;
+    let sample = playhead * samplesPerFrame;
+    const speedPreview = buildClipSpeedPreviewBinding({timeline, clip, asset: asset(), sourceUrl: '/preview-source',
+      media: null, fps: 30, processingItems: [], t: createI18nTestContext('zh-Hans').t,
+      onPlaybackStateChange: async state => state.playing ? () => sample : undefined});
+    assert.ok(speedPreview?.frameDrivenPlayback, `1/${denominator}× uses the shared audio clock`);
+    h.render(previewProps({timeline, clip, speedPreview, playhead}));
+    const element = h.mediaNode().props.ref.current;
+    const controls = h.nodes().find(node => node.type === 'PreviewPlaybackControls')?.props.customPlayback as
+      {toggle(): void;isPlaying(): boolean};
+    assert.ok(controls);
+    controls.toggle();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(controls.isPlaying(), true);
+    assert.equal(element.paused, true);
+    for (let frame = 1; frame <= 4; frame++) {
+      const transition = (playhead + frame * denominator) * samplesPerFrame;
+      sample = transition - 1;
+      h.flushFrames();
+      assert.equal(Math.floor(element.currentTime * 30), sourceInFrame + 30 + frame - 1);
+      sample = transition + samplesPerFrame / 2;
+      h.flushFrames();
+      const displayed = Math.floor(element.currentTime * 30);
+      const expected = sourceInFrame + Math.floor((sample / samplesPerFrame - startFrame) / denominator);
+      assert.equal(displayed, expected, 'The source frame matches the PCM position of the same animation tick');
+      assert.ok(Math.abs(sample - (startFrame + (displayed - sourceInFrame) * denominator) * samplesPerFrame) <= maxSampleError,
+        'Capture the transition within two output frames (3200 samples at 48 kHz)');
+    }
+    h.unmount();
+  }
 });
 
 test('replaced Preview sources reject old callbacks and Strict Mode disposal restores the current source', () => {

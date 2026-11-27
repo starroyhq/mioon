@@ -74,6 +74,7 @@ export function createContinuousAudioPreviewController(options: ContinuousAudioC
   };
   const controller = {
     getState: (): TimelineAudioPreviewState => state,
+    readOutputSample: (): number | null => owner?.transport?.readOutputSample?.() ?? null,
     attach(context: TimelineAudioPreviewContext): void { disposed = false; controller.setContext(context); },
     setContext(context: TimelineAudioPreviewContext): void {
       if (disposed) return;

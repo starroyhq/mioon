@@ -817,7 +817,7 @@ export interface ClipSpeedPreviewBinding {
   readonly mediaKey: string;
   readonly playbackRate: number;
   readonly muteVideo: boolean;
-  /** Freeze clips and unready/failed proxies drive output frames via rAF while seeking/holding paused video. */
+  /** Freeze, slow native clips and unready/failed proxies show output frames while holding video paused. */
   readonly frameDrivenPlayback: boolean;
   /** True for freeze clips (audio stays strictly silent). */
   readonly silent: boolean;
@@ -825,10 +825,11 @@ export interface ClipSpeedPreviewBinding {
   readonly clipDurationFrames: number;
   readonly fps: number;
   readonly overlay: ClipSpeedPreviewOverlay | null;
-  readonly outputFrameToMediaSeconds: (frame: number) => number;
+  readonly outputFrameToMediaSeconds: (frame: number, forPlayback?: boolean) => number;
   readonly mediaSecondsToOutputFrame: (seconds: number) => number;
   readonly onRetryTask?: (taskId: string) => void;
-  readonly onPlaybackStateChange?: (state: {readonly playing: boolean; readonly frame: number; readonly silent: boolean}) => void;
+  readonly onPlaybackStateChange?: (state: {readonly playing: boolean; readonly frame: number; readonly silent: boolean}) =>
+    void | Promise<(() => number | null) | void>;
 }
 
 export function clipNeedsPreviewMediaRpc(
@@ -882,7 +883,7 @@ export function buildClipSpeedPreviewBinding(options: {
   readonly processingItems: readonly SpeedProcessingItem[];
   readonly t: Translator;
   readonly onRetryTask?: (taskId: string) => void;
-  readonly onPlaybackStateChange?: (state: {readonly playing: boolean; readonly frame: number; readonly silent: boolean}) => void;
+  readonly onPlaybackStateChange?: ClipSpeedPreviewBinding['onPlaybackStateChange'];
 }): ClipSpeedPreviewBinding | null {
   const {timeline, clip, asset, sourceUrl, fps, media, processingItems, t, onRetryTask, onPlaybackStateChange} = options;
   if (!timelineSpeedEnabled(timeline) || !clip || !asset || !sourceUrl) return null;
@@ -1018,13 +1019,18 @@ export function buildClipSpeedPreviewBinding(options: {
     mediaKey: `native:${clip.id}:${rateObj.numerator}/${rateObj.denominator}:${sourceUrl}`,
     playbackRate: rateNum,
     muteVideo: true,
-    frameDrivenPlayback: false,
+    // Chrome can keep the initial native frame fixed for a substantial
+    // portion of its slow presentation interval after play() succeeds.
+    frameDrivenPlayback: rateNum <= 0.5,
     silent: false,
     clipStartFrame: clip.startFrame,
     clipDurationFrames: clip.durationFrames,
     fps: safeFps,
     overlay: buildOverlayFromProcessingItem(opticalItem, t),
-    outputFrameToMediaSeconds: frame => sampleClipSourceAtTimelineFrame(clip, safeFps, frame, plan).sourceSeconds,
+    outputFrameToMediaSeconds: (frame, forPlayback) => {
+      const sample = sampleClipSourceAtTimelineFrame(clip, safeFps, frame, plan);
+      return forPlayback ? sample.continuousFrame / safeFps : sample.sourceSeconds;
+    },
     mediaSecondsToOutputFrame: seconds => outputFrameFromSourceSeconds(clip, safeFps, seconds, plan),
     onRetryTask,
     onPlaybackStateChange,

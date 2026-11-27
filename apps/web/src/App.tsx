@@ -4658,6 +4658,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   }, [workbenchReady, workspaceMode, previewKind, previewAsset, online, auth, loading, clipDirty, subtitleDirty, formatDirty]);
   const speedPreviewAudio = useSpeedPreviewAudio({
     enabled: speedPreviewActive,
+    nativeAdmission: nativeAudioAdmission ?? undefined,
     context: speedPreviewAudioContext(),
     getContext: speedPreviewAudioContext,
     readPlan: (input, options) => rpc('timeline.audioPreview.plan', input, options as never),
