@@ -231,7 +231,8 @@ test('retimed clip preview never binds the original video or an old timeline ren
   const h = createHarness('Preview.tsx');
   const timing = {profile: 'timeline-freeze-v1', sourceFrame: 0, sourceVersionId: null, sourceSha256: 'a'.repeat(64)};
   const clip = {id: 'clip-one', sourceInFrame: 0, startFrame: 0, durationFrames: 60, timing};
-  const timeline = {fps: 30, revision: 2, durationFrames: 60, clips: [clip]};
+  const timeline = {id: 'timeline-one', projectId: renderProjectId, fps: 30, width: 1920, height: 1080,
+    revision: 2, durationFrames: 60, clips: [clip]};
   const job = {id: 'render-one', projectId: renderProjectId, assetId: firstRenderAssetId, status: 'succeeded',
     url: '/render', timelineRevision: 1};
   for (const kind of ['source', 'timeline']) {
@@ -241,6 +242,12 @@ test('retimed clip preview never binds the original video or an old timeline ren
   }
   h.render(previewProps({kind: 'source', clip: null, timeline, job}));
   assert.ok(h.mediaNode(), 'standalone source playback has its own explicit source coordinates');
+  const currentRender = {...job, timelineRevision: timeline.revision, snapshot: {timeline}};
+  h.render(previewProps({kind: 'timeline', clip, timeline, job: currentRender}));
+  assert.equal(h.mediaNode(), undefined, 'matching revision alone is not a speed-render result');
+  h.render(previewProps({kind: 'timeline', clip, timeline, job: {...currentRender,
+    snapshot: {...currentRender.snapshot, speedExport: {profileId: 'timeline-speed-export-v1'}}}}));
+  assert.ok(h.mediaNode(), 'a current speed-render result can be played');
 });
 
 for (const kind of ['source', 'timeline'] as const) {

@@ -5,10 +5,11 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import {setTimeout as delay} from 'node:timers/promises';
+import {clipDraftEnvelopeSchema} from '@mioon/contracts/local-drafts';
 import {run} from '../packages/business/src/media-runtime.ts';
 import {FORMAT6_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {createClient} from '../packages/client/src/index.ts';
-import {projectMediaPath} from '../packages/contracts/src/project-file.ts';
+import {projectApiPath, projectMediaPath} from '../packages/contracts/src/project-file.ts';
 import {parseTimelinePreviewMediaQuery, timelinePreviewMediaPath} from '../packages/contracts/src/timeline-preview-media.ts';
 import type {PreviewMedia} from '../packages/contracts/src/timeline-preview-media.ts';
 import type {SpeedProcessingItem, SpeedSetting} from '../packages/contracts/src/timeline-speed.ts';
@@ -39,8 +40,9 @@ test('the authenticated project host serves only the verified proxy for a live c
   await run('ffmpeg', ['-nostdin', '-v', 'error', '-f', 'lavfi', '-i', 'color=c=red:size=1280x720:rate=30',
     '-frames:v', String(sourceFrames), '-an', '-c:v', 'libx264', '-threads:v', '1', '-pix_fmt', 'yuv420p', source]);
   const sourceBytes = await readFile(source);
-  const {id: assetId} = await client.rpc<{id: string}>('asset.import', {projectId, name: 'source.mp4',
+  const {id: assetId, referenceRevision} = await client.rpc<{id: string; referenceRevision: number}>('asset.import', {projectId, name: 'source.mp4',
     mimeType: 'video/mp4', dataBase64: sourceBytes.toString('base64')});
+  await client.rpc('asset.media.prepare', {projectId, assets: [{assetId, referenceRevision}], purpose: 'timeline'});
   const edit = async (operation: string, input: Record<string, unknown>) => {
     const {envelope, planDigest} = await client.rpc<{envelope: unknown; planDigest: string}>(operation, {projectId, ...input});
     const receipt = await client.rpc<{status: string}>('sequence.action.commit', {projectId, envelope, expectedPlanDigest: planDigest});
@@ -49,6 +51,7 @@ test('the authenticated project host serves only the verified proxy for a live c
   await edit('sequence.board.edit', {kind: 'board-root-create', name: 'Film', position: {x: 0, y: 0}});
   await edit('sequence.timeline.edit', {kind: 'insert-asset', assetId, trackId: null, startFrame: 0});
   const readProject = () => client.rpc<{projectFormatVersion: number; timeline: {
+    id: string;
     clips: {id: string; assetId: string; durationFrames: number}[];
   }}>('project.get', {projectId});
   const project = await readProject();
@@ -88,6 +91,16 @@ test('the authenticated project host serves only the verified proxy for a live c
   assert.equal(locator.taskId, taskId);
 
   const auth = {authorization: `Bearer ${token}`};
+  const draftKey = {projectId, timelineId: project.timeline.id, clipId};
+  const draftUrl = new URL(`${projectApiPath(projectId, 'local-drafts', 'clip')}?${new URLSearchParams(draftKey)}`, baseUrl);
+  const draft = await fetch(draftUrl, {headers: auth});
+  const draftBody = await draft.json() as {ok: boolean; data: unknown};
+  assert.equal(draft.status, 200, JSON.stringify(draftBody));
+  assert.equal(draftBody.ok, true);
+  const draftEnvelope = clipDraftEnvelopeSchema.parse(draftBody.data);
+  assert.ok(draftEnvelope.supported);
+  assert.deepEqual(draftEnvelope.key, draftKey);
+  assert.equal(draftEnvelope.targetStatus, 'matching');
   for (const method of ['GET', 'HEAD']) {
     const unauthorized = await fetch(url, {method});
     assert.equal(unauthorized.status, 401);

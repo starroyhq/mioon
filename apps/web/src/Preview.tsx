@@ -28,6 +28,10 @@ import type {MenuPlaybackControl} from './desktop-menu-client.ts';
 import type {TimelinePlaybackClock} from './timeline-playback-clock.ts';
 import type {ClipSpeedPreviewBinding} from './speed-preview/speed-preview-model.ts';
 
+// Chromium rounds seeks to microseconds. Stay just inside the selected frame
+// when its exact 30 fps timestamp cannot be represented in that clock.
+const SPEED_SEEK_EPSILON_SECONDS = 0.000002;
+
 type Translate = ReturnType<typeof useI18n>['t'];
 export interface PreviewCaptureIntent {readonly sourceScope: string; readonly sourceAssetId: string; readonly sourceHash: string; readonly sourceFrame: number}
 export interface PreviewSeek {scope?: string | null; id: number | string; frame: number}
@@ -46,6 +50,7 @@ interface ReadyCapture {key: string; intent: PreviewCaptureIntent | null}
 interface MediaBinding {
   element: HTMLMediaElement; key: string; url: string; programmaticSeek: number | null; sourceSeekIntent: number | null;
   pendingSourceSeek: {scope?: string | null; id: number | string} | null; lastSeekRequest: string | number | null;
+  speedSeekFrame: number | null;
 }
 interface CaptureContext {key: string; visible: boolean; busy: boolean; scope?: string | null}
 interface SourceState {scope?: string | null; position: number; request: PreviewSeek | null}
@@ -141,7 +146,7 @@ export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onB
   const notifyFramePlayback = () => { for (const listener of frameListeners.current) listener(); };
   const frameLoop = useRef<{raf: number | null; token: object; startMs: number; startFrame: number; lastFrame: number} | null>(null);
   const nativeTicker = useRef<number | null>(null);
-  const nativeAudioActive = useRef<boolean>(false);
+  const speedPlayback = useRef<{speed: ClipSpeedPreviewBinding; frame: number; preparing: boolean} | null>(null);
   const timelineClock = rendered || clip ? playbackClock : undefined;
   const ready = Boolean(job && ['succeeded','completed','ready'].includes(job.status) && (job.url || job.assetId));
   const stale = Boolean(ready && !previewMatchesTimeline(job, timeline));
@@ -150,14 +155,19 @@ export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onB
   const playbackFps = frozenTimeline?.fps || timeline?.fps || SOURCE_RANGE_FPS;
   const playbackFrame = (frame: number) => Math.max(0, Math.min(playbackDuration ?? frame, frame));
 
-  const speedBlocked = !rendered && !activeSpeedPreview &&
-    Boolean(clip?.timing !== undefined && !canRenderTimelineClipAtIdentity(clip, playbackFps));
+  const speedBlocked = rendered
+    ? ready && (stale || !Object.hasOwn(job?.snapshot ?? {}, 'speedExport')) &&
+      Boolean(timeline?.clips?.some(item => !canRenderTimelineClipAtIdentity(item, timeline.fps)))
+    : !activeSpeedPreview && Boolean(clip?.timing !== undefined && !canRenderTimelineClipAtIdentity(clip, playbackFps));
   const gate = useProjectMediaReadGate();
   const readIdentity = rendered ? {id: job?.assetId, projectId: job?.projectId} : asset;
   const blocked = Boolean(gate && (rendered ? ready : asset) && !gate.canRead(readIdentity));
   const url = blocked || speedBlocked ? '' : rendered ? ready ? mediaUrl(job!.projectId, job!.assetId) : '' : activeSpeedPreview ? activeSpeedPreview.mediaUrl : assetUrl(asset);
   const type: string = rendered ? 'video' : assetKind(asset);
-  const mediaKey = `${kind}:${type}:${url}:${rendered ? job?.id || job?.timelineRevision : asset?.id || ''}:${clip?.id || ''}:${!rendered && !clip ? sourceScope || '' : ''}:${!rendered ? asset?.sha256 || '' : ''}${activeSpeedPreview ? `:${activeSpeedPreview.mediaKey}` : ''}`;
+  const speedBindingKey = activeSpeedPreview && clip
+    ? JSON.stringify([activeSpeedPreview.mediaKey, timeline?.id, timeline?.revision,
+        clip.startFrame, clip.durationFrames, clip.sourceInFrame, clip.timing]) : '';
+  const mediaKey = `${kind}:${type}:${url}:${rendered ? job?.id || job?.timelineRevision : asset?.id || ''}:${clip?.id || ''}:${!rendered && !clip ? sourceScope || '' : ''}:${!rendered ? asset?.sha256 || '' : ''}${speedBindingKey ? `:${speedBindingKey}` : ''}`;
   const activeMedia = useRef<MediaBinding | null>(null);
   const appliedSourceSeek = useRef<{scope?: string | null; id: number | string} | null>(null);
   const sourceRequest = sourceSeek && sourceSeek.scope === sourceScope ? sourceSeek : null;
@@ -200,37 +210,23 @@ export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onB
     notifyFramePlayback();
     const stopped = timelineClock?.stop(loop.token);
     const binding = activeMedia.current;
-    const currentSpeed = speedPreviewRef.current;
-    currentSpeed?.onPlaybackStateChange?.({ playing: false, frame: loop.lastFrame, silent: currentSpeed.silent });
     if (commit && stopped && binding) {
       commitNativeFrame(binding, loop.lastFrame);
     }
   }
-  function toggleFramePlayback(): void {
-    const currentSpeed = speedPreviewRef.current;
-    const element = media.current;
-    if (!currentSpeed?.frameDrivenPlayback || !element || !isCurrentMedia(element) || element.readyState < 1) return;
-    if (frameLoop.current) { stopFramePlayback(true); return; }
-    onBeforePlay?.();
-    audioPreview?.controller.revoke();
-    element.pause();
-    const clipEnd = currentSpeed.clipStartFrame + currentSpeed.clipDurationFrames;
-    const currentFrame = timelineClock?.getSnapshot() ?? playhead;
-    const startFrame = currentFrame >= clipEnd || currentFrame < currentSpeed.clipStartFrame
-      ? currentSpeed.clipStartFrame
-      : Math.round(currentFrame);
+  function startFramePlayback(startFrame: number): void {
     const token = {};
     const loop = { raf: null as number | null, token, startMs: typeof performance !== 'undefined' ? performance.now() : Date.now(), startFrame, lastFrame: startFrame };
     frameLoop.current = loop;
     notifyFramePlayback();
     timelineClock?.start(token, startFrame);
-    seekMedia(element, false, startFrame);
-    currentSpeed.onPlaybackStateChange?.({ playing: true, frame: startFrame, silent: currentSpeed.silent });
     const step = () => {
       if (frameLoop.current !== loop) return;
       const liveSpeed = speedPreviewRef.current;
       const el = media.current;
-      if (!liveSpeed?.frameDrivenPlayback || !el || !isCurrentMedia(el)) { stopFramePlayback(false); return; }
+      if (!liveSpeed?.frameDrivenPlayback || !el || !isCurrentMedia(el)) {
+        stopFramePlayback(false); stopSpeedPlayback(); return;
+      }
       const nowMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
       const elapsedFrames = Math.floor(Math.max(0, nowMs - loop.startMs) / 1000 * liveSpeed.fps);
       const nextFrame = Math.min(liveSpeed.clipStartFrame + liveSpeed.clipDurationFrames, loop.startFrame + elapsedFrames);
@@ -238,7 +234,7 @@ export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onB
         loop.lastFrame = nextFrame;
         timelineClock?.tick(token, nextFrame);
         if (!liveSpeed.silent && !el.seeking) {
-          const target = liveSpeed.outputFrameToMediaSeconds(nextFrame);
+          const target = liveSpeed.outputFrameToMediaSeconds(nextFrame) + SPEED_SEEK_EPSILON_SECONDS;
           const max = Number.isFinite(el.duration) ? Math.max(0, el.duration - .001) : target;
           const clamped = Math.max(0, Math.min(target, max));
           if (Math.abs(el.currentTime - clamped) > .005 && activeMedia.current) {
@@ -249,15 +245,50 @@ export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onB
       }
       if (nextFrame >= liveSpeed.clipStartFrame + liveSpeed.clipDurationFrames) {
         stopFramePlayback(true);
+        stopSpeedPlayback();
         return;
       }
       loop.raf = typeof requestAnimationFrame === 'function' ? requestAnimationFrame(step) : null;
     };
     loop.raf = typeof requestAnimationFrame === 'function' ? requestAnimationFrame(step) : null;
   }
+  function stopSpeedPlayback(): void {
+    const attempt = speedPlayback.current;
+    if (!attempt) return;
+    speedPlayback.current = null;
+    void attempt.speed.onPlaybackStateChange?.({playing: false, frame: attempt.frame, silent: attempt.speed.silent});
+    notifyFramePlayback();
+  }
+  async function toggleSpeedPlayback(): Promise<void> {
+    const currentSpeed = speedPreviewRef.current, element = media.current;
+    if (!currentSpeed || !element || !isCurrentMedia(element) || element.readyState < 1) return;
+    if (speedPlayback.current || frameLoop.current || !element.paused) { pauseCurrent.current(); return; }
+    onBeforePlay?.();
+    audioPreview?.controller.revoke();
+    const clipEnd = currentSpeed.clipStartFrame + currentSpeed.clipDurationFrames;
+    const position = Math.round(timelineClock?.getSnapshot() ?? activeMedia.current?.speedSeekFrame ?? playhead);
+    const frame = position >= clipEnd || position < currentSpeed.clipStartFrame ? currentSpeed.clipStartFrame : position;
+    seekMedia(element, false, frame, true);
+    const attempt = {speed: currentSpeed, frame, preparing: true};
+    speedPlayback.current = attempt;
+    notifyFramePlayback();
+    try {
+      // A native 10× clip can end before the first PCM fetch finishes. Start
+      // both clocks from this frame once the audio is ready.
+      if (!currentSpeed.silent) await currentSpeed.onPlaybackStateChange?.({playing: true, frame, silent: false});
+      if (speedPlayback.current !== attempt) return;
+      if (!isCurrentMedia(element)) { stopSpeedPlayback(); return; }
+      attempt.preparing = false;
+      if (currentSpeed.frameDrivenPlayback) startFramePlayback(frame);
+      else await element.play();
+    } catch {
+      if (speedPlayback.current === attempt) stopSpeedPlayback();
+    }
+  }
   const pauseCurrent = useRef<() => void>(() => {});
   pauseCurrent.current = () => {
     stopFramePlayback(true);
+    stopSpeedPlayback();
     stopNativeTicker();
     const binding = activeMedia.current;
     if (!binding || binding.element !== media.current) return;
@@ -271,7 +302,8 @@ export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onB
   useLayoutEffect(() => {
     const element = media.current;
     if (!element) return;
-    const binding = { element, key: mediaKey, url, programmaticSeek: null, sourceSeekIntent: null, pendingSourceSeek: null, lastSeekRequest: null };
+    const binding = { element, key: mediaKey, url, programmaticSeek: null, sourceSeekIntent: null,
+      pendingSourceSeek: null, lastSeekRequest: null, speedSeekFrame: null };
     activeMedia.current = binding;
     // Restore src when development Strict Mode replays the cleanup/setup pair.
     if (element.getAttribute('src') !== url) element.setAttribute('src', url);
@@ -319,7 +351,7 @@ export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onB
   function updateCapture(event: React.SyntheticEvent<HTMLMediaElement>): void {
     if (isCurrentMedia(event.currentTarget)) captureObserver.current?.();
   }
-  function seekMedia(element: HTMLMediaElement | null, loadedMetadata = false, explicitFrame?: number): void {
+  function seekMedia(element: HTMLMediaElement | null, loadedMetadata = false, explicitFrame?: number, forPlayback = false): void {
     if (!isCurrentMedia(element) || !element) return;
     applySpeedPlaybackRate(element);
     const standaloneSource = !rendered && !clip;
@@ -340,26 +372,35 @@ export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onB
       return;
     }
     binding.lastSeekRequest = currentSeekRequest;
+    if (activeSpeedPreview) binding.speedSeekFrame = explicitFrame ?? playhead;
     if (standaloneSource) {
       binding.sourceSeekIntent = sourceFrame;
       // A currentTime assignment is not confirmation: metadata or seeked may
       // still be pending across rerenders, tab changes, or a hidden player.
       binding.pendingSourceSeek = newSourceRequest ? { scope: source.scope, id: request!.id } : null;
     }
-    const max = Number.isFinite(element.duration) ? Math.max(0, element.duration - (!rendered && !clip ? 0 : .001)) : targetSeconds;
-    const seconds = Math.max(0, Math.min(targetSeconds, max));
+    const playbackSeconds = forPlayback && activeSpeedPreview && explicitFrame !== undefined
+      ? activeSpeedPreview.outputFrameToMediaSeconds(explicitFrame, true) : targetSeconds;
+    const seekSeconds = activeSpeedPreview ? playbackSeconds + SPEED_SEEK_EPSILON_SECONDS : playbackSeconds;
+    const max = Number.isFinite(element.duration) ? Math.max(0, element.duration - (!rendered && !clip ? 0 : .001)) : seekSeconds;
+    const seconds = Math.max(0, Math.min(seekSeconds, max));
     if (Math.abs(element.currentTime - seconds) > (standaloneSource || explicitFrame !== undefined ? 1e-7 : .02)) {
       activeMedia.current!.programmaticSeek = seconds;
       element.currentTime = seconds;
     } else if (!rendered && !clip) publishSourcePosition(element);
-    if (explicitFrame !== undefined && !element.paused && !element.ended && activeSpeedPreview && !activeSpeedPreview.frameDrivenPlayback) {
-      activeSpeedPreview.onPlaybackStateChange?.({ playing: true, frame: explicitFrame, silent: activeSpeedPreview.silent });
-    }
     captureObserver.current?.();
   }
   useEffect(() => { seekMedia(media.current); }, [playhead, mediaKey, visible, clip?.sourceInFrame, clip?.startFrame, clip?.durationFrames, seekRequest]);
   const seekCurrent = useRef<(frame: number) => void>(() => {});
-  seekCurrent.current = frame => { if (frameLoop.current) stopFramePlayback(false); seekMedia(media.current, false, frame); };
+  seekCurrent.current = frame => {
+    if (speedPlayback.current) {
+      const binding = activeMedia.current;
+      if (binding) timelineClock?.stop(binding);
+      stopFramePlayback(false);
+      pauseCurrent.current();
+    }
+    seekMedia(media.current, false, frame);
+  };
   useLayoutEffect(() => {
     if (!timelineClock) return;
     let revision = timelineClock.getSeekRevision();
@@ -382,15 +423,12 @@ export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onB
   function commitNativeFrame(binding: MediaBinding, frame: number): void {
     if (!Number.isSafeInteger(frame)) return;
     binding.lastSeekRequest = timelineSeconds(frame);
+    if (activeSpeedPreview) binding.speedSeekFrame = frame;
     (onPlaybackCommit ?? onSeek)(frame);
   }
   function settlePlayback(binding: MediaBinding): void {
     stopNativeTicker();
-    const currentSpeed = speedPreviewRef.current;
-    if (nativeAudioActive.current) {
-      nativeAudioActive.current = false;
-      currentSpeed?.onPlaybackStateChange?.({ playing: false, frame: timelineFrame(binding.element), silent: currentSpeed.silent });
-    }
+    stopSpeedPlayback();
     if (!timelineClock?.stop(binding)) return;
     // An explicit seek is already saved by its caller. While that assignment is
     // being resolved, the media element may still report the previous frame.
@@ -415,10 +453,6 @@ export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onB
       }
       timelineClock.start(binding, startFrame);
       if (currentSpeed && !currentSpeed.frameDrivenPlayback) {
-        if (!nativeAudioActive.current) {
-          nativeAudioActive.current = true;
-          currentSpeed.onPlaybackStateChange?.({ playing: true, frame: startFrame, silent: currentSpeed.silent });
-        }
         stopNativeTicker();
         const tickNative = () => {
           const el = media.current;
@@ -528,6 +562,7 @@ export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onB
   ].filter(Boolean).join(' · ') : t('timeline.preview.persistent') : clip ? t('timeline.preview.clipPosition',{start:clip.startFrame,source:clip.sourceInFrame??0,duration:clip.durationFrames}) : t('timeline.preview.independent');
   function stepPreview(delta: number): void {
     if (frameLoop.current) stopFramePlayback(false);
+    stopSpeedPlayback();
     const element = media.current, binding = activeMedia.current;
     const current = isCurrentMedia(element);
     // A step starts at the current native frame when playback is in progress.
@@ -553,7 +588,11 @@ export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onB
     duration={!rendered && !clip ? sourceFrameCount(asset?.duration) || 0 : playbackDuration ?? 0}
     fps={playbackFps} format={preferences.timecodeFormat} standaloneSource={!rendered && !clip}
     onStep={stepPreview} metadata={previewMetadata}
-    {...(activeSpeedPreview?.frameDrivenPlayback ? { customPlayback: { isPlaying: () => Boolean(frameLoop.current), subscribe: (listener: () => void) => { frameListeners.current.add(listener); return () => { frameListeners.current.delete(listener); }; }, toggle: toggleFramePlayback } } : {})} />;
+    {...(activeSpeedPreview ? { customPlayback: {
+      isPlaying: () => Boolean(speedPlayback.current?.preparing || frameLoop.current || media.current && !media.current.paused && !media.current.ended),
+      subscribe: (listener: () => void) => { frameListeners.current.add(listener); return () => { frameListeners.current.delete(listener); }; },
+      toggle: () => { void toggleSpeedPlayback(); },
+    } } : {})} />;
 
   return <Tabs value={kind} onValueChange={onKind} className={`central-preview edit-preview ${visible ? '' : 'workspace-hidden'}`} aria-label={t('timeline.preview.main')} data-testid="central-preview">
     <div className="preview-mode-bar">

@@ -1,12 +1,9 @@
 /** Pure shared time-map, preview-media, thumbnail-sampling, and waveform-projection
  * helpers for Speed Preview (SP-V).
  *
- * Uses ONLY `packages/contracts/src/timeline-time-map.ts` and
- * `packages/contracts/src/timeline-speed.ts` so the frontend branch stays cleanly
- * isolated from backend contract additions prior to integration.
+ * Uses the same preview-media contract and time map as the project host.
  */
 import {
-  TIMELINE_TIME_MAP_LIMITS,
   compileFreezeTimeMap,
   compileTimeMap,
   initialTimeMap,
@@ -24,11 +21,11 @@ import type {
   TimeMapResult,
   TimeMapSourceBoundary,
 } from '../../../../packages/contracts/src/timeline-time-map.ts';
-import {speedProcessingReasonSchema} from '../../../../packages/contracts/src/timeline-speed.ts';
+import {isPreviewMediaForClip, timelinePreviewMediaResponseSchema} from '../../../../packages/contracts/src/timeline-preview-media.ts';
+import type {PreviewMedia} from '../../../../packages/contracts/src/timeline-preview-media.ts';
 import type {
   ClipTiming,
   SpeedProcessingItem,
-  SpeedProcessingReason,
 } from '../../../../packages/contracts/src/timeline-speed.ts';
 import type {MessageArguments, MessageKey} from '../../../../packages/i18n/src/index.ts';
 import type {WaveformEntry, WaveformWindow} from '../waveform-state.ts';
@@ -54,117 +51,12 @@ type Translator = <K extends MessageKey>(key: K, ...args: MessageArguments<K>) =
 // `timeline.preview.media` response contract & validation.
 // ---------------------------------------------------------------------------
 
-export type PreviewMedia =
-  | {readonly mode: 'native'; readonly rate: {readonly numerator: number; readonly denominator: number}}
-  | {readonly mode: 'proxy'; readonly status: 'ready'; readonly url: string; readonly durationFrames: number}
-  | {
-      readonly mode: 'proxy';
-      readonly status: 'queued' | 'running' | 'failed';
-      readonly taskId: string;
-      readonly progress?: number;
-      readonly reason?: SpeedProcessingReason;
-    };
+export {isPreviewMediaForClip};
+export type {PreviewMedia};
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
-const DIGEST_RE = /^[a-f0-9]{64}$/u;
-const MEDIA_PATH_RE = /^\/api\/projects\/([^/]+)\/assets\/([^/]+)\/media$/u;
-
-function isRateTerm(value: unknown): value is number {
-  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 1 && value <= TIMELINE_TIME_MAP_LIMITS.maxRateTerm;
-}
-
-function hasOnlyKeys(obj: Record<string, unknown>, allowed: readonly string[]): boolean {
-  return Object.keys(obj).every(key => allowed.includes(key));
-}
-
-export function parsePreviewMedia(value: unknown): PreviewMedia | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const obj = value as Record<string, unknown>;
-  if (obj.mode === 'native') {
-    if (!hasOnlyKeys(obj, ['mode', 'rate'])) return null;
-    const rate = obj.rate;
-    if (!rate || typeof rate !== 'object' || Array.isArray(rate)) return null;
-    const r = rate as Record<string, unknown>;
-    if (!hasOnlyKeys(r, ['numerator', 'denominator'])) return null;
-    if (!isRateTerm(r.numerator) || !isRateTerm(r.denominator)) return null;
-    if (r.numerator * 10 < r.denominator || r.numerator > r.denominator * 10) return null;
-    return {mode: 'native', rate: {numerator: r.numerator, denominator: r.denominator}};
-  }
-  if (obj.mode !== 'proxy') return null;
-  if (obj.status === 'ready') {
-    if (!hasOnlyKeys(obj, ['mode', 'status', 'url', 'durationFrames'])) return null;
-    if (typeof obj.url !== 'string' || obj.url.length === 0) return null;
-    if (
-      typeof obj.durationFrames !== 'number'
-      || !Number.isSafeInteger(obj.durationFrames)
-      || obj.durationFrames < 1
-      || obj.durationFrames > TIMELINE_TIME_MAP_LIMITS.maxOutputFrames
-    ) {
-      return null;
-    }
-    return {mode: 'proxy', status: 'ready', url: obj.url, durationFrames: obj.durationFrames};
-  }
-  if (obj.status === 'queued' || obj.status === 'running' || obj.status === 'failed') {
-    if (!hasOnlyKeys(obj, ['mode', 'status', 'taskId', 'progress', 'reason'])) return null;
-    if (typeof obj.taskId !== 'string' || obj.taskId.length === 0) return null;
-    let progress: number | undefined;
-    if (obj.progress !== undefined) {
-      if (typeof obj.progress !== 'number' || !Number.isFinite(obj.progress) || obj.progress < 0 || obj.progress > 100) {
-        return null;
-      }
-      progress = obj.progress;
-    }
-    let reason: SpeedProcessingReason | undefined;
-    if (obj.reason !== undefined) {
-      const parsedReason = speedProcessingReasonSchema.safeParse(obj.reason);
-      if (!parsedReason.success) return null;
-      reason = parsedReason.data;
-    }
-    return {
-      mode: 'proxy',
-      status: obj.status,
-      taskId: obj.taskId,
-      ...(progress !== undefined ? {progress} : {}),
-      ...(reason !== undefined ? {reason} : {}),
-    };
-  }
-  return null;
-}
-
-/** Validates that a ready proxy URL belongs to `(projectId, clipId)` and carries
- * the required `speedPreview`, `taskId`, and 64-hex `digest` parameters. */
-export function isPreviewMediaForClip(
-  media: PreviewMedia,
-  projectId: string,
-  clipId: string,
-): boolean {
-  if (media.mode !== 'proxy' || media.status !== 'ready') return true;
-  if (!/^\/[-a-z0-9/]+\?[-a-zA-Z0-9=&%._~]+$/u.test(media.url)) return false;
-  const qIndex = media.url.indexOf('?');
-  if (qIndex < 0) return false;
-  const pathPart = media.url.slice(0, qIndex);
-  const queryPart = media.url.slice(qIndex + 1);
-  const match = MEDIA_PATH_RE.exec(pathPart);
-  if (!match || match[1] !== projectId) return false;
-  const params = new URLSearchParams(queryPart);
-  const qClip = params.get('speedPreview');
-  const qTask = params.get('taskId');
-  const qDigest = params.get('digest');
-  if (qClip !== clipId || !qTask || !UUID_RE.test(qTask) || !qDigest || !DIGEST_RE.test(qDigest)) {
-    return false;
-  }
-  return true;
-}
-
-export function parsePreviewMediaForClip(
-  value: unknown,
-  projectId: string,
-  clipId: string,
-): PreviewMedia | null {
-  const parsed = parsePreviewMedia(value);
-  if (!parsed) return null;
-  if (!isPreviewMediaForClip(parsed, projectId, clipId)) return null;
-  return parsed;
+export function parsePreviewMediaForClip(value: unknown, projectId: string, clipId: string): PreviewMedia | null {
+  const parsed = timelinePreviewMediaResponseSchema.safeParse(value);
+  return parsed.success && isPreviewMediaForClip(parsed.data, projectId, clipId) ? parsed.data : null;
 }
 
 export function previewMediaNeedsPolling(media: PreviewMedia | null): boolean {
@@ -821,10 +713,10 @@ export interface ClipSpeedPreviewBinding {
   readonly clipDurationFrames: number;
   readonly fps: number;
   readonly overlay: ClipSpeedPreviewOverlay | null;
-  readonly outputFrameToMediaSeconds: (frame: number) => number;
+  readonly outputFrameToMediaSeconds: (frame: number, forPlayback?: boolean) => number;
   readonly mediaSecondsToOutputFrame: (seconds: number) => number;
   readonly onRetryTask?: (taskId: string) => void;
-  readonly onPlaybackStateChange?: (state: {readonly playing: boolean; readonly frame: number; readonly silent: boolean}) => void;
+  readonly onPlaybackStateChange?: (state: {readonly playing: boolean; readonly frame: number; readonly silent: boolean}) => void | Promise<void>;
 }
 
 export function clipNeedsPreviewMediaRpc(
@@ -878,7 +770,7 @@ export function buildClipSpeedPreviewBinding(options: {
   readonly processingItems: readonly SpeedProcessingItem[];
   readonly t: Translator;
   readonly onRetryTask?: (taskId: string) => void;
-  readonly onPlaybackStateChange?: (state: {readonly playing: boolean; readonly frame: number; readonly silent: boolean}) => void;
+  readonly onPlaybackStateChange?: ClipSpeedPreviewBinding['onPlaybackStateChange'];
 }): ClipSpeedPreviewBinding | null {
   const {timeline, clip, asset, sourceUrl, fps, media, processingItems, t, onRetryTask, onPlaybackStateChange} = options;
   if (!timelineSpeedEnabled(timeline) || !clip || !asset || !sourceUrl) return null;
@@ -1020,7 +912,10 @@ export function buildClipSpeedPreviewBinding(options: {
     clipDurationFrames: clip.durationFrames,
     fps: safeFps,
     overlay: buildOverlayFromProcessingItem(opticalItem, t),
-    outputFrameToMediaSeconds: frame => sampleClipSourceAtTimelineFrame(clip, safeFps, frame, plan).sourceSeconds,
+    outputFrameToMediaSeconds: (frame, forPlayback) => {
+      const sample = sampleClipSourceAtTimelineFrame(clip, safeFps, frame, plan);
+      return forPlayback ? sample.continuousFrame / safeFps : sample.sourceSeconds;
+    },
     mediaSecondsToOutputFrame: seconds => outputFrameFromSourceSeconds(clip, safeFps, seconds, plan),
     onRetryTask,
     onPlaybackStateChange,

@@ -140,6 +140,7 @@ export function useSpeedPreviewMedia(options: {
   );
   const clipId = eligible && clip ? clip.id : null;
   const timingSignature = clip?.timing ? JSON.stringify(clip.timing) : 'none';
+  const bindingKey = clipId ? JSON.stringify([projectId, clipId, timeline?.revision, timingSignature]) : null;
   const clipProcessingSignature = clipId
     ? processingItems
         .filter(item => item.clipId === clipId)
@@ -148,30 +149,25 @@ export function useSpeedPreviewMedia(options: {
         .join('|')
     : '';
 
-  const [state, setState] = useState<{readonly clipId: string | null; readonly media: PreviewMedia | null}>({
-    clipId: null,
-    media: null,
-  });
+  const [state, setState] = useState<{readonly bindingKey: string; readonly media: PreviewMedia | null} | null>(null);
   const controllerRef = useRef<SpeedPreviewMediaController | null>(null);
   const rpcRef = useRef(rpc);
   rpcRef.current = rpc;
 
   useEffect(() => {
-    if (!eligible || !projectId || !clipId) {
+    if (!bindingKey || !projectId || !clipId) {
       controllerRef.current?.dispose();
       controllerRef.current = null;
-      setState(prev => (prev.clipId === null && prev.media === null ? prev : {clipId: null, media: null}));
       return;
     }
-    setState(prev => (prev.clipId === clipId ? prev : {clipId, media: null}));
     const controller = createSpeedPreviewMediaController({
       projectId,
       clipId,
       read: signal => rpcRef.current('timeline.preview.media', {projectId, clipId}, {signal}),
       onMedia: media => setState(prev => (
-        prev.clipId === clipId && JSON.stringify(prev.media) === JSON.stringify(media)
+        prev?.bindingKey === bindingKey && JSON.stringify(prev.media) === JSON.stringify(media)
           ? prev
-          : {clipId, media}
+          : {bindingKey, media}
       )),
     });
     controllerRef.current = controller;
@@ -180,7 +176,7 @@ export function useSpeedPreviewMedia(options: {
       controller.dispose();
       if (controllerRef.current === controller) controllerRef.current = null;
     };
-  }, [eligible, projectId, clipId, timeline?.revision, timingSignature]);
+  }, [bindingKey, projectId, clipId]);
 
   // Re-check media URL when processing list reports a clip's task changed state (e.g. ready or retried).
   const prevProcSig = useRef<string>(clipProcessingSignature);
@@ -197,7 +193,7 @@ export function useSpeedPreviewMedia(options: {
   }, []);
 
   return {
-    media: state.clipId === clipId ? state.media : null,
+    media: state && state.bindingKey === bindingKey ? state.media : null,
     clipId,
     refresh,
   };

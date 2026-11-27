@@ -28,6 +28,8 @@ import {
   waveformPath,
 } from '../apps/web/src/waveform-state.ts';
 import type {ClipTiming, SpeedProcessingItem} from '../packages/contracts/src/timeline-speed.ts';
+import {projectMediaPath} from '../packages/contracts/src/project-file.ts';
+import {timelinePreviewMediaPath} from '../packages/contracts/src/timeline-preview-media.ts';
 import {
   TIMELINE_TIME_MAP_BASIS_PROFILE,
   compileTimeMap,
@@ -48,8 +50,8 @@ const ASSET_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const CLIP_ID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const TASK_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
 const DIGEST = 'a'.repeat(64);
-const SOURCE_URL = `/api/projects/${PROJECT_ID}/assets/${ASSET_ID}/media`;
-const PROXY_URL = `/api/projects/${PROJECT_ID}/assets/${ASSET_ID}/media?speedPreview=${CLIP_ID}&taskId=${TASK_ID}&digest=${DIGEST}`;
+const SOURCE_URL = projectMediaPath(PROJECT_ID, ASSET_ID);
+const PROXY_URL = timelinePreviewMediaPath({projectId: PROJECT_ID, assetId: ASSET_ID, clipId: CLIP_ID, taskId: TASK_ID, digest: DIGEST});
 
 function makeConstantTiming(options: {
   sourceInFrame?: number;
@@ -197,12 +199,13 @@ test('PreviewMedia schema validates native, ready proxy verbatim URL, and pendin
   );
   assert.equal(
     parsePreviewMediaForClip(
-      {mode: 'proxy', status: 'ready', url: `/api/projects/${PROJECT_ID}/assets/${ASSET_ID}/media?speedPreview=${CLIP_ID}&taskId=${TASK_ID}`, durationFrames: 90},
+      {mode: 'proxy', status: 'ready', url: `${SOURCE_URL}?speedPreview=${CLIP_ID}&taskId=${TASK_ID}`, durationFrames: 90},
       PROJECT_ID,
       CLIP_ID,
     ),
     null,
   );
+  assert.equal(parsePreviewMediaForClip({mode: 'proxy', status: 'ready', url: PROXY_URL + '&extra=1', durationFrames: 90}, PROJECT_ID, CLIP_ID), null);
   assert.equal(
     parsePreviewMediaForClip({mode: 'proxy', status: 'ready', url: 'https://evil.example/a.mp4', durationFrames: 90}, PROJECT_ID, CLIP_ID),
     null,
