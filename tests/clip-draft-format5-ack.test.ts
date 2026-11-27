@@ -23,7 +23,7 @@ test('format-5 clip draft acknowledgement validates the board projection instead
   assert.equal(isTimelineRecord(legacy, {projectId: WIRE_IDS.project}), true, 'format 4 keeps the legacy validator');
 });
 
-test('an exact matched gain survives draft, request, saved projection and confirmation without rounding', async t => {
+for (const outcome of ['applied', 'not_applied'] as const) test(`an exact gain matches the saved projection without rounding (${outcome})`, async t => {
   const fixture = await createEditUiWireFixture();
   t.after(() => fixture.store.close());
   const timeline = fixture.store.get('timelines', WIRE_IDS.timeline) as Record<string, unknown>;
@@ -47,12 +47,15 @@ test('an exact matched gain survives draft, request, saved projection and confir
   let requestGain: unknown;
   const result = await controller.save(async (_clipId, patch) => {
     requestGain = patch.gain;
-    return {...timeline, revision: Number(timeline.revision) + 1,
+    const readback = {...timeline, revision: Number(timeline.revision) + (outcome === 'applied' ? 1 : 2),
       clips: clips.map(item => item.id === WIRE_IDS.clipA ? {...item, gain: exact} : item)};
+    return outcome === 'applied' ? readback : {status: outcome, code: 'SEQUENCE_EDIT_NOOP', timeline: readback};
   });
   assert.equal(requestGain, exact);
-  assert.ok(result);
+  assert.equal(Boolean(result), outcome === 'applied');
   assert.equal(controller.getState().dirty, false);
   assert.equal(controller.getState().conflict, false);
   assert.equal(controller.getState().raw.gain, exact);
+  assert.equal(controller.getState().baseRevision, Number(timeline.revision) + (outcome === 'applied' ? 1 : 2));
+  assert.equal(controller.getState().error, '');
 });

@@ -5,6 +5,7 @@ import type { MessageKey } from '../../../packages/i18n/src/index.ts';
 import { TIMELINE_SUBTITLE_LIMITS, TIMELINE_SUBTITLE_PROFILE_ID, getTimelineSubtitleIssue, isTimelineMutationResponse } from '@mioon/contracts';
 import { FORMAT5_LIMITS, isFormat5Timeline, type Format5Timeline } from '@mioon/contracts/project-format5';
 import { taskInputKey } from './edit-task-client.ts';
+import { isSequenceEditNoop } from './edit-ui/lost-response.ts';
 
 export { TIMELINE_SUBTITLE_LIMITS };
 
@@ -193,6 +194,16 @@ export function createSubtitleController({ submit, createRequestId, getContext, 
     try {
       result = await submit(intent);
       if (!owns(intent)) return null;
+      if (result?.status === 'not_applied' && isSequenceEditNoop(result.error)) {
+        const live = state.timeline, cue = cues(live).find(item => item.id === intent.input.cueId);
+        const confirmed = intent.input.cueId && (removing ? !cue
+          : cue && patchFields.text === cue.text && patchFields.startFrame === cue.startFrame && patchFields.durationFrames === cue.durationFrames);
+        if (live?.id === intent.timelineId && serial === intent.serial && confirmed) {
+          emit({cueId: cue?.id || null, draft: fields(cue) as SubtitleDraft | null, baseRevision: live.revision,
+            dirty: false, conflict: false, submitting: false, uncertain: null});
+        } else emit({submitting: false, uncertain: null});
+        return null;
+      }
       if (result?.status === 'applied') {
         const saved = result.timeline;
         if (!subtitleAcknowledged(intent, saved as SubtitleTimeline, Boolean(timeline.mainTrack))) throw protocolError();

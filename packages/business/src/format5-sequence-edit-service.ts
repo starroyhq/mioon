@@ -23,7 +23,8 @@ import {
   applySequenceEdit, createSequenceEditing, planSequenceEditIntents, previewSequenceBoardAction, readSequenceEditContext,
 } from './sequence-edit.ts';
 import {previewSequenceSync, readSequenceSyncContext, runSequenceSync} from './format5-sequence-sync.ts';
-import {sequenceEditPreviewFailure, type SequenceEditPreviewFailure} from './format5-sequence-preview-errors.ts';
+import {explainSequenceEditFailure, sequenceEditCommitError, sequenceEditPreviewFailure,
+  type SequenceEditPreviewFailure} from './format5-sequence-preview-errors.ts';
 import {
   buildSubjectBindingEnvelope, planSubjectBindingAction,
 } from './format5-subject-binding.ts';
@@ -49,6 +50,7 @@ import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
 import {deriveFilmChains} from '../../contracts/src/board-sequence.ts';
 import {isBoardIntentOperation} from '../../contracts/src/sequence-edit.ts';
 import {isLocale} from '../../i18n/src/index.ts';
+import type {Locale} from '../../i18n/src/types.ts';
 
 type Row = Record<string, any>;
 type SequenceEditPreview = SequenceEditPreviewFailure | {
@@ -160,7 +162,7 @@ export function createFormat5SequenceEditService(store: ProjectStore, options: {
   readonly generationSubmit?: (input: any) => unknown;
 } = {}): {
   preview(input: any): SequenceEditPreview;
-  commit(input: any): unknown;
+  commit(input: any, locale?: Locale): unknown;
   history(input: {projectId: string}): unknown;
   board(input: {projectId: string}): unknown;
   undo(input: any): unknown;
@@ -262,6 +264,11 @@ export function createFormat5SequenceEditService(store: ProjectStore, options: {
   }
 
   function preview(input: any): SequenceEditPreview {
+    const result = previewIntent(input);
+    return 'ok' in result ? explainSequenceEditFailure(result, isLocale(input.locale) ? input.locale : undefined) : result;
+  }
+
+  function previewIntent(input: any): SequenceEditPreview {
     projectCheck(store, input.projectId);
     requireFormat5(store);
     // Timeline preview currently owns its own read transaction; subject and
@@ -310,7 +317,7 @@ export function createFormat5SequenceEditService(store: ProjectStore, options: {
     return failure('SEQUENCE_EDIT_CONTRACT_INVALID', []);
   }
 
-  function commit(input: any): unknown {
+  function commit(input: any, locale?: Locale): unknown {
     projectCheck(store, input.projectId);
     requireFormat5(store);
     const envelope = input.envelope as SequenceEditEnvelope;
@@ -337,48 +344,46 @@ export function createFormat5SequenceEditService(store: ProjectStore, options: {
               ? {configurationRevision: operation.settings.configurationRevision} : {}),
             ...(operation.settings.modelEntryId ? {modelEntryId: operation.settings.modelEntryId} : {})});
         }} : {})}) as any;
-      if (result.ok === false) throw new AppError(result.code, '格式 5 剪辑里生成没有完成。', 409, {ids: result.ids});
+      if (result.ok === false) throw sequenceEditCommitError(result, '格式 5 剪辑里生成没有完成。', locale);
       return result.receipt;
     }
     if (envelope.formatIntent) {
       const result = runTimelineFormatSync(store, envelope) as any;
-      if (result.ok === false) throw new AppError(result.code, '格式 5 画幅没有完成。', 409, {ids: result.ids});
+      if (result.ok === false) throw sequenceEditCommitError(result, '格式 5 画幅没有完成。', locale);
       return result.receipt;
     }
     if (envelope.subtitlesIntent) {
       const result = runSubtitleEditsSync(store, envelope) as any;
-      if (result.ok === false) throw new AppError(result.code, '格式 5 字幕编辑没有完成。', 409, {ids: result.ids});
+      if (result.ok === false) throw sequenceEditCommitError(result, '格式 5 字幕编辑没有完成。', locale);
       return result.receipt;
     }
     if (envelope.dialogueIntent) {
       const result = runDialogueAction(store, envelope);
-      if (result.ok === false) throw new AppError(result.code, result.message ?? '格式 5 台词没有完成。', 409,
-        {ids: result.ids, ...(result.dialogueConflict ? {dialogueConflict: result.dialogueConflict} : {})});
+      if (result.ok === false) throw sequenceEditCommitError(result, '格式 5 台词没有完成。', locale);
       return result.receipt;
     }
     if (envelope.trackIntent) {
       const result = runTrackSync(store, envelope) as any;
-      if (result.ok === false) throw new AppError(result.code, '格式 5 轨道编辑没有完成。', 409, {ids: result.ids});
+      if (result.ok === false) throw sequenceEditCommitError(result, '格式 5 轨道编辑没有完成。', locale);
       return result.receipt;
     }
     if (envelope.propertiesIntent) {
       const result = runClipPropertiesSync(store, envelope) as any;
-      if (result.ok === false) throw new AppError(result.code, '格式 5 片段属性没有完成。', 409, {ids: result.ids});
+      if (result.ok === false) throw sequenceEditCommitError(result, '格式 5 片段属性没有完成。', locale);
       return result.receipt;
     }
     if (envelope.soundIntent) {
       const result = runSeparateSoundSync(store, envelope) as any;
-      if (result.ok === false) throw new AppError(result.code, '格式 5 分离声音没有完成。', 409, {ids: result.ids});
+      if (result.ok === false) throw sequenceEditCommitError(result, '格式 5 分离声音没有完成。', locale);
       return result.receipt;
     }
     if (envelope.subjectIntent || envelope.referenceIntent || envelope.previsIntent || intents.some(timelineIntent)) {
       const result = runSequenceSync(store, envelope, {expectedPlanDigest: input.expectedPlanDigest});
-      if (result.ok === false) throw new AppError(result.code, result.message ?? '格式 5 同步没有完成。', 409,
-        {ids: result.ids, ...(result.dialogueConflict ? {dialogueConflict: result.dialogueConflict} : {})});
+      if (result.ok === false) throw sequenceEditCommitError(result, '格式 5 同步没有完成。', locale);
       return result.receipt;
     }
     if (intents.some(boardIntent)) {
-      const receipt = applySequenceEdit(store, envelope, () => {}, options.clipboardOwner);
+      const receipt = applySequenceEdit(store, envelope, () => {}, options.clipboardOwner, locale);
       return receipt;
     }
     throw new AppError('SEQUENCE_EDIT_CONTRACT_INVALID', '没有可执行的 intent。', 409);

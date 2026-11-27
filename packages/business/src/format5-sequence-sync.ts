@@ -28,6 +28,7 @@ import type {
 } from '@mioon/contracts/sequence-edit';
 import {applySequenceEditBaselineChange, isSequenceEditEnvelope, isSequenceEditErrorCode, sequenceEditEnvelopeOperationName} from '@mioon/contracts/sequence-edit';
 import {readSubjectBinding} from './format5-subject-binding.ts';
+import {dialogueConflictMessage, sequenceEditFailureEvidence} from './format5-sequence-preview-errors.ts';
 import {planSubjectEditAction} from './format5-subject-card.ts';
 import {planPrevisAction} from './format5-previs.ts';
 import {prunePrevisThumbnails} from './previs.ts';
@@ -41,7 +42,6 @@ import type {ChainBoard, ChainNode, SequenceEdge} from '../../contracts/src/boar
 import type {TrackAnchoredItem} from '../../contracts/src/chain-sync-analysis.ts';
 import {format5SyncBaselineSchema, format5TimelineHeader} from '../../contracts/src/project-format5.ts';
 import {copyFormat5ShotDialogue, format5ShotDialogue, projectFormat5DialogueCues} from './format5-dialogue-projection.ts';
-import {dialogueConflictMessage} from './format5-sequence-preview-errors.ts';
 import type {Format5DialogueProjectedShot, Format5DialogueProjectionResult} from './format5-dialogue-projection.ts';
 import type {Format5Clip, Format5Cue, Format5SyncBaseline, Format5Timeline} from '../../contracts/src/project-format5.ts';
 import {format5AnchoredItem, format5ChainNodeKind, format5MainTrackClips} from './project-file/format5-sequence-mapping.ts';
@@ -65,7 +65,8 @@ const isUuid = (value: unknown): value is string => typeof value === 'string' &&
 const now = (): string => new Date().toISOString();
 const format5 = (store: ProjectStore): boolean =>
   Number(store.db.prepare('PRAGMA project.user_version').get()?.user_version) === 5;
-const failure = (code: SequenceEditErrorCode, ids: readonly string[] = []): SequenceEditTransactionFailure => ({ok: false, code, ids});
+const failure = (code: SequenceEditErrorCode, ids: readonly string[] = [], reason?: string): SequenceEditTransactionFailure =>
+  ({ok: false, code, ids, ...(reason ? {reason} : {})});
 const emptyDelta = (): SequenceEditStateDelta => ({board: {writes: [], removals: []},
   timeline: {clips: [], cues: [], removedClipIds: [], removedCueIds: [], baseline: {kind: 'unchanged'}}});
 const emptyCounts = (): SequenceEditAffectedCounts => ({nodes: 0, edges: 0, mainTrackClips: 0, otherTrackItems: 0, subtitleCues: 0});
@@ -298,7 +299,8 @@ function resolveVersion(context: SyncContext, nodeId: string, versionId: string)
 
 function planFailure(plan: Extract<ChainSyncPlan, {ok: false}>): SequenceEditTransactionFailure {
   const ids = 'id' in plan && typeof plan.id === 'string' ? [plan.id]
-    : 'issues' in plan && Array.isArray(plan.issues) ? plan.issues.flatMap(issue => issue.ids ?? []) : [];
+    : 'issues' in plan ? sequenceEditFailureEvidence(plan.code, {ids: plan.issues.flatMap(issue => issue.nodeIds)})?.ids ?? []
+      : 'nodeId' in plan && 'clipId' in plan ? [plan.nodeId, plan.clipId] : [];
   return failure(plan.code as SequenceEditErrorCode, ids);
 }
 
@@ -443,11 +445,12 @@ function planGeneratePlaceholder(context: SyncContext, envelope: SequenceEditEnv
   const placement = operation.placement;
   if (placement.kind === 'track') {
     const track = context.timeline.tracks.find(item => item.id === placement.trackId);
-    if (!track || track.id === context.timeline.mainTrack.trackId) return failure('INVALID_TRACK_TARGET', [placement.trackId]);
+    if (!track) return failure('INVALID_TRACK_TARGET', [placement.trackId], 'TRACK_NOT_FOUND');
+    if (track.id === context.timeline.mainTrack.trackId) return failure('INVALID_TRACK_TARGET', [placement.trackId]);
     const startFrame = placement.startFrame;
     const owner = context.timeline.clips.find(clip => clip.trackId === context.timeline.mainTrack.trackId
       && clip.startFrame <= startFrame && startFrame < clip.startFrame + clip.durationFrames);
-    if (!owner) return failure('SEQUENCE_EDIT_ANCHOR_CONFLICT', [placement.trackId]);
+    if (!owner) return failure('SEQUENCE_EDIT_ANCHOR_CONFLICT', [placement.trackId], 'MAIN_TRACK_CLIP_REQUIRED');
     const durationFrames = operation.settings.duration * 30;
     const clip: Format5Clip = {id: operation.clipId, trackId: track.id, name: operation.title,
       startFrame, durationFrames, sourceInFrame: 0,
@@ -657,9 +660,9 @@ function expandedAddPlan(context: SyncContext, envelope: SequenceEditEnvelope,
   edit: Extract<TrackSyncEdit, {kind: 'add'}>): SequenceEditPlan | SequenceEditTransactionFailure {
   if (edit.nodeAssetId) {
     const asset = context.assets.get(edit.nodeAssetId);
-    if (!asset || asset.projectId !== context.projectId) return failure('INVALID_MEDIA', [edit.nodeAssetId]);
+    if (!asset || asset.projectId !== context.projectId) return failure('INVALID_MEDIA', [edit.nodeAssetId], 'ASSET_NOT_FOUND');
     const kind = assetKindOf(asset);
-    if (kind !== 'image' && kind !== 'video') return failure('INVALID_MEDIA', [edit.nodeAssetId]);
+    if (kind !== 'image' && kind !== 'video') return failure('INVALID_MEDIA', [edit.nodeAssetId], 'ASSET_KIND_UNSUPPORTED');
     const media = kind === 'image'
       ? {nodeId: edit.clip.nodeId, selectedVersion: {id: edit.nodeAssetId, sourceFrames: null as null}, durationFrames: edit.clip.durationFrames}
       : (() => {const frames = sourceFrameCount(asset.duration); return frames === null ? null :
@@ -715,9 +718,9 @@ function expandedOverlayPlan(context: SyncContext, edit: Extract<TrackSyncEdit, 
   const mainTrackId = context.timeline.mainTrack.trackId;
   if (edit.trackId === mainTrackId) return failure('INVALID_TRACK_TARGET', [edit.trackId]);
   const track = context.timeline.tracks.find(item => item.id === edit.trackId);
-  if (!track) return failure('INVALID_TRACK_TARGET', [edit.trackId]);
+  if (!track) return failure('INVALID_TRACK_TARGET', [edit.trackId], 'TRACK_NOT_FOUND');
   const owner = ownerAt(context, edit.startFrame);
-  if (!owner) return failure('SEQUENCE_EDIT_ANCHOR_CONFLICT', [edit.trackId]);
+  if (!owner) return failure('SEQUENCE_EDIT_ANCHOR_CONFLICT', [edit.trackId], 'MAIN_TRACK_CLIP_REQUIRED');
   let clip: Format5Clip;
   if (edit.copyFromClipId) {
     const source = context.timeline.clips.find(item => item.id === edit.copyFromClipId);
@@ -728,15 +731,15 @@ function expandedOverlayPlan(context: SyncContext, edit: Extract<TrackSyncEdit, 
       anchor: {clipId: owner.id, offsetFrames: edit.startFrame - owner.startFrame}};
     if (source.sourceState === 'placeholder') return failure('INVALID_MEDIA', [source.id]);
     if (track.kind === 'audio' && !String(context.assets.get(source.assetId)?.mimeType).startsWith('audio/'))
-      return failure('INVALID_TRACK_TARGET', [edit.trackId]);
+      return failure('INVALID_TRACK_TARGET', [edit.trackId], 'TRACK_KIND_MISMATCH');
     if (track.kind === 'video' && String(context.assets.get(source.assetId)?.mimeType).startsWith('audio/'))
-      return failure('INVALID_TRACK_TARGET', [edit.trackId]);
+      return failure('INVALID_TRACK_TARGET', [edit.trackId], 'TRACK_KIND_MISMATCH');
   } else {
     const asset = edit.assetId ? context.assets.get(edit.assetId) : undefined;
-    if (!asset || asset.projectId !== context.projectId) return failure('INVALID_MEDIA', [edit.assetId ?? '']);
+    if (!asset || asset.projectId !== context.projectId) return failure('INVALID_MEDIA', [edit.assetId ?? ''], 'ASSET_NOT_FOUND');
     const kind = assetKindOf(asset);
-    if (kind === null) return failure('INVALID_MEDIA', [edit.assetId!]);
-    if (track.kind === 'audio' ? kind !== 'audio' : kind === 'audio') return failure('INVALID_TRACK_TARGET', [edit.trackId]);
+    if (kind === null) return failure('INVALID_MEDIA', [edit.assetId!], 'ASSET_KIND_UNSUPPORTED');
+    if (track.kind === 'audio' ? kind !== 'audio' : kind === 'audio') return failure('INVALID_TRACK_TARGET', [edit.trackId], 'TRACK_KIND_MISMATCH');
     clip = overlayClipForAsset(context, asset, kind, edit.clipId, edit.trackId, edit.startFrame, edit.durationFrames, owner);
   }
   return planOverlayInsert(context, clip, owner);
@@ -753,15 +756,15 @@ function expandMinimalSequenceSync(context: SyncContext, envelope: SequenceEditE
   const mainTrackId = context.timeline.mainTrack.trackId;
   if (edit.kind === 'insert-asset') {
     const asset = context.assets.get(edit.assetId);
-    if (!asset || asset.projectId !== context.projectId) return failure('INVALID_MEDIA', [edit.assetId]);
+    if (!asset || asset.projectId !== context.projectId) return failure('INVALID_MEDIA', [edit.assetId], 'ASSET_NOT_FOUND');
     const kind = assetKindOf(asset);
-    if (kind === null) return failure('INVALID_MEDIA', [edit.assetId]);
+    if (kind === null) return failure('INVALID_MEDIA', [edit.assetId], 'ASSET_KIND_UNSUPPORTED');
     const targetTrackId = edit.trackId ?? mainTrackId;
     const track = context.timeline.tracks.find(item => item.id === targetTrackId);
-    if (!track) return failure('INVALID_TRACK_TARGET', [targetTrackId]);
+    if (!track) return failure('INVALID_TRACK_TARGET', [targetTrackId], 'TRACK_NOT_FOUND');
     const main = targetTrackId === mainTrackId;
     if (main ? kind === 'audio' : track.kind !== (kind === 'audio' ? 'audio' : 'video'))
-      return failure('INVALID_TRACK_TARGET', [targetTrackId]);
+      return failure('INVALID_TRACK_TARGET', [targetTrackId], 'TRACK_KIND_MISMATCH');
     const frames = assetFrames(asset, kind);
     if (frames === null || frames < 1 || frames > 18000) return failure('INVALID_CLIP_FRAMES', [edit.assetId]);
     if (main) {
@@ -773,7 +776,7 @@ function expandMinimalSequenceSync(context: SyncContext, envelope: SequenceEditE
         nodeAssetId: edit.assetId, nodeName: assetName(asset, kind)};
       return {...envelope, intents: [{side: 'timeline', operation: {kind: 'track', edit: addEdit}}]};
     }
-    if (!ownerAt(context, edit.startFrame)) return failure('SEQUENCE_EDIT_ANCHOR_CONFLICT', [targetTrackId]);
+    if (!ownerAt(context, edit.startFrame)) return failure('SEQUENCE_EDIT_ANCHOR_CONFLICT', [targetTrackId], 'MAIN_TRACK_CLIP_REQUIRED');
     const ids = allocated ?? {nodeId: targetTrackId, clipId: randomUUID()};
     if (!allocated) allocation.push(ids);
     const overlayEdit: TrackSyncEdit = {kind: 'add-overlay', clipId: ids.clipId, trackId: targetTrackId,
@@ -795,7 +798,7 @@ function expandMinimalSequenceSync(context: SyncContext, envelope: SequenceEditE
       beforeClipId: insertionBefore(context, edit.startFrame), copyFromClipId: source.id};
     return {...envelope, intents: [{side: 'timeline', operation: {kind: 'track', edit: addEdit}}]};
   }
-  if (!ownerAt(context, edit.startFrame)) return failure('SEQUENCE_EDIT_ANCHOR_CONFLICT', [source.trackId]);
+  if (!ownerAt(context, edit.startFrame)) return failure('SEQUENCE_EDIT_ANCHOR_CONFLICT', [source.trackId], 'MAIN_TRACK_CLIP_REQUIRED');
   const ids = allocated ?? {nodeId: source.trackId, clipId: randomUUID()};
   if (!allocated) allocation.push(ids);
   const overlayEdit: TrackSyncEdit = {kind: 'add-overlay', clipId: ids.clipId, trackId: source.trackId,
@@ -808,7 +811,9 @@ function copyAsNewShotInputFailure(context: SyncContext,
   input: {readonly clipId: string; readonly copyNodeId: string}): SequenceEditTransactionFailure | null {
   const clip = context.timeline.clips.find(item => item.id === input.clipId);
   if (!clip) return failure('CLIP_NOT_FOUND', [input.clipId]);
-  if (clip.trackId !== context.timeline.mainTrack.trackId) return failure('INVALID_TRACK_TARGET', [input.clipId]);
+  if (clip.trackId !== context.timeline.mainTrack.trackId) {
+    return failure('INVALID_TRACK_TARGET', [input.clipId], 'COPY_REQUIRES_MAIN_TRACK');
+  }
   if (context.archivedShots.has(input.copyNodeId) || context.archivedNodes.has(input.copyNodeId)) {
     return failure('COPY_NODE_EXISTS', [input.copyNodeId]);
   }
@@ -868,7 +873,7 @@ function planEnvelope(context: SyncContext, envelope: SequenceEditEnvelope, scen
     }
     if (edit.kind === 'move-off-track') {
       const track = context.timeline.tracks.find(item => item.id === edit.trackId);
-      if (!track) return failure('INVALID_TRACK_TARGET', [edit.trackId]);
+      if (!track) return failure('INVALID_TRACK_TARGET', [edit.trackId], 'TRACK_NOT_FOUND');
     }
     return checked(planChainSync(state, {kind: 'track', edit}));
   }
@@ -1906,7 +1911,7 @@ function emptyPatch(): SequenceEditPatch {
 }
 
 function replayResult(store: ProjectStore, receipt: SequenceEditReceipt): SequenceSyncResult {
-  if (receipt.status === 'not_applied') return failure(receipt.code ?? 'SEQUENCE_EDIT_NOOP');
+  if (receipt.status === 'not_applied') return failure(receipt.code ?? 'SEQUENCE_EDIT_NOOP', receipt.failure?.ids, receipt.failure?.reason);
   const entry = readSequenceEditHistoryEntry(store, receipt.actionId);
   return {ok: true, actionId: receipt.actionId, operation: receipt.operation,
     patch: entry ? patchFromEntry(entry) : emptyPatch(), receipt};
@@ -1966,15 +1971,15 @@ export function runSequenceSync(store: ProjectStore, envelope: SequenceEditEnvel
       // A rejected source track never yields a confirmable plan or receipt.
       if (sceneEdit?.kind === 'track' && sceneEdit.edit.kind === 'copy-as-new-shot'
         && plan.code === 'INVALID_TRACK_TARGET') return plan;
-      return writeFailure(store, envelope, plan.code);
+      return writeFailure(store, envelope, plan.code, plan);
     }
     const successful = plan as SequenceEditPlan;
     const board = boardPlanEntities(context, successful, envelope);
-    if ('ok' in board && board.ok === false) return writeFailure(store, envelope, board.code);
+    if ('ok' in board && board.ok === false) return writeFailure(store, envelope, board.code, board);
     const boardEntities = board as BoardPlanEntities;
     const projected = patchMainTimeline(context, successful, boardEntities.extraShots);
     if (projected.ok === false) {
-      writeSequenceEditFailure(store, envelope, projected.code);
+      writeSequenceEditFailure(store, envelope, projected.code, sequenceEditFailureEvidence(projected.code, projected));
       return projected;
     }
     const projection = projected.projection;
@@ -1983,7 +1988,7 @@ export function runSequenceSync(store: ProjectStore, envelope: SequenceEditEnvel
       ? applyOtherTrackSceneSplits(nextTimeline, context, envelope, sceneCuts) : null;
     if (sceneData) nextTimeline = sceneData.timeline;
     const anchorIssue = validateAnchoredTimeline(nextTimeline);
-    if (anchorIssue) return writeFailure(store, envelope, 'SEQUENCE_EDIT_ANCHOR_CONFLICT');
+    if (anchorIssue) return writeFailure(store, envelope, 'SEQUENCE_EDIT_ANCHOR_CONFLICT', anchorIssue);
     const changedShots = shotChanges(context, successful);
     const shotUpdates = new Map(changedShots.map(change => [change.after.id as string, change.after] as const));
     const nextBaseline = buildBaseline(context, nextTimeline, shotUpdates, boardEntities.extraShots,
@@ -2175,9 +2180,11 @@ function runReferenceEdgeSync(store: ProjectStore, envelope: SequenceEditEnvelop
   });
 }
 
-function writeFailure(store: ProjectStore, envelope: SequenceEditEnvelope, code: SequenceEditErrorCode): SequenceEditTransactionFailure {
-  writeSequenceEditFailure(store, envelope, code);
-  return failure(code);
+function writeFailure(store: ProjectStore, envelope: SequenceEditEnvelope, code: SequenceEditErrorCode,
+  details?: unknown): SequenceEditTransactionFailure {
+  const evidence = sequenceEditFailureEvidence(code, details);
+  writeSequenceEditFailure(store, envelope, code, evidence);
+  return failure(code, evidence?.ids, evidence?.reason);
 }
 
 // ---------------------------------------------------------------------------

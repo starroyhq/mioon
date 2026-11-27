@@ -54,8 +54,10 @@ import { outputAssetNameMessages } from './catalogs/output-asset-names.ts';
 import { clipSoundMessages } from './catalogs/clip-sound.ts';
 import { isLocale, LOCALES } from './locale.ts';
 import type { DisplayMessage, Locale, MessageCatalog, MessageParameters, MessageTemplate } from './types.ts';
+import {sequenceEditFailureMessageKey} from './sequence-edit-failures.ts';
 export * from './types.ts';
 export * from './locale.ts';
+export {sequenceEditFailureMessageKey};
 import { assertNoDuplicateMessageKeys } from './catalog-integrity.ts';
 export { assertNoDuplicateMessageKeys } from './catalog-integrity.ts';
 assertNoDuplicateMessageKeys(boardUiMessages, editUiMessages, dialogueMessages, desktopUpdateMessages, externalAgentsMessages, localRecordsUiMessages, mioUsageUiMessages, mioConversationMessages, mioCheckMessages, mioRequirementMessages, mioSettingsMessages, mioPanelMessages, canvasTimelineMessages, sceneDetectionMessages, agentTaskErrorMessages, agentTaskMessages, videoProviderMessages, round4TaskMessages, clipLoudnessMatchMessages, round3EditingMessages, round3TimelineMessages, workspaceConfigurationMessages, projectBrowserMessages, projectPackageMessages, redesignBoardMessages, exportFileMessages, workspaceToolsMessages, settingsRedesignMessages, settingsBootMessages, exportWorkflowMessages, timelineEditingMessages, appearanceMessages, workbenchShellMessages, redesignOutputMessages, volumeEnvelopeMessages, audioRoleMessages, comparisonMessages, annotationMessages, clipLoudnessMessages, clipTransformMessages, clipTransitionMessages, commandMessages, operationMessages, foundationMessages, nativeMessages, shellMessages, creationMessages, timelineMessages, projectFileUiMessages, projectHomeNativeMessages, projectRulesRuntimeMessages, nativeEntryMessages, outputAssetNameMessages, clipSoundMessages);
@@ -96,6 +98,25 @@ export function translate<K extends MessageKey>(locale: Locale, key: K, ...args:
   const entry = (catalogs as MessageCatalog)[key];
   return formatTemplate(locale, entry[locale], args[0] as MessageParameters | undefined);
 }
+/** The backend marks the bounded sequence reasons that share this catalog.
+ * A precise legacy diagnostic with the same code remains as supplied. */
+export function translateSequenceEditDiagnostic(locale: Locale | undefined, code: string, details: unknown): string | undefined {
+  if (!details || typeof details !== 'object') return undefined;
+  const {messageKey, reason} = details as {messageKey?: unknown; reason?: unknown};
+  const key = sequenceEditFailureMessageKey(code, typeof reason === 'string' ? reason : undefined);
+  if (key && messageKey === key) return translate(locale ?? 'zh-Hans', key);
+}
+
+/** Localize the display message on a grouped commit's not-applied receipt. */
+export function localizeSequenceEditReceipt(locale: Locale | undefined, value: unknown): unknown {
+  if (!locale || !value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const receipt = value as {status?: unknown; code?: unknown; message?: unknown; failure?: {reason?: unknown}};
+  if (receipt.status !== 'not_applied' || typeof receipt.code !== 'string' || typeof receipt.message !== 'string') return value;
+  const reason = typeof receipt.failure?.reason === 'string' ? receipt.failure.reason : undefined;
+  const key = sequenceEditFailureMessageKey(receipt.code, reason);
+  return key ? {...value, message: translate(locale, key)} : value;
+}
+
 /** Presentation boundary for persisted-in-memory descriptors, not arbitrary server messages. */
 export function renderMessage(locale: Locale, value: DisplayMessage | string | null | undefined): string {
   if (value == null) return '';
