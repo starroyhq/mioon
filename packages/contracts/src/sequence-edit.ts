@@ -1479,6 +1479,12 @@ export interface SequenceEditHistoryCursor {
 export const SEQUENCE_EDIT_WARNING_CODES = Object.freeze(['SOURCE_TOO_SHORT'] as const);
 export type SequenceEditWarningCode = (typeof SEQUENCE_EDIT_WARNING_CODES)[number];
 
+export const sequenceEditFailureEvidenceSchema = z.object({
+  ids: idListSchema(FORMAT5_LIMITS.mainTrackClips),
+  reason: z.string().regex(/^[A-Z][A-Z0-9_]{0,79}$/u).optional(),
+}).strict();
+export type SequenceEditFailureEvidence = Readonly<{ids: readonly string[]; reason?: string | undefined}>;
+
 /** `editor_requests.response`, bounded by the frozen 64 KiB receipt window. */
 export interface SequenceEditReceipt {
   readonly version: typeof SEQUENCE_EDIT_CONTRACT_VERSION;
@@ -1490,6 +1496,8 @@ export interface SequenceEditReceipt {
   readonly originSide: SequenceEditSide;
   readonly status: 'applied' | 'not_applied';
   readonly code?: SequenceEditErrorCode;
+  /** Optional machine evidence on a rejected action, preserved on replay. */
+  readonly failure?: SequenceEditFailureEvidence;
   /** Present only on an applied receipt that has something to report. */
   readonly warnings?: readonly ChainSyncWarning[];
   readonly affected: SequenceEditAffectedCounts;
@@ -1533,6 +1541,7 @@ export const sequenceEditReceiptSchema = z.object({
   projectId: uuidSchema, actionId: uuidSchema, operation: boundedText(SEQUENCE_EDIT_LIMITS.operationBytes),
   originSide: z.enum(SEQUENCE_EDIT_SIDES), status: z.enum(['applied', 'not_applied']),
   code: z.string().min(1).max(SEQUENCE_EDIT_LIMITS.operationBytes).optional(),
+  failure: sequenceEditFailureEvidenceSchema.optional(),
   warnings: z.array(z.object({
     code: z.literal('SOURCE_TOO_SHORT'), clipId: uuidSchema, nodeId: uuidSchema,
     versionId: uuidSchema, shortByFrames: sequenceSchema,
@@ -1542,7 +1551,8 @@ export const sequenceEditReceiptSchema = z.object({
   sceneSplit: sceneSplitSchema.optional(),
 }).strict().refine(value => value.status === 'applied' ? value.code === undefined : value.code !== undefined,
   'Only a not-applied receipt carries an error code').refine(value => value.status === 'applied' || value.warnings === undefined,
-  'A not-applied receipt carries no warnings');
+  'A not-applied receipt carries no warnings').refine(value => value.status === 'not_applied' || value.failure === undefined,
+  'Only a not-applied receipt carries failure evidence');
 
 /** External service entry shared by UI-B/UI-E/MT. The same envelope shape feeds
  * `apply`; undo/redo address one existing history action and never blindly apply
