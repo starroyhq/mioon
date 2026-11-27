@@ -277,7 +277,7 @@ export function createTimelineProcessingService(store: ProjectStore, options: Pr
           prepared.profile.sourceSha256 !== source.sha256) throw new ProcessingFailure('PROCESSING_FAILED');
       return {prepared, profileId: TIMELINE_PREVIEW_CACHE_PROFILE,
         frameCount: mapped.value.durationFrames,
-        render: (scope: RenderScope) => previewRenderer.render(input, prepared, {...mediaOptions, ...scope})};
+        render: (scope: RenderScope) => previewRenderer.render(input, prepared, {...mediaOptions, ...scope})} as const;
     }
     if (frozen.kind === 'optical') {
       if (!frozen.optical || frozen.media !== 'video' || !frozen.mapHash) throw new ProcessingFailure('UNSUPPORTED_FORMAT');
@@ -293,7 +293,7 @@ export function createTimelineProcessingService(store: ProjectStore, options: Pr
       }};
       const prepared = await prepareOpticalProxy(input, mediaOptions);
       return {prepared, profileId: OPTICAL_PROXY_PROFILE, frameCount: prepared.profile.frameCount,
-        render: (scope: RenderScope) => renderOpticalProxy(input, prepared, {...mediaOptions, ...scope})};
+        render: (scope: RenderScope) => renderOpticalProxy(input, prepared, {...mediaOptions, ...scope})} as const;
     }
     if (!frozen.media || !frozen.mapHash || !frozen.sourceWindow || !frozen.sourceFps) {
       throw new ProcessingFailure('UNSUPPORTED_FORMAT');
@@ -305,7 +305,7 @@ export function createTimelineProcessingService(store: ProjectStore, options: Pr
     const prepared = await engine.prepare(input, mediaOptions);
     if (prepared.profile.id !== REVERSE_PROXY_PROFILE) throw new ProcessingFailure('PROCESSING_FAILED');
     return {prepared, profileId: REVERSE_PROXY_PROFILE, frameCount: undefined,
-      render: (scope: RenderScope) => engine.render(input, prepared, {...mediaOptions, ...scope})};
+      render: (scope: RenderScope) => engine.render(input, prepared, {...mediaOptions, ...scope})} as const;
   }
 
   function launch(original: Task): void {
