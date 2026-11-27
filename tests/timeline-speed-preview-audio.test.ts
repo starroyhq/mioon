@@ -164,6 +164,7 @@ test('preview PCM and SP-E render the same output samples through both real serv
     ['10× shift and tail silence', speedTiming(constant(10)), {}],
     ['increasing/decreasing curve', speedTiming(curve.value), {}],
     ['reverse with a verified PCM lease', speedTiming(constant(3, 2), sourceFrames, 'reverse'), {reverse: true}],
+    ['reverse curve with a verified PCM lease', speedTiming(curve.value, sourceFrames, 'reverse'), {reverse: true}],
     ['frozen frame is silent', speedTiming(constant(1)), {freeze: true}],
   ] as const) await t.test(name, async t => {
     const f = await fixture(t, [speed], options);
