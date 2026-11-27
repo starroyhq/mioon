@@ -20,6 +20,7 @@ import type {Format5Clip} from '../packages/contracts/src/project-format5.ts';
 import {CLIP_TRANSITION_PROFILE} from '../packages/contracts/src/timeline-clip-transition.ts';
 import type {SpeedSetting} from '../packages/contracts/src/timeline-speed.ts';
 import {compileTimeMap, initialTimeMap, projectTimeMapToCurrentClipFields, timeMapBasisFromCurrentClip} from '../packages/contracts/src/timeline-time-map.ts';
+import {testEnv} from './helpers/test-env.ts';
 
 const timestamp = '2026-01-01T00:00:00.000Z';
 const projectName = 'Synthetic interchange film';
@@ -244,7 +245,7 @@ function checkTimedXml(target: Target, result: Awaited<ReturnType<typeof exportF
   }
   const dtd = process.env[target.dtdEnv];
   const checked = spawnSync('xmllint', ['--noout', '--nonet', ...(dtd ? ['--dtdvalid', pathToFileURL(dtd).href] : []), '-'],
-    {input: result.xml, encoding: 'utf8'});
+    {input: result.xml, encoding: 'utf8', env: testEnv()});
   if (checked.error && (checked.error as NodeJS.ErrnoException).code === 'ENOENT' && !dtd) {
     t.diagnostic('xmllint unavailable for ' + target.name);
   } else {
