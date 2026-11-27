@@ -103,7 +103,7 @@ test('preserves primary timing, source trims, offline media links and named gaps
   assert.match(xml, /<format id="r1" width="1080" height="1920" frameDuration="1\/30s"/u);
   assert.match(xml, /<sequence format="r1" duration="266\/30s" tcStart="0s" tcFormat="NDF" audioLayout="stereo" audioRate="48k">/u);
   assert.match(xml, /<project name="Project &quot;A&quot; &amp; &lt;B&gt; 📽">/u);
-  assert.match(xml, /name="Main &lt;opening&gt; 📽" offset="0s" start="19\/30s" duration="31\/30s"/u);
+  assert.match(xml, /<asset-clip ref="r\d+" name="Main &lt;opening&gt; 📽" offset="0s" start="19\/30s" duration="31\/30s"/u);
   assert.match(xml, /name="Clip 16" offset="186\/30s" start="5\/30s" duration="31\/30s"/u);
   assert.match(xml, /name="影片 &amp; &quot;&lt;&gt; 📷"/u);
   assert.match(xml, /src="file:\/\/\/Volumes\/FCP%20Fixture\/seven-missing\.mov"/u);
@@ -117,7 +117,7 @@ test('preserves primary timing, source trims, offline media links and named gaps
 
 test('projects connected track offsets and ITT captions using the primary source time', () => {
   const xml = serializeFcpXml(fixture());
-  assert.match(xml, /name="Picture overlay" lane="1" offset="23\/30s" start="0s"/u);
+  assert.match(xml, /<video ref="r\d+" name="Picture overlay" lane="1" offset="23\/30s" start="0s" duration="19\/30s">/u);
   assert.match(xml, /<spine lane="2" offset="28\/30s"><asset-clip .*?name="Hidden picture" offset="0s"/u);
   assert.match(xml, /<spine lane="2".*?<transition name="Edge Wipe" offset="29\/30s" duration="6\/30s">/u);
   assert.match(xml, /name="Separated dialog" lane="-1" offset="35\/30s" start="13\/30s" duration="35\/30s" srcEnable="audio" audioRole="dialogue"/u);
@@ -143,10 +143,12 @@ test('translates all six transition kinds and keeps the odd frame after the cut'
 
 test('maps layout, crop, transform, level, fades, mute, and split sound', () => {
   const xml = serializeFcpXml(fixture());
-  assert.match(xml, /name="Picture overlay"[^>]*><adjust-crop mode="crop"><crop-rect left="20" top="20" right="10" bottom="0"/u);
-  assert.match(xml, /<adjust-transform position="0 0" scale="0\.666667 0\.666667" rotation="-12\.5">/u);
-  assert.match(xml, /<keyframe time="13\/30s" value="10 -5" interp="linear" curve="linear"/u);
-  assert.match(xml, /<keyframe time="13\/30s" value="0\.833333 0\.833333"/u);
+  const overlay = xml.match(/<video\b[^>]*name="Picture overlay"[^>]*>(.*?)<\/video>/u)?.[1];
+  assert.ok(overlay, 'the static overlay owns its picture adjustments');
+  assert.match(overlay, /^<adjust-crop mode="crop"><crop-rect left="20" top="20" right="10" bottom="0"/u);
+  assert.match(overlay, /<adjust-transform position="0 0" scale="0\.666667 0\.666667" rotation="-12\.5">/u);
+  assert.match(overlay, /<keyframe time="13\/30s" value="10 -5" interp="linear" curve="linear"/u);
+  assert.match(overlay, /<keyframe time="13\/30s" value="0\.833333 0\.833333"/u);
   assert.match(xml, /name="Hidden picture"[^>]*><adjust-blend amount="0"\/>/u);
   assert.match(xml, /<asset .*?hasVideo="0" hasAudio="1" format="r\d+" audioSources="1" audioChannels="1" audioRate="44100"/u);
   assert.match(xml, /<adjust-volume amount="-96dB"><param name="amount"><fadeIn type="linear" duration="4\/30s"\/><fadeOut type="linear" duration="6\/30s"\/>/u);

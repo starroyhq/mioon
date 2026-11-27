@@ -109,7 +109,7 @@ async function settle(get: () => FcpExportGetOutput | Promise<FcpExportGetOutput
   assert.fail('FCP export did not settle');
 }
 
-test('FCP checklist matches anchors, transitions and mute present in the XML', async t => {
+test('FCP writes stills as video and reports anchors, transitions and mute in both media modes', async t => {
   const f = await fixture(t);
   const timeline = readFormat5TimelineRecord(f.store.db, 'project');
   assert.ok(timeline);
@@ -142,7 +142,7 @@ test('FCP checklist matches anchors, transitions and mute present in the XML', a
   const overlay = (name: string, startFrame: number, assetId: string) => ({id: randomUUID(), trackId: videoTrack, name,
     startFrame, assetId, sourceInFrame: 0, durationFrames: 12, rect: first.rect, gain: 1, sourceState: 'ready',
     anchor: startFrame === 0 ? {clipId: first.id, offsetFrames: 0} : null});
-  const anchored = overlay('Anchored video', 0, supported);
+  const anchored = overlay('Anchored PNG', 0, supported);
   const transitionIn = {profileId: CLIP_TRANSITION_PROFILE, kind: 'wipeLeft', durationFrames: 6};
   const omitted = {...overlay('Omitted WebP', 12, omittedAsset), transitionIn};
   const afterOmitted = {...overlay('Cut after omitted', 24, supported), transitionIn};
@@ -154,28 +154,33 @@ test('FCP checklist matches anchors, transitions and mute present in the XML', a
   ], clips: [...timeline.clips.map(clip => clip.id === silentPicture.id ? silentPicture : clip), anchored, omitted, afterOmitted, retained, audio]});
   const {projectId} = f;
   const services = f.ordinary();
-  const preview = fcpExportSchemas['export.fcpxml.preview'].output.parse(
-    await services.call('export.fcpxml.preview', {projectId, copyMedia: true}));
-  assert.deepEqual(preview.approximations.find(item => item.code === 'ANCHOR')?.clips.map(clip => clip.id), [anchored.id]);
-  assert.deepEqual(preview.approximations.find(item => item.code === 'TRANSITION')?.clips.map(clip => clip.id), [retained.id]);
-  assert.deepEqual(preview.approximations.find(item => item.code === 'MUTE')?.clips.map(clip => clip.id), [audio.id]);
-  assert.deepEqual(preview.missing.find(item => item.code === 'UNSUPPORTED_MEDIA')?.clips.map(clip => clip.id), [omitted.id]);
-  const start = fcpExportSchemas['export.fcpxml.start'].output.parse(await services.call('export.fcpxml.start',
-    {projectId, requestId: 'checklist-cuts', name: 'Checklist', copyMedia: true, destination: {kind: 'project'}}));
-  const done = await settle(async () => fcpExportSchemas['export.fcpxml.get'].output.parse(
-    await services.call('export.fcpxml.get', {projectId, ...start})));
-  assert.equal(done.status, 'done');
-  const bundle = path.join(f.outputDir, done.result!.bundleName);
-  const xml = readFileSync(path.join(bundle, 'Info.fcpxml'), 'utf8');
-  assert.match(xml, /<asset-clip[^>]*name="Muted PNG"[^>]*\/>/u);
-  assert.match(xml, /<asset-clip[^>]*name="Stand-alone audio"[^>]*><adjust-volume amount="-96dB"\/>/u);
-  assert.equal(xml.match(/<transition name="Edge Wipe"/gu)?.length, 1);
-  const manifest = JSON.parse(readFileSync(path.join(bundle, 'manifest.json'), 'utf8'));
-  assert.deepEqual(manifest.approximations, preview.approximations);
-  const checklist = readFileSync(path.join(bundle, 'missing.md'), 'utf8');
-  assert.match(checklist, /Omitted WebP/u);
-  assert.match(checklist, /静音（−96 dB）（1）\n  - Stand\\-alone audio · A1/u);
-  assert.doesNotMatch(checklist, /Muted PNG|Cut after omitted/u);
+  for (const copyMedia of [true, false]) {
+    const mode = copyMedia ? 'copy' : 'reference';
+    const preview = fcpExportSchemas['export.fcpxml.preview'].output.parse(
+      await services.call('export.fcpxml.preview', {projectId, copyMedia}));
+    assert.deepEqual(preview.approximations.find(item => item.code === 'ANCHOR')?.clips.map(clip => clip.id), [anchored.id]);
+    assert.deepEqual(preview.approximations.find(item => item.code === 'TRANSITION')?.clips.map(clip => clip.id), [retained.id]);
+    assert.deepEqual(preview.approximations.find(item => item.code === 'MUTE')?.clips.map(clip => clip.id), [audio.id]);
+    assert.deepEqual(preview.missing.find(item => item.code === 'UNSUPPORTED_MEDIA')?.clips.map(clip => clip.id), [omitted.id]);
+    const start = fcpExportSchemas['export.fcpxml.start'].output.parse(await services.call('export.fcpxml.start',
+      {projectId, requestId: `checklist-cuts-${mode}`, name: 'Checklist', copyMedia, destination: {kind: 'project'}}));
+    const done = await settle(async () => fcpExportSchemas['export.fcpxml.get'].output.parse(
+      await services.call('export.fcpxml.get', {projectId, ...start})));
+    assert.equal(done.status, 'done', mode);
+    const bundle = path.join(f.outputDir, done.result!.bundleName);
+    assert.equal(existsSync(path.join(bundle, 'Media')), copyMedia, mode);
+    const xml = readFileSync(path.join(bundle, 'Info.fcpxml'), 'utf8');
+    assert.match(xml, /<video ref="r\d+" name="Muted PNG" offset="1s" start="0s" duration="1s"\/>/u, mode);
+    assert.match(xml, /<video ref="r\d+" name="Anchored PNG" lane="1" offset="0s" start="0s" duration="12\/30s"/u, mode);
+    assert.match(xml, /<asset-clip[^>]*name="Stand-alone audio"[^>]*><adjust-volume amount="-96dB"\/>/u);
+    assert.equal(xml.match(/<transition name="Edge Wipe"/gu)?.length, 1);
+    const manifest = JSON.parse(readFileSync(path.join(bundle, 'manifest.json'), 'utf8'));
+    assert.deepEqual(manifest.approximations, preview.approximations);
+    const checklist = readFileSync(path.join(bundle, 'missing.md'), 'utf8');
+    assert.match(checklist, /Omitted WebP/u);
+    assert.match(checklist, /静音（−96 dB）（1）\n  - Stand\\-alone audio · A1/u);
+    assert.doesNotMatch(checklist, /Muted PNG|Cut after omitted/u);
+  }
 });
 
 test('project RPC previews without writing and exports one copy for equal SHA-256 sources', async t => {
