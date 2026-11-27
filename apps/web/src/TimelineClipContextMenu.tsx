@@ -1,10 +1,5 @@
-/** Timeline clip context menu (0.3.0 items only).
- *
- * Order follows the confirmed design: the 0.4.0 speed group is not rendered;
- * `切开` comes first, the sound group (separate sound / mute or unmute / save as
- * audio asset) sits in the middle, and the generate group owned by a later card
- * keeps a structural insert point. No disabled placeholder items are shown.
- */
+/** Timeline clip context menu. The speed group precedes the shared split,
+ * copy, sound and generate actions when the speed capability is available. */
 import React, {useEffect, useLayoutEffect, useRef, useState} from 'react';
 import {Button} from '@mioon/ui/components/button';
 import {AudioLines, Check, Copy, Download, Gauge, Rewind, Scissors, Snowflake, Sparkles, Volume2, VolumeX} from '@mioon/ui/components/workbench-icons';
@@ -20,7 +15,6 @@ export interface TimelineClipSpeedMenu {
   readonly onOpenSpeed: (clipId: string) => unknown;
   readonly onToggleReverse: (clipId: string) => unknown;
   readonly onFreeze: (clipId: string) => unknown;
-  readonly onCopyAsNewShot?: (clipId: string) => unknown;
 }
 
 export interface TimelineClipContextMenuProps {
@@ -29,6 +23,8 @@ export interface TimelineClipContextMenuProps {
   readonly canSplit: boolean;
   readonly busy: boolean;
   readonly onSplit: (clipId: string) => unknown;
+  /** Present only for a main-track format-5 clip (21-11). */
+  readonly onCopyAsNewShot?: (clipId: string) => unknown;
   readonly onToggleMute: (clipId: string) => unknown;
   readonly onSeparate: (clipId: string) => unknown;
   readonly onSaveAudio: (clipId: string) => unknown;
@@ -42,7 +38,7 @@ export interface TimelineClipContextMenuProps {
 
 /** Focusable item list; arrow keys wrap, Escape closes and returns focus to the
  * clip button that opened it. */
-export default function TimelineClipContextMenu({anchor, plan, canSplit, busy, onSplit, onToggleMute,
+export default function TimelineClipContextMenu({anchor, plan, canSplit, busy, onSplit, onCopyAsNewShot, onToggleMute,
   onSeparate, onSaveAudio, speedMenu = null, onGenerateBefore, onGenerateAfter, onClose}: TimelineClipContextMenuProps): React.ReactElement | null {
   const {t} = useI18n();
   const menu = useRef<HTMLDivElement | null>(null);
@@ -119,8 +115,8 @@ export default function TimelineClipContextMenu({anchor, plan, canSplit, busy, o
     </>}
     {item(index++, 'clip-menu-split', t('clipSound.split'), <Scissors size={16} />,
       () => onSplit(anchor.clipId), canSplit && !busy)}
-    {speedMenu?.onCopyAsNewShot && item(index++, 'clip-menu-copy-new-shot', t('speed.menu.copyNewShot'), <Copy size={16} />,
-      () => speedMenu.onCopyAsNewShot?.(anchor.clipId), !busy)}
+    {onCopyAsNewShot && item(index++, 'clip-menu-copy-new-shot', t('editUi.menu.copyAsNewShot'), <Copy size={16} />,
+      () => onCopyAsNewShot(anchor.clipId), !busy)}
     {plan.sound && <>
       <div className="timeline-clip-menu-separator" role="separator" />
       <div data-slot="sound-group" data-testid="clip-menu-sound-group" role="group">

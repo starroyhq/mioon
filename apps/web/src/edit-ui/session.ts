@@ -13,8 +13,8 @@ import type {EditUiProjection, EditUiTimeline, EditUiVersion} from './projection
 import {sequenceSyncIntent} from '../../../../packages/contracts/src/sequence-sync.ts';
 import type {SequenceSyncCommand} from '../../../../packages/contracts/src/sequence-sync.ts';
 import type {SequenceEditEnvelope, SequenceEditReceipt, SequenceEditTrackIntent} from '../../../../packages/contracts/src/sequence-edit.ts';
-import {classifyCommitFailure, extractSequenceErrorIds, LostResponseState, parseSequenceCommit, UNCONFIRMED_CODE} from './lost-response.ts';
-import type {LostResponseOptions, LostResponseView, LostRetryResult} from './lost-response.ts';
+import {classifyCommitFailure, extractSequenceDialogueConflict, extractSequenceErrorIds, LostResponseState, parseSequenceCommit, UNCONFIRMED_CODE} from './lost-response.ts';
+import type {LostResponseOptions, LostResponseView, LostRetryResult, SequenceDialogueConflict} from './lost-response.ts';
 import {message, renderMessage} from '../../../../packages/i18n/src/index.ts';
 import {timelineHistoryOperationMessage} from '../timeline-history.ts';
 import type {TimelineHistoryState} from '../timeline-history.ts';
@@ -24,7 +24,8 @@ export interface SequencePreviewResponse {
   readonly planDigest: string;
   readonly warnings: readonly {readonly code: string}[];
 }
-export interface SequenceFailure {readonly ok: false; readonly code: string; readonly ids?: readonly string[]}
+export interface SequenceFailure {readonly ok: false; readonly code: string; readonly ids?: readonly string[];
+  readonly dialogueConflict?: SequenceDialogueConflict}
 /** A commit whose result was lost and whose receipt could not settle it. The
  * exact envelope stays in the lost-response state until retry or abandon. */
 export interface SequenceUnconfirmed {readonly ok: false; readonly code: typeof UNCONFIRMED_CODE; readonly unconfirmed: true}
@@ -172,6 +173,11 @@ export function format5InsertAssetCommand(assetId: string, trackId: string | nul
 export function format5PasteClipCommand(clipId: string, startFrame: number): SequenceSyncCommand {
   return {kind: 'paste-clip', clipId, startFrame};
 }
+/** Copy one main-track clip into a new board shot and main-track clip right after
+ * its split group, using caller-allocated identities for deterministic replay. */
+export function format5CopyAsNewShotCommand(clipId: string, newClipId = uuid(), copyNodeId = uuid()): SequenceSyncCommand {
+  return {kind: 'clip-copy-as-new-shot', clipId, newClipId, copyNodeId};
+}
 /** The keyboard paste handler is registered once; take the playhead from the
  * live view rather than its render closure. A live playback frame wins when the
  * clock is running, otherwise the current editing playhead does. */
@@ -266,9 +272,16 @@ export function format5CommandErrorMessageKey(code: string | undefined): string 
     case UNCONFIRMED_CODE: return 'editUi.error.EDIT_RESULT_UNCONFIRMED';
     case 'COPY_NODE_REQUIRED': return 'editUi.error.COPY_NODE_REQUIRED';
     case 'SEQUENCE_EDIT_ANCHOR_CONFLICT': return 'editUi.error.SEQUENCE_EDIT_ANCHOR_CONFLICT';
+    case 'SEQUENCE_EDIT_DIALOGUE_CONFLICT': return 'editUi.error.SEQUENCE_EDIT_DIALOGUE_CONFLICT';
     case 'SEQUENCE_EDIT_REVISION_CONFLICT': return 'editUi.error.SEQUENCE_EDIT_REVISION_CONFLICT';
     case 'SEQUENCE_EDIT_HISTORY_CONFLICT': return 'editUi.error.SEQUENCE_EDIT_HISTORY_CONFLICT';
-    case 'SEQUENCE_EDIT_PATCH_INVALID': return 'editUi.error.SEQUENCE_EDIT_PATCH_INVALID';
+    case 'SEQUENCE_EDIT_PATCH_INVALID':
+    case 'DUPLICATE_CLIP':
+    case 'COPY_NODE_EXISTS':
+    case 'NODE_ALREADY_LINKED':
+    case 'SEQUENCE_EDIT_REQUEST_REUSED': return 'editUi.error.SEQUENCE_EDIT_PATCH_INVALID';
+    case 'INVALID_TRACK_TARGET': return 'editUi.error.INVALID_TRACK_TARGET';
+    case 'CLIP_NOT_FOUND': return 'editUi.error.CLIP_NOT_FOUND';
     case 'SEQUENCE_EDIT_NOOP': return 'editUi.error.SEQUENCE_EDIT_NOOP';
     case 'SEQUENCE_EDIT_TRACK_INVALID': return 'editUi.error.SEQUENCE_EDIT_TRACK_INVALID';
     case 'SEQUENCE_EDIT_CONTRACT_INVALID': return 'editUi.error.SEQUENCE_EDIT_CONTRACT_INVALID';
@@ -347,8 +360,20 @@ export function format5InspectorSequence(timeline: AppTimeline | null, shots: re
 type ParsedCommit = ReturnType<typeof parseSequenceCommit>;
 const parsedOutcome = (parsed: ParsedCommit): SequenceOutcome => parsed.kind === 'success'
   ? {ok: true, actionId: parsed.actionId, operation: parsed.operation, patch: parsed.patch, ...(parsed.receipt ? {receipt: parsed.receipt} : {})}
-  : parsed.kind === 'failure' ? {ok: false, code: parsed.code, ids: parsed.ids}
+  : parsed.kind === 'failure' ? {ok: false, code: parsed.code, ids: parsed.ids,
+      ...(parsed.dialogueConflict ? {dialogueConflict: parsed.dialogueConflict} : {})}
   : {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
+const failureFromResponse = (value: SequenceFailure): SequenceFailure => {
+  const dialogueConflict = extractSequenceDialogueConflict(value);
+  return {ok: false, code: value.code, ...(value.ids ? {ids: value.ids} : {}),
+    ...(dialogueConflict ? {dialogueConflict} : {})};
+};
+const failureFromError = (error: unknown): SequenceFailure => {
+  const ids = extractSequenceErrorIds(error);
+  const dialogueConflict = extractSequenceDialogueConflict(error);
+  return {ok: false, code: (error as {code?: string}).code ?? 'GENERIC',
+    ...(ids ? {ids} : {}), ...(dialogueConflict ? {dialogueConflict} : {})};
+};
 
 type PendingEdit = {readonly envelope: SequenceEditEnvelope; readonly planDigest: string};
 
@@ -401,14 +426,13 @@ export class Format5EditSession {
     try {
       const response = await this.endpoint('sequence.preview')({projectId, requestId,
         intents: [sequenceSyncIntent(command)]}) as SequencePreviewResponse | SequenceFailure;
-      if ((response as SequenceFailure).ok === false) return response as SequenceFailure;
+      if ((response as SequenceFailure).ok === false) return failureFromResponse(response as SequenceFailure);
       const preview = response as SequencePreviewResponse;
       if (typeof preview.planDigest !== 'string' || !preview.envelope) return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
       this.pending = {envelope: preview.envelope, planDigest: preview.planDigest};
       return preview;
     } catch (error) {
-      const ids = extractSequenceErrorIds(error);
-      return {ok: false, code: (error as {code?: string}).code ?? 'GENERIC', ...(ids ? {ids} : {})};
+      return failureFromError(error);
     }
   }
 
@@ -425,7 +449,8 @@ export class Format5EditSession {
       const failure = classifyCommitFailure(error);
       if (failure.kind === 'rejected') {
         this.pending = null; this.copy = null; this.lost.clear();
-        return {ok: false, code: failure.code, ids: failure.ids};
+        return {ok: false, code: failure.code, ids: failure.ids,
+          ...(failure.dialogueConflict ? {dialogueConflict: failure.dialogueConflict} : {})};
       }
       return this.retainUnconfirmed(pending);
     }
@@ -535,10 +560,9 @@ export class Format5EditSession {
         preview = await this.endpoint('sequence.preview')({projectId, requestId: format5RequestId('panel-preview'),
           ...payload}) as SequencePreviewResponse | SequenceFailure;
       } catch (error) {
-        const ids = extractSequenceErrorIds(error);
-        return {ok: false, code: (error as {code?: string}).code ?? 'GENERIC', ...(ids ? {ids} : {})};
+        return failureFromError(error);
       }
-      if ((preview as SequenceFailure).ok === false) return preview as SequenceFailure;
+      if ((preview as SequenceFailure).ok === false) return failureFromResponse(preview as SequenceFailure);
       const response = preview as SequencePreviewResponse;
       if (!response.envelope || typeof response.planDigest !== 'string') return {ok: false, code: 'SEQUENCE_EDIT_PATCH_INVALID'};
       const pending = {envelope: response.envelope, planDigest: response.planDigest};
