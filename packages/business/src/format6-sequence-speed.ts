@@ -6,7 +6,6 @@ import {
 import type {SequenceEditAllocation} from '../../contracts/src/sequence-edit.ts';
 import {sourceFrameCount} from '../../contracts/src/source-range.ts';
 import {clipSourceEndFrame, compileClipTimeMap} from '../../contracts/src/timeline-clip-timing.ts';
-import {compileInterpolationPhase} from '../../contracts/src/timeline-interpolation.ts';
 import {
   clipTransformAt, clipTransformFieldsAfterEdit, splitClipTransformFields, type ClipTransform, type ClipTransformClip,
 } from '../../contracts/src/timeline-clip-transform.ts';
@@ -93,7 +92,7 @@ export function splitSequenceClip(clip: Format5Clip, timeline: Format5Timeline,
   return [left, right];
 }
 
-function setClipSpeed(clip: Format5Clip, timeline: Format5Timeline, setting: SpeedSetting, visual: boolean): Format5Clip {
+function setClipSpeed(clip: Format5Clip, timeline: Format5Timeline, setting: SpeedSetting): Format5Clip {
   if (clip.timing?.profile === 'timeline-freeze-v1') invalid('SPEED_NOT_SUPPORTED', clip.id, '定格片段只能修改时长。');
   const existing = clip.timing;
   const basis = existing?.basis ?? mapped(timeMapBasisFromCurrentClip(clip, timeline), clip.id);
@@ -109,10 +108,6 @@ function setClipSpeed(clip: Format5Clip, timeline: Format5Timeline, setting: Spe
     plan = reverseTimeMap(plan);
   }
   const interpolation = mapped(timeMapHasSlowMotion(plan), clip.id) ? setting.interpolation : 'off';
-  if (interpolation === 'blend' && visual) {
-    const phase = compileInterpolationPhase(plan);
-    if (!phase.ok || !phase.value.available) invalid('INTERPOLATION_UNAVAILABLE', clip.id, '这段变速没法补帧。');
-  }
   if (!changedRate && setting.direction === (existing?.view.direction ?? 'forward')
       && setting.pitchShift === (existing?.pitchShift ?? false) && interpolation === (existing?.interpolation ?? 'off')) {
     return clip;
@@ -183,7 +178,7 @@ export function planSpeedTimeline(timeline: Format5Timeline, operation: Sequence
     invalid('SPEED_SOURCE_NOT_READY', clip.id, '片段素材尚未就绪。');
   }
   const main = clip.trackId === timeline.mainTrack.trackId;
-  let parts = operation.kind === 'clip-speed' ? [setClipSpeed(clip, timeline, operation.setting, video && track?.kind === 'video')]
+  let parts = operation.kind === 'clip-speed' ? [setClipSpeed(clip, timeline, operation.setting)]
     : freezeClip(clip, timeline, operation, asset, allocation);
   if (parts[0] === clip) invalid('SEQUENCE_EDIT_NOOP', clip.id, '片段已经是这些变速设置。');
   if (parts.some(part => clipSourceEndFrame(part) > sourceFrames)) {
