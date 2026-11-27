@@ -12,6 +12,7 @@ import {openProjectStore} from '../packages/business/src/project-file/store.ts';
 import {projectAssetImportAssetDigest} from '../packages/business/src/referenced-asset-project-import.ts';
 import {assetMediaDtoSchema, assetMediaPrepareResponseSchema, type AssetMediaDto} from '../packages/contracts/src/asset-media.ts';
 import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
+import {testEnv} from './helpers/test-env.ts';
 import {startServer} from './helpers/test-server.ts';
 import {png} from './helpers/timeline-image-fixtures.ts';
 
@@ -58,7 +59,7 @@ test('real format 6 RPCs carry exact source video rates and project reads have a
     const videos: {asset: AssetMediaDto; input: Record<string, unknown>}[] = [];
     const probeAverage = (file: string): string => {
       const original = JSON.parse(execFileSync(mediaExecutable('ffprobe'), ['-v', 'error', '-show_entries',
-        'stream=avg_frame_rate', '-select_streams', 'v:0', '-of', 'json', file], {encoding: 'utf8'}));
+        'stream=avg_frame_rate', '-select_streams', 'v:0', '-of', 'json', file], {encoding: 'utf8', env: testEnv()}));
       return original.streams[0]?.avg_frame_rate;
     };
     const uploadVideo = async (file: string, mimeType: 'video/mp4' | 'video/webm') => {
@@ -70,7 +71,7 @@ test('real format 6 RPCs carry exact source video rates and project reads have a
     for (const [numerator, denominator, nearestInteger] of rateCases) {
       const file = path.join(root, `source-${numerator}.mp4`);
       execFileSync(mediaExecutable('ffmpeg'), ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i',
-        `testsrc2=size=64x64:rate=${numerator}/${denominator}`, '-frames:v', '24', '-c:v', 'libx264', '-threads', '1', file]);
+        `testsrc2=size=64x64:rate=${numerator}/${denominator}`, '-frames:v', '24', '-c:v', 'libx264', '-threads', '1', file], {env: testEnv()});
       assert.equal(probeAverage(file), `${numerator}/${denominator}`);
       const asset = await uploadVideo(file, 'video/mp4');
       assert.deepEqual(asset.videoFrameRate, {numerator, denominator, nearestInteger});
@@ -80,7 +81,7 @@ test('real format 6 RPCs carry exact source video rates and project reads have a
     const variable = path.join(root, 'source-variable.webm');
     execFileSync(mediaExecutable('ffmpeg'), ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i',
       'testsrc2=size=64x64:rate=30:duration=2', '-frames:v', '2', '-vf', 'settb=1/1000,setpts=100*N*N',
-      '-fps_mode', 'passthrough', '-c:v', 'libx264', '-threads', '1', '-f', 'matroska', variable]);
+      '-fps_mode', 'passthrough', '-c:v', 'libx264', '-threads', '1', '-f', 'matroska', variable], {env: testEnv()});
     const [numerator, denominator] = probeAverage(variable).split('/').map(Number);
     const expected = numerator > 0 && denominator > 0 ? {numerator, denominator, nearestInteger: Math.round(numerator / denominator)} : null;
     assert.deepEqual((await uploadVideo(variable, 'video/webm')).videoFrameRate, expected);
