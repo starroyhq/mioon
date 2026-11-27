@@ -9,7 +9,7 @@
 - 应用目录为服务端 `dataDir` 或桌面 `<userData>/data/`，与项目目录分开；桌面旧 `workspace/` 不迁移、不再读。服务端发现旧 `workbench.sqlite` 时以 `VALIDATION_ERROR`（400）拒绝启动且零迁移。目录选项、覆盖 userData 的隔离规则和实际工厂见 [PROJECT-HOST.md](PROJECT-HOST.md)。
 - 生产旧项目 RPC/REST/media 地址已退役：应用 `/api/rpc` 仍存在，但只接受应用操作；项目请求必须带 `/api/projects/<ID>/` 前缀。`project-routes.ts` 仅作测试内部适配。历史保存 URL 不改字节，实际访问重建新地址。同一 `requestId` 的回执在各项目独立，不能跨项目重放。
 - 首页封面使用应用级 `GET /api/project-covers/<ID>`，只读缓存，缺失返回 404，不 acquire 项目；`projectSummaryCoverSchema` 已同步此 URL。应用 `/api/workspace-info` 返回应用根，新增项目 `/api/projects/<ID>/workspace-info` 在真实租约内返回项目根，复用原 schema，供可信桌面导出使用。
-- 全局 `diagnostics/latest` 从应用 documents 读取连接测试摘要，HTTP 失败时可附状态码和已知服务商错误标签。摘要无项目对话、请求或密钥，也不打开项目。应用库当前为 v4，仅精确已知 v3 做 S3-A 的3→4升级，扩展后台任务索引，保留旧索引JSON及其他数据；不接受未知/改动结构，也不组合旧1/2升级到4。历史冻结件和旧升级函数仍保留供验证。HTTP B1 错误仅公开 `APP_LIBRARY_LIMIT`（507）与 `APP_LIBRARY_INVALID`（422）。
+- 全局 `diagnostics/latest` 从应用 documents 读取连接测试摘要，HTTP 失败时可附状态码和已知服务商错误标签。摘要无项目对话、请求或密钥，也不打开项目。应用库当前为 v5；精确的 v3 先经 S3-A 升到 v4，精确的 v4 再升级后台任务种类约束。v4→v5 保留索引行 ID、JSON、历史代际和其他表数据。未知或改动过的结构拒绝打开；旧 v1/v2 冻结件和升级函数供历史验证。HTTP B1 错误仅公开 `APP_LIBRARY_LIMIT`（507）与 `APP_LIBRARY_INVALID`（422）。
 - V2 已接入宿主打开/关闭的项目自动备份，最近三份按项目 ID、内容序号和令牌去重；`project.backup.list/inspect/restore/status` 是应用级操作，恢复使用新 ID、新令牌和空本机记录。专用 `MioB` 标记使备份不能作为普通项目打开或登记；接口、提交点和故障边界见 [PROJECT-BACKUPS.md](PROJECT-BACKUPS.md)。不启用旧工作区备份接口，也没有接入备份界面。
 - 生产宿主新建项目使用格式 4、本机记录 12、缓存 2。Mioon 0.1 的格式 3 项目可只读查看，也可在明确同意并校验升级前备份后升至格式 4。格式 1、2 的旧开发项目及备份拒绝打开，需重建。路径导入不复制，网页和 Mio 上传写入固定的 `素材/` 目录。生成写入 `生成/`，成片写入 `导出/`，均排他发布并保留项目文件。完整契约见 [素材引用](ASSET-REFERENCES.md)和[项目产物](PROJECT-OUTPUTS.md)。
 - `project.version.list/save/preview/restore` 是项目级操作，提供手动/自动保存、保留清理和确认恢复；正文仅存本机 history，界面另卡实现；见 [PROJECT-VERSIONS.md](PROJECT-VERSIONS.md)。
@@ -346,6 +346,14 @@ node tests/helpers/project-file-schema-derivation.ts --check
 - 格式 4 时间线兼容原像素布局和字幕 `bottom_cjk_v1`。新版片段用 `layout: {profileId: "mioon-clip-layout-v2", basisPresetId}`，新版字幕用 `profileId: "bottom_cjk_relative_v2"` 与 `basisPresetId`，基准为 0.2.0 的十二档画框之一。升级保留旧几何字节，明确修改画框时才由画框事务写入新版布局。默认备份与旧命名版本沿用原有读取规则，转换时校验旧几何标记。
 - Mio 仅在格式 4 项目中按确切名称加载三个画布工具。整理全部或所选可见镜头和节点，只改位置。归档和恢复均需要显式对象 ID。归档含生成视频版本或时间线引用的镜头时，每次都要求用户批准，确认卡列出受影响镜头、生成版本数、时间线片段数及去重后的已用版本数。用户可从 Mio 撤销该步骤；原补丁和步骤回执同事务保存，与用户画布撤销游标独立。
 - 旧自动备份、命名版本、复制源及签名模板可验证并读取。需要格式 4 的复制、采用副本和模板实例在新暂存目标转换，签名资源保留发布字节。旧命名版本先校验原快照再适配归档列，格式 4 版本携带这些列。旧包格式不承接格式 4。
+
+### 格式 6（开发渠道）
+
+- 开发渠道以 `MIOON_FORMAT6_DEV=1` 显式启用格式 6。默认新建格式 5，打开格式 5 时仍使用格式 5。未启用的宿主和旧应用在读取正文前以 `PROJECT_FORMAT_NEWER` 拒绝格式 6。
+- 格式 5→6 先核验格式 5 的完整结构，并沿用配对备份及升级确认。项目版本标记和本机记录 v14 在同一事务内更新。迁移只追加时间线处理表，保留原生片段行、项目内容令牌及原有本机记录。已有开发格式 6 使用配对且结构精确匹配的 v13 时，普通打开会补齐本机记录迁移。分叉的 v13 原样保留供归档或恢复，格式 5 始终使用 v13。
+- 时间映射存在 `timeline_clips.data` 的 `timing` 中。缺省时序表示 1× 正放、保持音调、关闭补帧。片段 `sourceInFrame` 与 `sourceSpanFrames` 是可见连续源范围的整帧投影，切分和修剪保留原映射相位。备份、命名版本、复制、恢复和受信模板使用已有原子协议。
+- `project.get` 的时间线在格式 6 显示 `capabilities.speed` 为 true。变速和定格各形成一个统一剪辑历史动作。对仅有采样指纹的素材，使用现有 `asset.media.prepare` 固定完整 SHA-256 后再请求定格。
+- 当前合成预览、导出和时间线取样遇到非恒等时序返回 `SPEED_RENDER_NOT_READY`。包含素材的便携项目包由 V4 承接。
 
 ## 跨文件约束
 以下记录 K1 从旧工作区拆分时的约束去向；现行对象以权威声明及 `--report` 为准。

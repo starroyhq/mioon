@@ -82,9 +82,21 @@ function fits(clips: readonly TransitionClip[], outgoing: TransitionClip, incomi
   if (!from || !to) return false;
   if (!to.image && incoming.sourceInFrame < before) return false;
   if (!from.image && outgoing.sourceInFrame + outgoing.durationFrames + after > from.frames) return false;
+  return outputFits(clips, outgoing, incoming, {before, after}, neighbour);
+}
+
+function outputFits(clips: readonly TransitionClip[], outgoing: TransitionClip, incoming: TransitionClip,
+  {before, after}: ClipTransitionSides, neighbour: Neighbour): boolean {
   const left = neighbour(outgoing), next = successor(clips, incoming), right = next ? neighbour(next) : null;
   return outgoing.durationFrames - (left ? clipTransitionSides(left.durationFrames).after : 0) >= before &&
     incoming.durationFrames - (right ? clipTransitionSides(right.durationFrames).before : 0) >= after;
+}
+
+/** Check the output frames beside neighboring transitions; source handles are
+ * checked by the calling time-map profile. */
+export function clipTransitionOutputFits(clips: readonly TransitionClip[], outgoing: TransitionClip, incoming: TransitionClip,
+  durationFrames: number): boolean {
+  return outputFits(clips, outgoing, incoming, clipTransitionSides(durationFrames), savedClipTransition);
 }
 /** Whether this transition fits the cut before `incoming` beside the transitions
  * saved on the neighbouring cuts. False without a cut. */

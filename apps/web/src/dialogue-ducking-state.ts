@@ -1,3 +1,4 @@
+import {assertTimelineSpeedRenderable} from '../../../packages/contracts/src/timeline-speed-render.ts';
 import { VOLUME_ENVELOPE_LIMITS, VOLUME_ENVELOPE_PROFILE, validateVolumeEnvelope } from '../../../packages/contracts/src/timeline-volume-envelope.ts';
 import type { RawVolumeEnvelope } from './clip-volume-envelope-state.ts';
 
@@ -18,7 +19,7 @@ export const DIALOGUE_DUCKING_REGION_LIMIT = Math.floor(VOLUME_ENVELOPE_LIMITS.p
 /** The finest useful read: one peak per editing frame, within the read limit. */
 export const DIALOGUE_DUCKING_POINTS = 2048;
 
-export interface DuckingClip { id: string; trackId: string; assetId: string; startFrame: number; durationFrames: number; sourceInFrame?: number; audioRole?: unknown }
+export interface DuckingClip { timing?: unknown; id: string; trackId: string; assetId: string; startFrame: number; durationFrames: number; sourceInFrame?: number; audioRole?: unknown }
 export interface DuckingTrack { id: string; kind?: string; name?: string }
 /** A waveform read of one dialogue clip, over the part that overlaps the background clip. */
 export interface DialogueWaveformRead { clipId: string; sourceStartFrame: number; sourceEndFrame: number; peaks: readonly (number | null)[] }
@@ -50,7 +51,9 @@ export function dialogueTrackChoices(background: DuckingClip, clips: readonly Du
 /** One waveform read per dialogue clip on the chosen track, limited to the
  * part under the background clip, at up to one peak per frame. */
 export function dialogueWaveformRequests(background: DuckingClip, clips: readonly DuckingClip[], dialogueTrackId: string): DialogueWaveformRequest[] {
-  return clips.filter(clip => clip.trackId === dialogueTrackId && clip.startFrame < end(background) && background.startFrame < end(clip)).map(clip => {
+  const dialogue = clips.filter(clip => clip.trackId === dialogueTrackId && clip.startFrame < end(background) && background.startFrame < end(clip));
+  assertTimelineSpeedRenderable({fps: 30, clips: dialogue});
+  return dialogue.map(clip => {
     const from = Math.max(clip.startFrame, background.startFrame), to = Math.min(end(clip), end(background)), sourceIn = clip.sourceInFrame ?? 0;
     const sourceStartFrame = sourceIn + from - clip.startFrame, sourceEndFrame = sourceIn + to - clip.startFrame;
     return { clipId: clip.id, assetId: clip.assetId, sourceStartFrame, sourceEndFrame, points: Math.min(DIALOGUE_DUCKING_POINTS, sourceEndFrame - sourceStartFrame) };

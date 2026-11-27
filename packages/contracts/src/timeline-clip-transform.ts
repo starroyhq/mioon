@@ -35,14 +35,15 @@ function record<K extends string>(value: unknown, keys: readonly K[]): value is 
   const descriptors = Object.getOwnPropertyDescriptors(value);
   return Reflect.ownKeys(descriptors).length === keys.length && keys.every(key => own(descriptors, key) && descriptors[key]!.enumerable && own(descriptors[key]!, 'value'));
 }
-function duration(value: unknown): number {
-  if (!integer(value, 1, CLIP_TRANSFORM_LIMITS.frames)) fail('Invalid clip duration.');
+function duration(value: unknown, maxFrames: number): number {
+  if (!integer(value, 1, maxFrames)) fail('Invalid clip duration.');
   return value as number;
 }
 
 /** Returns the original value; never normalizes, sorts, defaults or mutates it. */
-export function validateClipTransform(value: unknown, durationFrames: number): ClipTransform | null {
-  duration(durationFrames);
+export function validateClipTransform(value: unknown, durationFrames: number,
+  maxFrames: number = CLIP_TRANSFORM_LIMITS.frames): ClipTransform | null {
+  duration(durationFrames, maxFrames);
   if (value === null) return null;
   if (!record(value, ['profileId', 'keyframes', 'rotation', 'crop']) || value.profileId !== CLIP_TRANSFORM_PROFILE ||
       !Array.isArray(value.keyframes) || Object.getPrototypeOf(value.keyframes) !== Array.prototype ||
@@ -65,8 +66,9 @@ export function validateClipTransform(value: unknown, durationFrames: number): C
       (crop.left as number) + (crop.right as number) > most || (crop.top as number) + (crop.bottom as number) > most) fail('Invalid crop.');
   return value as unknown as ClipTransform;
 }
-export function isClipTransform(value: unknown, durationFrames: number): value is ClipTransform | null {
-  try {validateClipTransform(value, durationFrames); return true;} catch {return false;}
+export function isClipTransform(value: unknown, durationFrames: number,
+  maxFrames: number = CLIP_TRANSFORM_LIMITS.frames): value is ClipTransform | null {
+  try {validateClipTransform(value, durationFrames, maxFrames); return true;} catch {return false;}
 }
 /** A copy with keys in model order, so equal transforms serialize equally. */
 export function canonicalClipTransform(value: ClipTransform | null): ClipTransform | null {
@@ -74,11 +76,11 @@ export function canonicalClipTransform(value: ClipTransform | null): ClipTransfo
     rotation: value.rotation, crop: {left: value.crop.left, top: value.crop.top, right: value.crop.right, bottom: value.crop.bottom}};
 }
 const copy = canonicalClipTransform;
-function field(clip: ClipTransformClip): PropertyDescriptor | undefined {
+function field(clip: ClipTransformClip, maxFrames: number = CLIP_TRANSFORM_LIMITS.frames): PropertyDescriptor | undefined {
   if (!clip || typeof clip !== 'object') fail('Invalid clip.');
   const descriptor = Object.getOwnPropertyDescriptor(clip, 'transform');
   if (descriptor && (!descriptor.enumerable || !own(descriptor, 'value'))) fail('Invalid transform field.');
-  if (descriptor) validateClipTransform(descriptor.value, clip.durationFrames); else duration(clip.durationFrames);
+  if (descriptor) validateClipTransform(descriptor.value, clip.durationFrames, maxFrames); else duration(clip.durationFrames, maxFrames);
   return descriptor;
 }
 
@@ -98,8 +100,8 @@ function interpolate(keyframes: readonly ClipTransformKeyframe[], frame: number)
 }
 /** The position and scale at a clip-local frame. Frames outside the clip hold
  * the nearest keyframe; a clip without a transform is the identity. */
-export function clipTransformAt(clip: ClipTransformClip, frame: number): ClipTransformValue {
-  const descriptor = field(clip);
+export function clipTransformAt(clip: ClipTransformClip, frame: number, maxFrames?: number): ClipTransformValue {
+  const descriptor = field(clip, maxFrames);
   if (!Number.isFinite(frame)) fail('Invalid frame.');
   const value = descriptor?.value as ClipTransform | null | undefined;
   return value ? interpolate(value.keyframes, frame) : IDENTITY_CLIP_TRANSFORM_VALUE;
@@ -124,20 +126,22 @@ function truncate(keyframes: readonly ClipTransformKeyframe[], end: number): Cli
  * envelopes do. A shrink drops keyframes past the new end and adds the
  * interpolated end value instead, so trims never need a transform in the same
  * patch. Returns only the owned field for the caller's complete clip merge. */
-export function clipTransformFieldsAfterEdit(clip: ClipTransformClip, patch: {readonly durationFrames?: number}): ClipTransformFields {
-  const descriptor = field(clip);
+export function clipTransformFieldsAfterEdit(clip: ClipTransformClip, patch: {readonly durationFrames?: number},
+  maxFrames: number = CLIP_TRANSFORM_LIMITS.frames): ClipTransformFields {
+  const descriptor = field(clip, maxFrames);
   if (!patch || typeof patch !== 'object') fail('Invalid patch.');
-  const end = duration(own(patch, 'durationFrames') ? patch.durationFrames : clip.durationFrames);
+  const end = duration(own(patch, 'durationFrames') ? patch.durationFrames : clip.durationFrames, maxFrames);
   if (!descriptor) return {};
   const value = descriptor.value as ClipTransform | null;
   if (value === null) return {transform: null};
   const next = {...copy(value)!, keyframes: truncate(value.keyframes, end)};
-  return {transform: validateClipTransform(next, end)};
+  return {transform: validateClipTransform(next, end, maxFrames)};
 }
 /** A split keeps every keyframe on its side, rebased for the right part, and
  * adds the interpolated value at the cut where the animation crosses it. */
-export function splitClipTransformFields(clip: ClipTransformClip, cutFrame: number): [ClipTransformFields, ClipTransformFields] {
-  const descriptor = field(clip);
+export function splitClipTransformFields(clip: ClipTransformClip, cutFrame: number,
+  maxFrames: number = CLIP_TRANSFORM_LIMITS.frames): [ClipTransformFields, ClipTransformFields] {
+  const descriptor = field(clip, maxFrames);
   if (!integer(cutFrame, 1, clip.durationFrames - 1)) fail('Split must be inside clip.');
   if (!descriptor) return [{}, {}];
   const value = descriptor.value as ClipTransform | null;
@@ -147,7 +151,7 @@ export function splitClipTransformFields(clip: ClipTransformClip, cutFrame: numb
   const right = points.filter(point => point.frame >= cutFrame).map(point => ({...point, frame: point.frame - cutFrame}));
   if (!right.length || right[0]!.frame > 0 && points[0]!.frame < cutFrame) right.unshift({frame: 0, ...at});
   const part = (keyframes: ClipTransformKeyframe[], length: number): ClipTransformFields =>
-    ({transform: validateClipTransform({...copy(value)!, keyframes}, length)});
+    ({transform: validateClipTransform({...copy(value)!, keyframes}, length, maxFrames)});
   return [part(left, cutFrame), part(right, clip.durationFrames - cutFrame)];
 }
 

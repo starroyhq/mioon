@@ -137,7 +137,7 @@ import type {NativeEntryCloseSnapshot} from './native-entry-close.ts';
 import type {SubjectState} from './subject-state.ts';
 import {createSubjectController} from './subject-state.ts';
 import type {TimelineLoudnessApplyController} from './timeline-loudness-apply-state.ts';
-import { schemas as productionSchemas, timelineCrossfadeEnvelopes, TIMELINE_EXPORT_DEFAULT_SETTINGS, TIMELINE_MUTATION_OPERATIONS, TIMELINE_SHOT_SYNC_LIMITS, isTimelineMutationResponse as productionTimelineMutationResponse, isTimelineRenderRecord as productionTimelineRenderRecord, FORMAT5_TIMELINE_FORMAT, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof, isSubjectGenerationResponse, isSubjectGenerationRetryResponse } from '@mioon/contracts';
+import { schemas as productionSchemas, timelineCrossfadeEnvelopes, TIMELINE_EXPORT_DEFAULT_SETTINGS, TIMELINE_MUTATION_OPERATIONS, TIMELINE_SHOT_SYNC_LIMITS, isTimelineMutationResponse as productionTimelineMutationResponse, isTimelineRenderRecord as productionTimelineRenderRecord, isSequenceTimelineFormat, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, hasRequestNotAppliedProof, isSubjectGenerationResponse, isSubjectGenerationRetryResponse } from '@mioon/contracts';
 import { ReactFlow, Background, BackgroundVariant, MiniMap, SelectionMode, applyNodeChanges, getViewportForBounds, useNodesInitialized, useReactFlow, type Edge as FlowEdge, type Node as FlowNode, type NodeChange } from '@xyflow/react';
 import { measuredFitPadding } from './canvas-fit.ts';
 import { chooseCanvasPosition } from './canvas-position.ts';
@@ -264,6 +264,7 @@ import { sceneTime } from './scene-cuts.ts';
 import AssetSceneSummary from './AssetSceneSummary.tsx';
 import { sceneOverviewItems } from './scene-task-views.ts';
 import { sceneTaskCenterEntries } from './SceneTaskCard.tsx';
+import { speedProcessingOverviewItems, speedProcessingTaskViews, useSpeedProcessingTasks } from './timeline-processing-tasks.ts';
 import { useSourceRange } from './use-source-range.ts';
 import { sourceRangeAddPlan, sameSourceSnapshot } from './source-range-state.ts';
 import { Media, nodeTypes } from './Nodes.tsx';
@@ -365,11 +366,12 @@ export interface AppTimelineCue {id: string; text?: string; startFrame: number; 
 export interface AppTimeline {
   id: string; projectId: string; revision: number; fps: number; width: number; height: number;
   tracks: AppTimelineTrack[]; clips: AppTimelineClip[]; durationFrames: number; createdAt: string; updatedAt: string;
+  capabilities?: {speed: boolean};
   subtitles?: {cues: AppTimelineCue[]; [key: string]: unknown} | null; [key: string]: unknown;
 }
 export interface AppData {
   project: AppProject | null;
-  projectFormatVersion?: 3 | 4 | 5;
+  projectFormatVersion?: 3 | 4 | 5 | 6;
   canvasEditBase?: CanvasEditBase;
   assets: AppAsset[];
   shots: AppShot[];
@@ -575,10 +577,11 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     return productionRpc<T>(...args);
   };
   const schemas = productionSchemas;
-  // Format 5 alone may carry the clip sound flags (`muted`/`soundOnly`); the
-  // current project's own format decides which projection the wire guards admit.
-  const timelineRecordFormat = () => dataRef.current.projectFormatVersion === 5
-    ? {format: FORMAT5_TIMELINE_FORMAT} : undefined;
+  // The current project format selects the matching timeline wire grammar.
+  const timelineRecordFormat = () => {
+    const format = dataRef.current.projectFormatVersion;
+    return isSequenceTimelineFormat(format) ? {format} : undefined;
+  };
   const isTimelineMutationResponse: typeof productionTimelineMutationResponse = (operation, input, value) =>
     productionTimelineMutationResponse(operation, input, value, timelineRecordFormat());
   const isTimelineRenderRecord: typeof productionTimelineRenderRecord = (value, input) =>
@@ -1946,7 +1949,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     const currentShot = state.shots.find(shot => shot.id === args.shot.id);
     const options = generationOptionsRef.current[args.shot.id] || {};
     const directory = args.replacementJobId ? providersRef.current : providers;
-    const selection = state.projectFormatVersion === 5
+    const selection = isSequenceTimelineFormat(state.projectFormatVersion)
       ? resolveBoardGenerationSelection(directory, options, currentShot || {}, {shotId: args.shot.id, jobs: state.jobs, versions: state.versions})
       : generationSelection(directory, options, currentShot || {});
     const currentJob = frozen ? state.jobs.find(job => job.id === args.retryJobId) : null;
@@ -2036,7 +2039,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     const base = state.shots.length, firstImage = state.assets.find(a => a.mimeType.startsWith('image/'));
     const aspectRatio = (state.timelineFrameTransaction === true ? timelineOutputRatio(state.timeline) : null) ?? '9:16';
     let done = 0;
-    if (state.projectFormatVersion === 5) {
+    if (isSequenceTimelineFormat(state.projectFormatVersion)) {
       try {
         const titles = [t('projects.default.establish'), t('projects.default.develop'), t('projects.default.resolve')];
         const ids = titles.map(() => globalThis.crypto.randomUUID());
@@ -2097,21 +2100,21 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       // The format-5 board owns its viewport; place the new card by the live
       // board positions and let the same allocation step avoid overlap.
       const boardPositions = Object.values(format5BoardProjection?.positions ?? {});
-      const location = state.projectFormatVersion === 5
+      const location = isSequenceTimelineFormat(state.projectFormatVersion)
         ? (boardPositions.length ? { x: boardPositions.reduce((sum, point) => sum + point.x, 0) / boardPositions.length,
           y: Math.max(...boardPositions.map(point => point.y)) + 320 } : { x: 100, y: 100 })
         : workspaceMode === 'canvas' ? flow.screenToFlowPosition({ x: window.innerWidth * .43, y: window.innerHeight * .35 }) : { x: saved ? (300 - saved.x) / saved.zoom : 100, y: saved ? (200 - saved.y) / saved.zoom : 100 };
       // Format 5 writes the node through the unified sequence entry; formats 3/4
       // keep the legacy RPC unchanged (the adapter is a pass-through there).
       const previsRpc = createPrevisEditorRpc({ rpc: (operation, input) => rpc(operation, input),
-        format5: state.projectFormatVersion === 5, projectId: () => projectId, requestId });
+        format5: isSequenceTimelineFormat(state.projectFormatVersion), projectId: () => projectId, requestId });
       const outcome = await createPrevisNode({ projectId, label: t('previs.node.defaultLabel'), position: chooseCanvasPosition([...state.shots, ...state.nodes] as never[], location) }, { rpc: previsRpc, requestId });
       if (currentProject.current === projectId) await refresh(projectId);
       if (!isCurrent(captured)) return;
       if (outcome.status === 'created') {
         releaseCreate();
         if (await inspect(outcome.node.id)) {
-          if (state.projectFormatVersion === 5) setFormat5RevealNodeId(outcome.node.id);
+          if (isSequenceTimelineFormat(state.projectFormatVersion)) setFormat5RevealNodeId(outcome.node.id);
           else revealCanvas(outcome.node.id);
         }
       }
@@ -2439,7 +2442,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   function openExportHistory(): void { if (clipDraftRef.current?.hasPendingComposition()) return; markPanelIntent(); setShowTasks(false); setShowImage(false); setShowExports(true); setShowDelivery(true); }
   async function createExport(): Promise<void> { const panelChoice = panelIntent.current, projectId = currentProject.current; const result = await run('export', 'export.create', { projectId: data.project!.id, requestId: requestId() }); if (result) { if (panelChoice === panelIntent.current && projectId === currentProject.current) openExportHistory(); notify(msg('shell.storyboardExportCreated')); } }
   const timeline = data.timeline;
-  const format5 = data.projectFormatVersion === 5;
+  const format5 = isSequenceTimelineFormat(data.projectFormatVersion);
   const format5SessionRef = useRef<Format5EditSession | null>(null);
   const format5HistoryRef = useRef<SequenceHistoryView | null>(null);
   const [format5History, setFormat5History] = useState<SequenceHistoryView | null>(null);
@@ -2498,16 +2501,16 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   const format5ActiveFilmId = ((timeline as unknown as {mainTrack?: {sequenceNodeId?: string}} | null)?.mainTrack?.sequenceNodeId) ?? null;
 
   async function format5LoadBoard(): Promise<BoardMountView | null> {
-    if (!format5 || !currentProject.current || dataRef.current.projectFormatVersion !== 5) return null;
+    if (!format5 || !currentProject.current || !isSequenceTimelineFormat(dataRef.current.projectFormatVersion)) return null;
     const view = await format5BoardSession().board();
-    if (view && currentProject.current === dataRef.current.project?.id && dataRef.current.projectFormatVersion === 5) setFormat5BoardMount(view);
+    if (view && currentProject.current === dataRef.current.project?.id && isSequenceTimelineFormat(dataRef.current.projectFormatVersion)) setFormat5BoardMount(view);
     return view;
   }
   useEffect(() => {
     if (!format5 || !data.project?.id) {setFormat5BoardMount(null); return;}
     let cancelled = false;
     void format5BoardSession().board().then(view => {
-      if (!cancelled && currentProject.current === data.project!.id && dataRef.current.projectFormatVersion === 5) setFormat5BoardMount(view);
+      if (!cancelled && currentProject.current === data.project!.id && isSequenceTimelineFormat(dataRef.current.projectFormatVersion)) setFormat5BoardMount(view);
     }).catch(() => {});
     return () => {cancelled = true;};
   }, [format5, data.project?.id, timeline?.id, timeline?.revision, format5History?.position, format5History?.revision]);
@@ -2894,7 +2897,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       pending: !projectId || (tasksRef.current!.blocked as unknown as (projectId: string | null, lane?: string) => boolean)(projectId) || pendingForProject(projectId as string, {  }).some(entry => isMutationOperation(entry.operation) || entry.operation.startsWith('timeline.')) };
   }
   async function saveTimelineFormat(intent: TimelineFormatIntent, frameOptions?: Pick<RunOptions, 'canExecute' | 'canRevealTasks' | 'errorMessage'>): Promise<{status: string; timeline?: unknown; error?: unknown}> {
-    if (dataRef.current.projectFormatVersion === 5) {
+    if (isSequenceTimelineFormat(dataRef.current.projectFormatVersion)) {
       const presetId = (intent.input as {presetId?: unknown}).presetId;
       if (typeof presetId !== 'string') return {status: 'rejected'};
       const result = await format5Session().format(presetId);
@@ -3459,7 +3462,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     const projectId = currentProject.current, epoch = projectEpoch.current;
     if (!projectId) return;
     const view = await format5Session().history();
-    if (currentProject.current === projectId && projectEpoch.current === epoch && dataRef.current.projectFormatVersion === 5) {
+    if (currentProject.current === projectId && projectEpoch.current === epoch && isSequenceTimelineFormat(dataRef.current.projectFormatVersion)) {
       updateFormat5History(view ? {...view, projectId} : null);
     }
   }
@@ -3469,7 +3472,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     const projectId = data.project.id, epoch = projectEpoch.current;
     void (async () => {
       const view = await format5Session().history();
-      if (!cancelled && currentProject.current === projectId && projectEpoch.current === epoch && dataRef.current.projectFormatVersion === 5) {
+      if (!cancelled && currentProject.current === projectId && projectEpoch.current === epoch && isSequenceTimelineFormat(dataRef.current.projectFormatVersion)) {
         updateFormat5History(view ? {...view, projectId} : null);
       }
     })();
@@ -3727,11 +3730,11 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     } finally {setFormat5SessionBusy(false);}
   }
   function updateTimelineTrack(trackId: string, patch: Record<string, unknown>): unknown {
-    if (dataRef.current.projectFormatVersion === 5) return format5TrackUpdate(trackId, patch);
+    if (isSequenceTimelineFormat(dataRef.current.projectFormatVersion)) return format5TrackUpdate(trackId, patch);
     return mutateTimeline('timeline.track.update', {trackId, patch});
   }
   function addTimelineTrack(kind: string): unknown {
-    if (dataRef.current.projectFormatVersion === 5) return format5TrackAdd(kind === 'audio' ? 'audio' : 'video');
+    if (isSequenceTimelineFormat(dataRef.current.projectFormatVersion)) return format5TrackAdd(kind === 'audio' ? 'audio' : 'video');
     return mutateTimeline('timeline.track.add', {kind});
   }
   async function format5ChooseVersion(clipId: string, choice: {readonly mode: 'follow' | 'locked'; readonly versionId: string | null}): Promise<unknown> {
@@ -3856,7 +3859,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   function format5AbandonUnconfirmed(): void {format5LostRef.current!.abandon();}
 
   async function splitTimelineClip(): Promise<unknown> {
-    if (dataRef.current.projectFormatVersion === 5) return format5SplitTimelineClip();
+    if (isSequenceTimelineFormat(dataRef.current.projectFormatVersion)) return format5SplitTimelineClip();
     if (currentProject.current !== dataRef.current!.project?.id) return null;
     const latest = timelineSplitState({ projectId: currentProject.current, timeline: dataRef.current!.timeline, history: dataRef.current!.timelineHistory, busy: isBusy('timeline:mutation'), pending: timelinePending, dirty: clipDirty || subtitleDirty, online: online && auth === true && !loading, selectedClipId: propertiesPage === 'subtitle' ? null : viewRef.current!.editing.selectedClipId, playhead: playbackClock.getSnapshot() ?? timelineAudioPreviewPosition(audioPreview, viewRef.current!.editing.playhead), mode: viewRef.current!.activeMode });
     if (!latest.canSplit) return null;
@@ -3867,7 +3870,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   }
   function changeTimelineHistory(direction: string, expectedRevision?: number, canExecute?: () => boolean): unknown {
     if (!['undo', 'redo'].includes(direction) || currentProject.current !== dataRef.current!.project?.id) return null;
-    if (dataRef.current.projectFormatVersion === 5) return format5ChangeHistory(direction as 'undo' | 'redo');
+    if (isSequenceTimelineFormat(dataRef.current.projectFormatVersion)) return format5ChangeHistory(direction as 'undo' | 'redo');
     if (workspaceMode !== 'editing') return null;
     const latest = timelineHistoryState({ projectId: currentProject.current, timeline: dataRef.current!.timeline, history: dataRef.current!.timelineHistory, busy: isBusy('timeline:mutation'), pending: timelinePending, dirty: clipDirty || subtitleDirty, online: online && auth === true && !loading });
     if (!(direction === 'undo' ? latest.canUndo : latest.canRedo)) return null;
@@ -3879,10 +3882,10 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       const mode = viewRef.current!.activeMode;
       // Format 5 uses one board/editing history stack: the board surface also
       // listens for the same undo/redo shortcuts.
-      const boardHistory = mode === 'canvas' && dataRef.current?.projectFormatVersion === 5;
+      const boardHistory = mode === 'canvas' && isSequenceTimelineFormat(dataRef.current?.projectFormatVersion);
       if (mode !== 'editing' && !boardHistory) return;
       if (boardHistory && canvasShortcutInText(event, document.activeElement)) return;
-      if (mode === 'editing' && dataRef.current?.projectFormatVersion === 5 && (event.metaKey || event.ctrlKey)
+      if (mode === 'editing' && isSequenceTimelineFormat(dataRef.current?.projectFormatVersion) && (event.metaKey || event.ctrlKey)
         && !event.shiftKey && !event.altKey && !canvasShortcutInText(event, document.activeElement)
         && !hasOpenWorkbenchModal(document)) {
         const key = event.key.toLowerCase();
@@ -3900,7 +3903,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       }
       const direction = timelineHistoryActionForKey(event, guards);
       if (!direction) return;
-      const activeHistory = dataRef.current?.projectFormatVersion === 5 ? format5HistoryState : historyState;
+      const activeHistory = isSequenceTimelineFormat(dataRef.current?.projectFormatVersion) ? format5HistoryState : historyState;
       const available = direction === 'undo' ? activeHistory.canUndo : activeHistory.canRedo;
       if (!available) return;
       event.preventDefault();
@@ -3932,7 +3935,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     }
   }
   async function mutateTimeline(operation: string, input: Record<string, unknown> = {}, expectedRevision?: number, options?: RunOptions): Promise<unknown> {
-    if (dataRef.current.projectFormatVersion === 5) return mutateFormat5TimelineOperation(operation, input);
+    if (isSequenceTimelineFormat(dataRef.current.projectFormatVersion)) return mutateFormat5TimelineOperation(operation, input);
     if (clipDraftRef.current?.hasPendingComposition()) return null;
     if (!dataRef.current!.timeline) return null;
     const allowed=(prepared:unknown)=>!touchesLockedTrack(operation,input,dataRef.current!.timeline,new Set(trackLocksRef.current[currentProject.current||'']||[]))&&(options?.canExecute?.(prepared)??true);
@@ -3973,7 +3976,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     updateView('activeMode', 'editing'); setMobilePanel('canvas');
   }
   async function addTimelineAsset(assetId: string, trackId?: string | null, startFrame?: number, dropSnapshot?: AssetDropSnapshot): Promise<void> {
-    if (dataRef.current.projectFormatVersion === 5) { await format5AddTimelineAsset(assetId, trackId, startFrame, dropSnapshot); return; }
+    if (isSequenceTimelineFormat(dataRef.current.projectFormatVersion)) { await format5AddTimelineAsset(assetId, trackId, startFrame, dropSnapshot); return; }
     const panelChoice = panelIntent.current;
     if (dropSnapshot && dropSnapshot.projectId !== currentProject.current) return;
     if (!await guardNavigation(msg('shell.confirm.addTimeline'))) return;
@@ -4079,7 +4082,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     }
   }
   async function moveTimelineClip(clipId: string, trackId: string, startFrame: number, dropSnapshot?: AssetDropSnapshot): Promise<void> {
-    if (dataRef.current.projectFormatVersion === 5) { await format5MoveTimelineClip(clipId, trackId, startFrame); return; }
+    if (isSequenceTimelineFormat(dataRef.current.projectFormatVersion)) { await format5MoveTimelineClip(clipId, trackId, startFrame); return; }
     if (dropSnapshot && dropSnapshot.projectId !== currentProject.current) return;
     if (clipDirty && !await guardNavigation(msg('shell.confirm.moveClip'))) return;
     const clip = dataRef.current!.timeline?.clips.find(c => c.id === clipId);
@@ -4273,7 +4276,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     return { hasCut: Boolean(clipTransitionPredecessor(timeline.clips, clip)), maxFrames: clipTransitionRoom(timeline.clips, clip, sources) };
   }
   async function splitTimelineAtScenes(assetId: string, resultId: string): Promise<void> {
-    if (dataRef.current.projectFormatVersion === 5) {
+    if (isSequenceTimelineFormat(dataRef.current.projectFormatVersion)) {
       const result = await format5Session().splitAtScenes(assetId, resultId);
       if (!result.ok) {notifyFormat5CommandFailure(result); return;}
       clearFormat5ConflictToast();
@@ -4554,6 +4557,11 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     onRetry: (task: SceneShotsTask) => { void retryStoryboard(task); },
     onView: (task: SceneShotsTask) => { setShowTasks(false); void showStoryboard(task.id); } };
   const sceneTasks = scenes.state.tasks;
+  const processingProjectId = workbenchReady && online && timeline?.capabilities?.speed === true &&
+    timeline.projectId === currentProject.current && timeline.projectId === data.project?.id ? timeline.projectId : null;
+  const processingItems = useSpeedProcessingTasks({projectId: processingProjectId,
+    scope: JSON.stringify([editorSession.current, projectEpoch.current]), revision: timeline?.revision, read: rpc});
+  const processingTasks = speedProcessingTaskViews(processingItems, timeline?.clips ?? [], t);
   const sceneSummary = (asset: AppAsset | null | undefined) => asset ? <AssetSceneSummary asset={asset} state={scenes.state} controller={scenes.controller} onOpen={() => openSceneDetection(asset, false)} /> : null;
   const storyboardTask = storyboardBatch && storyboardBatch.projectId === data.project?.id ? sceneTasks.find((task): task is SceneShotsTask => task.id === storyboardBatch.taskId && task.kind === 'shots') ?? null : null;
   const storyboardShown = Boolean(storyboardTask?.state === 'succeeded' && workspaceMode === 'canvas');
@@ -4692,7 +4700,9 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   // while they are queued/running.
   const clipAudioExports = data.exports.filter(item => item.mode === 'clip-audio');
   const activeClipAudioCount = clipAudioExports.filter(item => ['queued', 'running'].includes(item.status)).length;
-  const taskCount = activeCount + activeRenderCount + activeClipAudioCount + activePending.length + activeTasks.length + sceneTasks.filter(sceneTaskActive).length;
+  const runningTaskCount = activeCount + activeRenderCount + activeClipAudioCount + sceneTasks.filter(sceneTaskActive).length +
+    processingTasks.filter(task => task.active).length;
+  const taskCount = runningTaskCount + activePending.length + activeTasks.length;
   const selectedCount = data.shots.filter(s => s.selectedVersionId).length;
   const orderedExports = [...data.exports].filter(item => item.mode !== 'clip-audio').sort((a, b) => b.createdAt!.localeCompare(a.createdAt!));
   const saveIsDirty=Boolean(inspectorDirty||formatDirty||annotations.state?.dirtyCount);
@@ -5255,7 +5265,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     const common = [currentProject.current, projectEpoch.current, navigationEpoch.current, panelIntent.current, state.activeMode];
     if (command === 'canvas-duplicate') return JSON.stringify([...common, canvasEditingScope, renderedCanvasSelection,
       canvasTargets, canvasEditing.historyScope, canvasPasteViewport()]);
-    if (dataRef.current?.projectFormatVersion === 5 && (command === 'edit-undo' || command === 'edit-redo')) {
+    if (isSequenceTimelineFormat(dataRef.current?.projectFormatVersion) && (command === 'edit-undo' || command === 'edit-redo')) {
       return JSON.stringify([...common, 'format5-history', format5HistoryScope(format5HistoryRef.current)]);
     }
     if (state.activeMode === 'canvas' && (command === 'edit-undo' || command === 'edit-redo') && canvasEditingEnabled) {
@@ -5290,7 +5300,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     if (command === 'show-tasks') return openTasks();
     if (command === 'show-help') return setShowGuide(true);
     if (command === 'canvas-duplicate') return duplicateCanvas();
-    if ((command === 'edit-undo' || command === 'edit-redo') && dataRef.current?.projectFormatVersion === 5) {
+    if ((command === 'edit-undo' || command === 'edit-redo') && isSequenceTimelineFormat(dataRef.current?.projectFormatVersion)) {
       return changeTimelineHistory(command === 'edit-undo' ? 'undo' : 'redo');
     }
     if ((command === 'edit-undo' || command === 'edit-redo') && viewRef.current!.activeMode === 'canvas' && canvasEditingEnabled) {
@@ -5392,6 +5402,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
         ...activeTasks.filter(item=>!item.acknowledged).map(item=>({id:`local:${item.id}`,label:t('shell.tasks'),status:renderMessage(statusDescriptor(item.status)),phase:'attention',tone:'warning'})),
         ...activePending.map(item=>({id:`pending:${item.origin||'legacy'}:${item.key}`,label:t('shell.tasks'),status:t('redesign.tasks.unknownHint'),phase:'attention',tone:'warning'})),
         ...sceneOverviewItems(sceneTasks, sceneTaskContext),
+        ...speedProcessingOverviewItems(processingTasks),
       ] as never} onOpenTasks={id => { openTasks(undefined, id); }} />
       <DropdownMenu><DropdownMenuTrigger render={<Button variant="ghost" className="icon-button" data-testid="workbench-actions" aria-label={t('redesign.shell.help')} title={t('redesign.shell.help')} />}><Icon name="info" size={16} /></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem data-testid="region-guide-toggle" aria-expanded={showGuide} onClick={() => setShowGuide(!showGuide)}><Icon name="info" size={15} />{t('shell.regionGuide')}</DropdownMenuItem><DropdownMenuItem data-testid="agent-settings-open" onClick={event => openGlobalSettings('agent', event?.nativeEvent)}><Icon name="settings" size={15} />{t('shell.agentConnections')}</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
       <Button type="button" variant="ghost" className="icon-button" data-testid="global-settings-open" aria-label={t('settings.title')} title={t('settings.title')} onClick={event => openGlobalSettings('general', event?.nativeEvent)}><WorkbenchIcon name="settings" size={16} /></Button>
@@ -5578,7 +5589,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       onGenerate={generateSampleExport}
       onRegisterMediaPause={registerExportPreviewPause} onBeforePlay={beforeExportPreviewPlay}
     />} recoveryRequired={Boolean(localDelivery.state.candidate || localDelivery.state.baselineConflict || localDelivery.state.autosavePaused || localDelivery.state.draftFailure || localDelivery.state.draftError || localDelivery.state.intentUncertain || localDelivery.state.intentFailure || localDelivery.state.intentError || localDelivery.state.phase === 'error' || localDelivery.state.retainedPreparation && localDelivery.state.intent?.intentId !== localDelivery.state.retainedPreparation.intentId || localDelivery.state.intent && localDelivery.state.intent.outcome.status !== 'accepted')} loudness={<><TimelineDialogueLoudness loudness={dialogueLoudness} /><TimelineMixLoudness loudness={timelineMixLoudness} onRevokeApply={() => timelineLoudnessApply.controller!.revoke()} apply={<TimelineLoudnessApply apply={timelineLoudnessApply} observation={timelineMixLoudness.state} onOpenTasks={() => openTasks()} />} /></>} recovery={<DeliveryDraftRecovery state={localDelivery.state} controller={localDelivery.controller} disabled={!online || auth !== true || loading} onReexport={() => { void checkTimelineExport(exportCheckView); }} />} state={exportPreflight.state as never} timeline={timeline} deliveryName={deliveryName.value} deliveryNameError={deliveryName.error} deliveryNameDisabled={!deliveryNameContext().enabled} onDeliveryNameChange={(value: string) => { if (deliveryName.controller!.choose(value, deliveryName.scope, deliveryName.version)) exportPreflight.controller!.setContext(exportCheckContext()); }} rangeDraft={exportRange.draft} exportRange={exportRange.value} rangeError={exportRange.error} rangeDisabled={!exportRangeContext().enabled} onRangeChange={((draft: ExportRangeDraft) => { if (exportRange.controller!.chooseRange(draft, exportRange.scope, exportRange.version)) exportPreflight.controller!.setContext(exportCheckContext()); }) as never} exportSettings={exportSettings.value as never} settingsDisabled={!exportSettingsContext().enabled} onSettingsChange={(value: unknown) => { if (exportSettings.controller!.choose(value, exportSettings.scope, exportSettings.version)) exportPreflight.controller!.setContext(exportCheckContext()); }} projectName={data.project?.name} canCheck={canCheckExport} exportBusy={Boolean(busy['timeline:render:export']) || localDelivery.state.busy} pendingExport={pendingTimelineExport} dirty={inspectorDirty || formatDirty} onCheck={() => checkTimelineExport(exportCheckView)} onExport={(binding: unknown) => renderTimeline('export', binding)} onUncheckedExport={renderUncheckedTimeline} pendingExportCheck={pendingExportCheck} onContinuePending={() => { void continuePendingExport(); }} onDiscardPending={() => { void discardPendingExport(); }} onRetryPending={() => { const intent = localDelivery.state.intent; if (intent) void runPendingExportCheck(intent.intentId, true); }} reviewVersion={deliveryReviewVersion} downloadEnabled={true} renderRecord={formalExportRecord as never} onTasks={() => openTasks()} /></AgentDockPane><AgentDockPane id="delivery-history-pane" labelledBy="delivery-history-tab" visible={showExports} fallbackFocus="[data-testid=delivery-page-compose]"><ExportHistoryList outputAssets={data.assets} onClose={() => {markPanelIntent();setShowDelivery(false);exportPreviewPause.current?.();}} fileRecoveryEnabled={true} onReexport={exportId => reviewNewTimelineExport(exportId, true)} reexportDisabled={!timeline?.clips.length || pendingTimelineExport || Boolean(busy['timeline:render:export']) || localDelivery.state.busy} projectId={data.project?.id} samplePeak={exportSamplePeak as never} loudness={exportLoudness as never} orderedExports={orderedExports} projectName={data.project?.name} timelineRevision={timeline?.revision} /></AgentDockPane></DeliveryWorkspace></AgentDockPane></WorkbenchDialogContent></Dialog>
-    <Dialog open={showTasks} onOpenChange={open => { if (!open) { markPanelIntent(); setShowTasks(false); } }}><WorkbenchDialogContent title={t('shell.tasks')} size="large" keepMounted hidden={!showTasks} inert={!showTasks} data-testid="task-center-dialog"><AgentDockPane id="right-dock-tasks" labelledBy="right-dock-tasks-tab" visible={showTasks} fallbackFocus="[data-testid=right-dock-tab-properties]"><TaskCenter scenes={sceneTaskCenterEntries(sceneTasks, { ...sceneTaskContext, busy: scenes.state.phase !== 'idle' })} dispositions={taskDispositions} selectedTaskId={selectedTaskId} taskViewScope={taskViewScope} onOpenExportHistory={openExportHistory} captureView={captureTaskView} activeCount={activeCount + activeRenderCount + activeClipAudioCount + sceneTasks.filter(sceneTaskActive).length} pending={pending as never} busy={busy} jobs={jobs} data={data as never} reconcileIds={reconcileIds as never} setReconcileIds={setReconcileIds as never} run={run as never} retryGeneration={retryGeneration as never} mockGenerationAvailable={mockGenerationAvailable} onInspectJob={inspectTaskJob as never} context={context} confirm={confirm as never} isCurrent={isCurrent as never} tasks={taskState as never} onRecover={recoverTask as never} onReload={(() => tasksRef.current!.load(currentProject.current as string)) as never} onAdopt={adoptLegacyTask as never} /></AgentDockPane></WorkbenchDialogContent></Dialog>
+    <Dialog open={showTasks} onOpenChange={open => { if (!open) { markPanelIntent(); setShowTasks(false); } }}><WorkbenchDialogContent title={t('shell.tasks')} size="large" keepMounted hidden={!showTasks} inert={!showTasks} data-testid="task-center-dialog"><AgentDockPane id="right-dock-tasks" labelledBy="right-dock-tasks-tab" visible={showTasks} fallbackFocus="[data-testid=right-dock-tab-properties]"><TaskCenter scenes={sceneTaskCenterEntries(sceneTasks, { ...sceneTaskContext, busy: scenes.state.phase !== 'idle' })} processing={processingTasks} dispositions={taskDispositions} selectedTaskId={selectedTaskId} taskViewScope={taskViewScope} onOpenExportHistory={openExportHistory} captureView={captureTaskView} activeCount={runningTaskCount} pending={pending as never} busy={busy} jobs={jobs} data={data as never} reconcileIds={reconcileIds as never} setReconcileIds={setReconcileIds as never} run={run as never} retryGeneration={retryGeneration as never} mockGenerationAvailable={mockGenerationAvailable} onInspectJob={inspectTaskJob as never} context={context} confirm={confirm as never} isCurrent={isCurrent as never} tasks={taskState as never} onRecover={recoverTask as never} onReload={(() => tasksRef.current!.load(currentProject.current as string)) as never} onAdopt={adoptLegacyTask as never} /></AgentDockPane></WorkbenchDialogContent></Dialog>
     {showProjectChooser && <Modal title={t('projects.openWorkspace')} onClose={() => setShowProjectChooser(false)}><div className="project-chooser-list">{projects.map(project => <Button variant="ghost" key={project.id} onClick={async () => { if (await selectProject(project.id)) setShowProjectChooser(false); }}><Icon name="folder" size={16} />{project.name}</Button>)}</div></Modal>}
     {toast && <div className={`workbench-toast ${toast.type}`} data-testid="global-toast" data-text-selectable role={toast.type === 'error' ? 'alert' : 'status'}><Icon name={toast.type === 'success' ? 'check' : 'info'} size={17} /><span>{renderImportFeedback(locale, toast.message)}</span><Button variant="ghost" className="icon-button small" aria-label={t('shell.dismissNotice')} onClick={() => setToast(null)}><Icon name="close" size={15} /></Button></div>}
     {!nativeWindow && showCreate && <CreateProject newProjectFormatVersion={projectEntryIdentityRef.current!.getState().snapshot?.newProjectFormatVersion} onClose={() => { navigationEpoch.current++; setShowCreate(false); }} onCreate={createProject} busy={busy['project-create'] || busy['project-create-flow']} />}

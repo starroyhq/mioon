@@ -7,7 +7,7 @@ import type {CreateProjectFileOptions, OpenProjectConnectionOptions, ProjectConn
 import {mediaReferenceSchema} from '../../../contracts/src/media-reference.ts';
 import type {MediaReference} from '../../../contracts/src/media-reference.ts';
 import {AppError} from '../../../contracts/src/app-error.ts';
-import {FORMAT5_PROJECT_SCHEMA_VERSION} from './schema/databases.ts';
+import {isSequenceProjectFormat} from './schema/databases.ts';
 import {fenceFormat5ProjectContent} from './format5-content.ts';
 import {putFormat5TimelineInside, readFormat5TimelineRecord} from './format5-timeline.ts';
 import {readProjectContentStamp, sameContentStamp, type ContentStamp} from './content-stamp.ts';
@@ -173,7 +173,7 @@ function storeFromConnection(connection: ProjectConnection): ProjectStore {
     if (!TABLES.has(t)) throw Error('Unknown table');
     return t;
   };
-  const format5 = (): boolean => database.prepare('PRAGMA project.user_version').get()?.user_version === FORMAT5_PROJECT_SCHEMA_VERSION;
+  const format5 = (): boolean => isSequenceProjectFormat(database.prepare('PRAGMA project.user_version').get()?.user_version);
   const get = (t: string, id: string): unknown => {
     table(t);
     if (t === 'timelines' && format5()) {
@@ -194,7 +194,7 @@ function storeFromConnection(connection: ProjectConnection): ProjectStore {
   };
   const put = <T extends object>(t: string, value: T): T => {
     table(t);
-    if (!database.isTransaction && database.prepare('PRAGMA project.user_version').get()?.user_version === FORMAT5_PROJECT_SCHEMA_VERSION) {
+    if (!database.isTransaction && format5()) {
       return tx(() => put(t, value));
     }
     if (connection.historyState === 'diverged') throw new AppError('PROJECT_HISTORY_DIVERGED','项目内容与本机记录不一致，请先确认处置。',409,{projectId:connection.projectId});
@@ -238,7 +238,7 @@ function storeFromConnection(connection: ProjectConnection): ProjectStore {
     let result!: T;
     try {
       const formatBefore = database.prepare('PRAGMA project.user_version').get()?.user_version;
-      const format5Content = formatBefore === FORMAT5_PROJECT_SCHEMA_VERSION ? readProjectContentStamp(database) : undefined;
+      const format5Content = isSequenceProjectFormat(formatBefore) ? readProjectContentStamp(database) : undefined;
       const schemaBefore = format5Content ? database.prepare('PRAGMA project.schema_version').get()?.schema_version : undefined;
       for (const fence of transactionFences.get(database) ?? []) fence();
       result = callback();
@@ -247,7 +247,7 @@ function storeFromConnection(connection: ProjectConnection): ProjectStore {
         throw new TypeError('Transactions require a synchronous result');
       }
       for (const observer of transactionObservers.get(database) ?? []) observer(result);
-      if (database.prepare('PRAGMA project.user_version').get()?.user_version === FORMAT5_PROJECT_SCHEMA_VERSION &&
+      if (format5() &&
           (!format5Content || !sameContentStamp(format5Content, readProjectContentStamp(database)) ||
            schemaBefore !== database.prepare('PRAGMA project.schema_version').get()?.schema_version)) fenceFormat5ProjectContent(database, 'project');
       // A pure quota check prevents a committed task from exceeding the

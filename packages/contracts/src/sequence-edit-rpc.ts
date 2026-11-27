@@ -15,6 +15,7 @@ import {sequenceEditClipPropertiesIntentSchema, sequenceEditDialogueIntentSchema
 import {sequenceEditIntentPayloadSchema} from './sequence-editing.ts';
 import {sequenceEditingSchemas} from './sequence-editing.ts';
 import type {SequenceEditIntent} from './sequence-edit.ts';
+import {sequenceEditSpeedIntentSchema} from './timeline-speed.ts';
 
 const uuid = z.string().uuid();
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
@@ -41,15 +42,16 @@ export const sequencePreviewRequestSchema = z.object({
   soundIntent: sequenceEditSeparateSoundIntentSchema.optional(),
   formatIntent: sequenceEditFormatIntentSchema.optional(),
   generateIntent: sequenceEditGenerateIntentSchema.optional(),
+  speedIntent: sequenceEditSpeedIntentSchema.optional(),
   allocation: allocationSchema.optional(),
 }).strict().superRefine((value, context) => {
   const families = [value.intents !== undefined, value.subjectIntent !== undefined,
     value.referenceIntent !== undefined, value.propertiesIntent !== undefined,
     value.subtitlesIntent !== undefined, value.dialogueIntent !== undefined,
     value.trackIntent !== undefined, value.soundIntent !== undefined, value.previsIntent !== undefined,
-    value.formatIntent !== undefined, value.generateIntent !== undefined].filter(Boolean).length;
+    value.formatIntent !== undefined, value.generateIntent !== undefined, value.speedIntent !== undefined].filter(Boolean).length;
   if (families !== 1) context.addIssue({code: z.ZodIssueCode.custom, path: ['intents'],
-    message: 'Provide exactly one of intents, subjectIntent, referenceIntent, propertiesIntent, subtitlesIntent, dialogueIntent, trackIntent, soundIntent, previsIntent, formatIntent and generateIntent.'});});
+    message: 'Provide exactly one sequence edit intent family.'});});
 export const sequenceCommitRequestSchema = z.object({
   projectId: uuid,
   envelope: sequenceEditEnvelopeSchema,
