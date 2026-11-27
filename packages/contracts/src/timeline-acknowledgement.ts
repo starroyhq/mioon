@@ -1,4 +1,4 @@
-import {TIMELINE_LIMITS,LEGACY_TIMELINE_LIMITS} from './timeline-limits.ts';
+import {isTimelineExportLimitCode,TIMELINE_LIMITS,LEGACY_TIMELINE_LIMITS} from './timeline-limits.ts';
 import {mediaFingerprintSchema, mediaReferenceSchema} from './media-reference.ts';
 import {createVolumeEnvelopeEvaluator, type VolumeEnvelope, type VolumeEnvelopeClip} from './timeline-volume-envelope.ts';
 import {isVolumeEnvelope,isVolumeEnvelopeProcessingSnapshot} from './timeline-volume-envelope-processing.ts';
@@ -296,6 +296,13 @@ export function hasRequestNotAppliedProof(error: unknown, input: unknown, {opera
     ((value as Rec).exportSettings===undefined||timelineExportSettingsSchema.safeParse((value as Rec).exportSettings).success) && ((value as Rec).preflightSnapshotHash===undefined||digest((value as Rec).preflightSnapshotHash))};
   if(!isTimelineExportRangeProofInput(input,rangeProof))return false;
   if(failure?.code==='EXPORT_RANGE_BOUNDS')return hasTimelineExportRangeBoundsProof(failure,input,rangeProof);
+  if(operation==='timeline.render' && isTimelineExportLimitCode(failure?.code)) return Boolean(
+    operationInput(input,['purpose'],['preflightSnapshotHash','exportSettings','deliveryName','exportRange']) &&
+    (request.purpose==='preview'||request.purpose==='export') && isTimelineDeliveryNameInput(input,request.purpose) && isTimelineExportRangeInput(input,request.purpose) &&
+    (request.exportSettings===undefined||request.purpose==='export'&&timelineExportSettingsSchema.safeParse(request.exportSettings).success) &&
+    (request.preflightSnapshotHash===undefined||digest(request.preflightSnapshotHash)) && object(details) && failure.terminationUnconfirmed!==true &&
+    (integer(failure.status,400,499)&&![401,403].includes(failure.status as number)||failure.status===undefined&&failure.definitive===true) &&
+    details.mutationOutcome==='not_applied'&&details.operation===operation&&details.projectId===request.projectId&&details.requestId===request.requestId);
   if(TIMELINE_EXPORT_CAPABILITY_REJECTION_CODES.includes(failure?.code as string)) return Boolean(operation==='timeline.render' &&
     operationInput(input,['purpose','exportSettings'],['preflightSnapshotHash','deliveryName','exportRange']) && isTimelineDeliveryNameInput(input,request.purpose) && isTimelineExportRangeInput(input,request.purpose) && request.purpose==='export' && timelineExportSettingsSchema.safeParse(request.exportSettings).success &&
     (request.preflightSnapshotHash===undefined||digest(request.preflightSnapshotHash)) && object(details) &&

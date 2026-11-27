@@ -8,10 +8,13 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {startServer} from './helpers/test-server.ts';
+import {startServer, type InspectProject} from './helpers/test-server.ts';
 import {testEnv} from './helpers/test-env.ts';
 import {exportOutputSchema} from '../packages/contracts/src/export-controls.ts';
 import {sequenceHistoryViewResponseSchema} from '../packages/contracts/src/sequence-editing.ts';
+import {TIMELINE_LIMITS} from '@mioon/contracts/timeline-limits';
+import {createClient} from '@mioon/client';
+import {putFormat5TimelineInside, readFormat5TimelineRecord} from '../packages/business/src/project-file/format5-timeline.ts';
 
 const exec = promisify(execFile);
 const TOKEN = 'synthetic-cli-format5-e2e-token';
@@ -168,4 +171,99 @@ test('real CLI format-5 flow: generate in editing, references, reorder, split, s
   const bytes = readFileSync(output);
   assert.equal(bytes.subarray(4, 8).toString('latin1'), 'ftyp');
   assert.equal(createHash('sha256').update(bytes).digest('hex'), proof.sha256);
+});
+
+test('CLI and MCP acknowledge and read a native 30-minute export on the same project route', {
+  timeout: 90_000,
+}, async t => {
+  const directory = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-cli-format5-limits-'));
+  let inspect!: InspectProject;
+  const server = await startServer({dataDir: directory, port: 0, token: TOKEN, projectFormatForTest: 5,
+    inspectProject: reader => {inspect = reader;}});
+  t.after(async () => {await server.close(); rmSync(directory, {recursive: true, force: true});});
+  const env = {...testEnv(), MIOON_BASE_URL: server.url, MIOON_TOKEN: TOKEN};
+  const {id: projectId} = await cli(env, 'project', 'create', '--input', JSON.stringify({name: 'Timeline limits'}));
+  await commit(env, projectId, await plan(env, ['sequence', 'board', 'edit'],
+    {projectId, kind: 'board-root-create', name: 'Film', position: {x: 0, y: 0}}));
+  const {id: assetId} = await cli(env, 'asset', 'import', '--input', JSON.stringify({projectId,
+    name: 'source.png', mimeType: 'image/png', dataBase64: PNG}));
+  const {maxClips, maxFrames} = TIMELINE_LIMITS;
+  const revision = inspect(projectId, db => {
+    const timeline = readFormat5TimelineRecord(db, 'project');
+    assert.ok(timeline);
+    const trackId = randomUUID();
+    const durationFrames = maxFrames / maxClips;
+    const clips = Array.from({length: maxClips}, (_, index) => ({
+      id: randomUUID(), assetId, trackId, name: `Frame source ${index}`, sourceState: 'ready', anchor: null,
+      startFrame: durationFrames * index, durationFrames, sourceInFrame: 0, gain: 1,
+      rect: {x: 0, y: 0, width: timeline.width, height: timeline.height},
+    }));
+    const tracks = [...timeline.tracks, {id: trackId, kind: 'video', name: 'V2', orderIndex: timeline.tracks.length,
+      hidden: false, muted: false}];
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      putFormat5TimelineInside(db, 'project', {...timeline, clips, tracks, durationFrames: maxFrames,
+        revision: timeline.revision + 1}, projectId);
+      db.exec('COMMIT');
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
+    return timeline.revision + 1;
+  });
+  const render = {projectId, expectedRevision: revision, requestId: randomUUID(), purpose: 'export',
+    exportRange: {startFrame: maxFrames - 1, endFrame: maxFrames},
+    exportSettings: {profileId: 'mp4_h264_float_checked_v2', resolution: 'short_360',
+      rateControl: {mode: 'crf', quality: 'standard'}}};
+  const queued = await cli(env, 'timeline', 'render', '--input', JSON.stringify(render));
+  assert.equal(queued.snapshot.timeline.clips.length, maxClips);
+  assert.equal(queued.snapshot.timeline.durationFrames, maxFrames);
+  assert.equal(queued.status, 'queued');
+  const read = {projectId, exportId: queued.id};
+  const saved = await cli(env, 'export', 'get', '--input', JSON.stringify(read));
+  assert.equal(saved.id, queued.id);
+  assert.deepEqual(saved.snapshot, queued.snapshot);
+
+  const mcp = new Client({name: 'format5-limits-test', version: '1.0.0'});
+  t.after(() => mcp.close());
+  await mcp.connect(new StdioClientTransport({command: process.execPath, args: ['apps/mcp/src/index.ts'],
+    cwd: path.resolve(import.meta.dirname, '..'), env, stderr: 'ignore'}));
+  const call = async (name: string, input: Record<string, unknown>): Promise<Row> => {
+    const result = await mcp.callTool({name, arguments: input}, undefined, {timeout: 15_000});
+    const reply = result.structuredContent as {ok?: boolean; data?: Row; error?: unknown};
+    assert.equal(Boolean(result.isError), false, JSON.stringify(reply.error));
+    assert.equal(reply.ok, true);
+    assert.ok(reply.data);
+    return reply.data;
+  };
+  assert.deepEqual(await call('timeline_render', render), queued, 'MCP replays the exact CLI receipt');
+  const later = await call('export_get', read);
+  assert.equal(later.id, queued.id);
+  assert.deepEqual(later.snapshot, queued.snapshot);
+  const finished = await cli(env, 'export', 'watch', '--input', JSON.stringify(read), '--timeout-ms', '30000');
+  assert.equal(finished.status, 'succeeded');
+  assert.equal(finished.audioCheck.outputFrames, 1);
+  assert.equal((await call('export_get', read)).audioCheck.outputFrames, 1);
+  assert.equal(inspect(projectId, db => db.prepare('SELECT count(*) AS total FROM exports').get()?.total), 1);
+
+  let calls = 0;
+  const currentProject = createClient({env, fetchImpl: async (...args) => {
+    calls++;
+    const response = await fetch(...args);
+    assert.equal(response.headers.get('X-Mioon-Project-Format'), '5');
+    const headers = new Headers(response.headers);
+    headers.delete('X-Mioon-Project-Format');
+    return new Response(response.body, {status: response.status, headers});
+  }});
+  await assert.rejects(currentProject.rpc('timeline.render', render),
+    {code: 'BACKEND_PROTOCOL_ERROR', details: {operation: 'timeline.render', requestId: render.requestId,
+      submissionMayHaveSucceeded: true, recovery: 'Replay the exact original input with the same requestId; do not invent a replacement ID.'}});
+  assert.equal(calls, 1, 'unlabelled render responses keep the strict contract without a second request');
+  await assert.rejects(currentProject.rpc('export.get', {exportId: queued.id}, {projectId}), {code: 'BACKEND_PROTOCOL_ERROR'});
+  assert.equal(calls, 2, 'unlabelled export reads also keep the strict contract');
+
+  const wrongOwner = createClient({env, fetchImpl: async () => new Response(JSON.stringify({ok: true, data: finished}),
+    {headers: {'X-Mioon-Project-Format': '5'}})});
+  await assert.rejects(wrongOwner.rpc('export.get', {exportId: queued.id}, {projectId: randomUUID()}),
+    {code: 'BACKEND_PROTOCOL_ERROR'});
 });

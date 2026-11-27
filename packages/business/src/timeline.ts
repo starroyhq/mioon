@@ -26,6 +26,7 @@ import {assertTimelineExportPlan,freezeTimelineSnapshot} from './timeline-inputs
 import {removeTimelineClipWithRipple} from './timeline-ripple-remove.ts';
 import {initializeProjectTimelineFormat} from './project-timeline-format.ts';
 import {newTimelineRecord} from './timeline-new-record.ts';
+import {isTimelineExportLimitCode} from '@mioon/contracts/timeline-limits';
 export {TIMELINE_LIMITS} from '@mioon/contracts/timeline-limits';
 import {readTimelinePreflightSnapshot} from './timeline-sources.ts';
 import {createTimelineReplacementBoundary} from './timeline-replacement.ts';
@@ -430,7 +431,10 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
   // The legacy receipt verifier reconstructs/validates the released aggregate;
   // format 5 has its own projected snapshot, so keep the same immutable request
   // receipt shape but verify replay by the stored request hash instead.
-  return tx(()=>{
+  const state: TimelineRejectionState={operation:'timeline.render',receiptAbsent:false,writesStarted:false,
+   transactionEntered:false,callbackFailed:false,ownedScope:()=>isProjectStore(store)&&store.projectId===input.projectId};
+  try{return tx(()=>{
+   state.transactionEntered=true;
    const requestHash=hash({operation:'timeline.render',input});
    const previous=db.prepare('SELECT requestHash,response FROM timeline_requests WHERE requestId=?')
      .get(input.requestId as string) as {requestHash?:string;response?:string}|undefined;
@@ -438,18 +442,25 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
     if(previous.requestHash!==requestHash)throw new AppError('IDEMPOTENCY_CONFLICT','同一时间线请求 ID 已用于不同内容',409,{requestId:input.requestId});
     return JSON.parse(String(previous.response));
    }
-   const frozen=freezeFormat5RenderSnapshot(store as unknown as Parameters<typeof freezeFormat5RenderSnapshot>[0],input);
+   state.receiptAbsent=true;
+   let frozen: unknown;
+   try{frozen=freezeFormat5RenderSnapshot(store as unknown as Parameters<typeof freezeFormat5RenderSnapshot>[0],input);}
+   catch(error){state.callbackFailed=true;throw error;}
    const createdAt=now();
    const result={id:randomUUID(),projectId:input.projectId,requestId:input.requestId,mode:'timeline',purpose:input.purpose,
      timelineRevision:(frozen as {timeline:{revision:number}}).timeline.revision,snapshot:frozen,status:'queued',
      assetId:null,url:null,error:null,createdAt,updatedAt:createdAt};
+   state.writesStarted=true;
    put('exports',result);
    recordOutputLocale(db,result.id,requestHash,outputLocale);
    bindAgentTaskJobInside(db,'export',result.id);
    db.prepare('INSERT INTO timeline_requests(requestId,requestHash,response) VALUES(?,?,?)')
      .run(input.requestId as string,requestHash,JSON.stringify(result));
    return result;
-  });
+  });}catch(error){
+   if(error instanceof AppError&&isTimelineExportLimitCode(error.code))rejectTimelineMutation(db,input,error,state);
+   throw error;
+  }
  }
  function render(input: TimelineMutationInput,admission?: RenderAdmission,outputLocale?: unknown): unknown{
   return transaction('timeline.render',input,({boundary,requestHash,write})=>{

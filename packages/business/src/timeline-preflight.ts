@@ -1,4 +1,4 @@
-import {TIMELINE_LIMITS} from '@mioon/contracts/timeline-limits';
+import {isTimelineExportLimitCode,TIMELINE_LIMITS} from '@mioon/contracts/timeline-limits';
 import {assertProjectStore} from './store-runtime.ts';
 import {hasSampledTimelineReferences, prepareTimelineReferenceHashes} from './timeline-reference-prepare.ts';
 import {timelineExportRangeFields,isTimelineExportRangeWithinDuration} from '@mioon/contracts/timeline-export-range';
@@ -88,7 +88,7 @@ function classify(error: unknown): [string,string]{
  if(failure.code==='MANAGED_SOURCE_CHANGED')return ['blocked','PREFLIGHT_SOURCE_CHANGED'];
  if(failure.code==='PREFLIGHT_STALE')return ['stale','PREFLIGHT_STALE'];
  if(failure.code==='TIMELINE_SOURCE_UNAVAILABLE')return ['blocked','TIMELINE_SOURCE_UNAVAILABLE'];
- if(failure.code==='INVALID_TIMELINE_SNAPSHOT'||failure.code==='TIMELINE_LIMIT')return ['blocked',failure.code];
+ if(failure.code==='INVALID_TIMELINE_SNAPSHOT'||isTimelineExportLimitCode(failure.code))return ['blocked',failure.code];
  return ['blocked','PREFLIGHT_MEDIA_INVALID'];
 }
 

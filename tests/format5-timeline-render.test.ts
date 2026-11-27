@@ -4,7 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {createChainWorld} from './helpers/sequence-edit-double.ts';
 import {freezeFormat5RenderSnapshot, readFormat5RenderProjection} from '../packages/business/src/format5-timeline-render.ts';
 import {readFormat5TimelineRecord} from '../packages/business/src/project-file/format5-timeline.ts';
-import {isTimelineRenderRecord} from '../packages/contracts/src/timeline-acknowledgement.ts';
+import {hasRequestNotAppliedProof, isTimelineRenderRecord} from '../packages/contracts/src/timeline-acknowledgement.ts';
 import {FORMAT5_TIMELINE_FORMAT, TIMELINE_RESPONSE_BYTES} from '../packages/contracts/src/timeline-replacement.ts';
 import {TIMELINE_LIMITS} from '../packages/contracts/src/timeline-limits.ts';
 import {createFormat5SequenceEditService} from '../packages/business/src/format5-sequence-edit-service.ts';
@@ -46,6 +46,16 @@ function fixture(t: test.TestContext) {
     }
   });
   return {world, service};
+}
+function timelineServices(world: ReturnType<typeof fixture>['world']) {
+  return createTimelineServices(world.store as never, {
+    hash: timelineSnapshotHash, now: () => '2026-01-01T00:00:00.000Z',
+    required: (table: never, id: string) => {const value = world.store.get(table, id); if (!value) throw new AppError('NOT_FOUND', 'Missing', 404); return value;},
+    check: (value: {revision?: unknown}, revision?: unknown) => {
+      if (value.revision !== revision) throw new AppError('REVISION_CONFLICT', 'Changed', 409);
+    },
+    beforeEffect: () => {},
+  } as never);
 }
 function addCue(world: ReturnType<typeof fixture>['world'], service: ReturnType<typeof fixture>['service'], id: string) {
   const preview = service.preview({projectId: world.projectId, requestId: `render-cue-${id}`,
@@ -91,17 +101,10 @@ test('timeline.render queues the projected format-5 snapshot on the real service
   const {world, service} = fixture(t);
   addCue(world, service, cue);
   const timeline = readFormat5TimelineRecord(world.store.db, 'project')!;
-  const timelineServices = createTimelineServices(world.store as never, {
-    hash: (value: unknown) => timelineSnapshotHash(value), now: () => '2026-01-01T00:00:00.000Z',
-    required: (table: never, id: string) => {const value = world.store.get(table, id); if (!value) throw new AppError('NOT_FOUND', 'Missing', 404); return value;},
-    check: (value: {revision?: unknown}, revision?: unknown) => {
-      if (value.revision !== revision) throw new AppError('REVISION_CONFLICT', 'Changed', 409);
-    },
-    beforeEffect: () => {},
-  } as never);
+  const {handlers} = timelineServices(world);
   const request = {projectId: world.projectId, expectedRevision: timeline.revision,
     requestId: 'fr-b-render-live-0001', purpose: 'preview' as const};
-  const response = timelineServices.handlers['timeline.render']!(request as never, {}) as
+  const response = handlers['timeline.render']!(request as never, {}) as
     {id: string; mode: string; snapshot: {timeline: {clips: unknown[]; subtitles?: {cues: unknown[]}}}};
   assert.equal(response.mode, 'timeline');
   assert.equal(response.snapshot.timeline.clips.length, 2);
@@ -109,7 +112,7 @@ test('timeline.render queues the projected format-5 snapshot on the real service
   const stored = world.store.get('exports', response.id) as {snapshot: unknown};
   assert.deepEqual(stored.snapshot, response.snapshot);
   // An exact retry returns the same immutable export receipt.
-  const replay = timelineServices.handlers['timeline.render']!(request as never, {}) as {id: string};
+  const replay = handlers['timeline.render']!(request as never, {}) as {id: string};
   assert.equal(replay.id, response.id);
 });
 
@@ -132,7 +135,8 @@ test('format-5 export blockers refuse to freeze instead of rendering a placehold
 });
 
 test('native export freezes exactly 300 clips and 54,000 frames and refuses either excess before probing', async (t) => {
-  const {world: {store, projectId, timeline}} = fixture(t);
+  const {world} = fixture(t);
+  const {store, projectId, timeline} = world;
   const {maxClips, maxFrames} = TIMELINE_LIMITS;
   const trackId = randomUUID();
   const {rect} = timeline.clips[0]!;
@@ -161,6 +165,7 @@ test('native export freezes exactly 300 clips and 54,000 frames and refuses eith
   assert.equal(isTimelineRenderRecord(receipt, request), false);
 
   const {handlers} = createTimelinePreflightServices(store, {probe: async () => assert.fail('over-limit export probed a source')});
+  const render = timelineServices(world).handlers['timeline.render']!;
   const selected = {...request, exportRange: {startFrame: 0, endFrame: 30}};
   const overBoundaries = [
     {...boundary, durationFrames: maxFrames + 1, clips: [...clips.slice(0, -1), {...clips.at(-1)!, durationFrames: framesPerClip + 1}]},
@@ -177,6 +182,16 @@ test('native export freezes exactly 300 clips and 54,000 frames and refuses eith
       ['TIMELINE_LIMIT', '时间线最多支持 300 个片段和 30 分钟（54000 帧）。'],
     ]);
     assert.equal(report.checks.bytesHashed, 0);
+    for (const renderInput of [selected, {...request, purpose: 'preview' as const}]) {
+      assert.throws(() => render(renderInput as never, {}), error => {
+        assert.ok(error instanceof AppError && error.code === 'TIMELINE_LIMIT');
+        assert.equal(hasRequestNotAppliedProof(error, renderInput, {operation: 'timeline.render'}), true);
+        assert.equal(hasRequestNotAppliedProof(error, {...renderInput, projectId: randomUUID()}, {operation: 'timeline.render'}), false);
+        return true;
+      });
+      assert.equal(store.db.prepare('SELECT 1 FROM timeline_requests WHERE requestId=?').get(renderInput.requestId), undefined);
+    }
+    assert.deepEqual(store.list('exports', projectId), []);
   }
 });
 

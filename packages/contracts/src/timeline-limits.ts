@@ -22,3 +22,9 @@ export const LEGACY_TIMELINE_LIMITS = Object.freeze({
   maxClips: 100,
   maxSegments: 200,
 });
+
+export const TIMELINE_SEGMENT_LIMIT_MESSAGE = `导出最多支持 ${TIMELINE_LIMITS.maxSegments} 个分段。请减少片段中的空隙或转场再试。`;
+
+export function isTimelineExportLimitCode(code: unknown): code is 'TIMELINE_LIMIT' | 'TIMELINE_SEGMENT_LIMIT' {
+  return code === 'TIMELINE_LIMIT' || code === 'TIMELINE_SEGMENT_LIMIT';
+}

@@ -1,5 +1,5 @@
 import {sameMediaLocator} from './asset-reference-record.ts';
-import {LEGACY_TIMELINE_LIMITS} from '@mioon/contracts/timeline-limits';
+import {isTimelineExportLimitCode,LEGACY_TIMELINE_LIMITS} from '@mioon/contracts/timeline-limits';
 import type {MediaReference} from '../../contracts/src/media-reference.ts';
 import {assertTimelineVolumeEnvelopeWorkspace,hasTimelineVolumeEnvelope,admitTimelineVolumeEnvelopeWrite,TIMELINE_VOLUME_ENVELOPE_REJECTION_CODES} from './timeline-volume-envelope-admission.ts';
 import {assertTimelineAudioRoleWorkspace} from './store-capabilities.ts';
@@ -126,9 +126,10 @@ const definiteRejections=new Set<string>(['AUDIO_ROLE_CLIP_UNSUPPORTED','TIMELIN
 export function rejectTimelineMutation(db: DatabaseSync,input: TimelineRecoveryInput,error: unknown,{receiptAbsent,writesStarted,transactionEntered,callbackFailed,operation,ownedScope=false}: TimelineRejectionState): void{
  const errorCode=(error as {code?: unknown}|undefined)?.code;
  const failure=error as AppError;
- // New loudness proofs require its owner-aware adapter's exact post-rollback
- // binding; never fall back to the legacy optional operation/project proof.
- if(typeof errorCode==='string'&&TIMELINE_VOLUME_ENVELOPE_REJECTION_CODES.includes(errorCode)){
+ // Envelope and export-limit proofs bind the exact project and operation
+ // after rollback, with both live ownership and fresh receipt absence.
+ if(typeof errorCode==='string'&&TIMELINE_VOLUME_ENVELOPE_REJECTION_CODES.includes(errorCode)||
+    operation==='timeline.render'&&isTimelineExportLimitCode(errorCode)){
   try{if(typeof ownedScope==='function'&&ownedScope()&&transactionEntered&&callbackFailed&&receiptAbsent&&!writesStarted&&!db.isTransaction&&error instanceof AppError&&!db.prepare('SELECT 1 FROM timeline_requests WHERE requestId=?').get(input.requestId as string)&&ownedScope())
    failure.details={...(failure.details as Record<string,unknown>|undefined),mutationOutcome:'not_applied',operation,projectId:input.projectId,requestId:input.requestId};}catch{ /* uncertain rollback/ownership never releases a key */ }
   return;

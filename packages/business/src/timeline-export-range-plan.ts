@@ -1,10 +1,10 @@
 import {timelineCompositionSegments} from '@mioon/contracts/timeline-segments';
 import {timelineExportOutputFrames} from '@mioon/contracts/timeline-export-range';
 import type {TimelineExportRange} from '@mioon/contracts/timeline-export-range';
-import {LEGACY_TIMELINE_LIMITS, TIMELINE_LIMITS} from '@mioon/contracts/timeline-limits';
+import {LEGACY_TIMELINE_LIMITS, TIMELINE_LIMITS, TIMELINE_SEGMENT_LIMIT_MESSAGE} from '@mioon/contracts/timeline-limits';
 import {AppError} from '../../contracts/src/app-error.ts';
 
-export const TIMELINE_SEGMENT_LIMIT_MESSAGE = `导出最多支持 ${TIMELINE_LIMITS.maxSegments} 个分段。请减少片段中的空隙或转场再试。`;
+export {TIMELINE_SEGMENT_LIMIT_MESSAGE} from '@mioon/contracts/timeline-limits';
 
 /** The caller validates the complete frozen timeline before planning. Original
  * segment bounds are retained so source seeking and fps/resampler initialization

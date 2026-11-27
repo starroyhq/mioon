@@ -1,4 +1,5 @@
-import {TIMELINE_LIMITS} from './timeline-limits.ts';
+import {AppError} from './app-error.ts';
+import {LEGACY_TIMELINE_LIMITS,TIMELINE_LIMITS,TIMELINE_SEGMENT_LIMIT_MESSAGE} from './timeline-limits.ts';
 
 /** Two-clip picture transitions at the cut between adjacent clips on one video
  * track, and the pure fitting rules the timeline editor, the renderer and the
@@ -7,9 +8,9 @@ import {TIMELINE_LIMITS} from './timeline-limits.ts';
 export const CLIP_TRANSITION_PROFILE = 'mioon-clip-transition-v1';
 export const CLIP_TRANSITION_KINDS = Object.freeze(['dissolve', 'dipToBlack', 'wipeLeft', 'wipeRight', 'pushLeft', 'pushRight'] as const);
 export type ClipTransitionKind = typeof CLIP_TRANSITION_KINDS[number];
-/** Durations are timeline frames. Transition edges count towards the shared
- * composition segment bound along with clip edges. */
-export const CLIP_TRANSITION_LIMITS = Object.freeze({minFrames: 2, maxFrames: 60, segments: TIMELINE_LIMITS.maxSegments});
+/** The legacy edit path counts clip and transition edges towards its saved
+ * segment bound. Transition durations are timeline frames in every format. */
+export const CLIP_TRANSITION_LIMITS = Object.freeze({minFrames: 2, maxFrames: 60, segments: LEGACY_TIMELINE_LIMITS.maxSegments});
 /** Saved on the incoming clip of a cut, centred on the cut. */
 export interface ClipTransition {
   readonly profileId: typeof CLIP_TRANSITION_PROFILE;
@@ -110,10 +111,9 @@ export function clipTransitionSegmentCount(timeline: TransitionTimeline, regions
   return new Set([0, timeline.durationFrames, ...timeline.clips.flatMap(clip => [clip.startFrame, clip.startFrame + clip.durationFrames]),
     ...regions.flatMap(item => [item.startFrame, item.endFrame])]).size - 1;
 }
-/** The incoming clips whose saved transitions no longer hold. Each track is
- * read left to right, and a transition stays when it fits beside the ones
- * already kept on its left. Over the segment bound, the latest cuts go. */
-export function staleClipTransitions(timeline: TransitionTimeline, sources: TransitionSources): string[] {
+function fittingClipTransitions(timeline: TransitionTimeline, sources: TransitionSources): {
+  regions: ClipTransitionRegion[]; stale: string[];
+} {
   const kept = new Map<string, ClipTransitionRegion>(), stale: string[] = [], keptTransitions = new Map<string, ClipTransition>();
   const incoming = timeline.clips.filter(clip => own(clip, 'transitionIn')).sort((a, b) => a.trackId < b.trackId ? -1 : a.trackId > b.trackId ? 1 : a.startFrame - b.startFrame);
   for (const clip of incoming) {
@@ -122,14 +122,24 @@ export function staleClipTransitions(timeline: TransitionTimeline, sources: Tran
       kept.set(clip.id, region(timeline.clips, clip, transition)); keptTransitions.set(clip.id, transition);
     } else stale.push(clip.id);
   }
-  const latest = [...kept.values()].sort((a, b) => b.cutFrame - a.cutFrame || (a.trackId < b.trackId ? 1 : -1));
+  return {regions: [...kept.values()], stale};
+}
+/** The incoming clips whose saved transitions no longer hold. Each track is
+ * read left to right, and a transition stays when it fits beside the ones
+ * already kept on its left. Over the legacy edit bound, the latest cuts go. */
+export function staleClipTransitions(timeline: TransitionTimeline, sources: TransitionSources): string[] {
+  const {regions,stale}=fittingClipTransitions(timeline,sources);
+  const latest = regions.sort((a, b) => b.cutFrame - a.cutFrame || (a.trackId < b.trackId ? 1 : -1));
   while (latest.length && clipTransitionSegmentCount(timeline, latest) > CLIP_TRANSITION_LIMITS.segments) stale.push(latest.shift()!.incomingId);
   return stale;
 }
-/** The saved transitions as render regions. Saved timelines are kept clean,
- * so a transition that no longer holds is invalid here, not dropped. */
+/** Validate the fitted saved regions and the actual render segment budget. */
 export function clipTransitionRegions(timeline: TransitionTimeline, sources: TransitionSources): ClipTransitionRegion[] {
-  if (staleClipTransitions(timeline, sources).length) fail('A saved transition does not fit its cut.');
-  return timeline.clips.filter(clip => own(clip, 'transitionIn')).map(clip => region(timeline.clips, clip, savedClipTransition(clip)!))
-    .sort((a, b) => a.cutFrame - b.cutFrame || (a.trackId < b.trackId ? -1 : 1));
+  const {regions,stale}=fittingClipTransitions(timeline,sources);
+  if (stale.length) fail('A saved transition does not fit its cut.');
+  const actualSegments=clipTransitionSegmentCount(timeline,regions);
+  if (actualSegments>TIMELINE_LIMITS.maxSegments) {
+    throw new AppError('TIMELINE_SEGMENT_LIMIT',TIMELINE_SEGMENT_LIMIT_MESSAGE,400,{maxSegments:TIMELINE_LIMITS.maxSegments,actualSegments});
+  }
+  return regions.sort((a, b) => a.cutFrame - b.cutFrame || (a.trackId < b.trackId ? -1 : 1));
 }
