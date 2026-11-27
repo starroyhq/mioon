@@ -6,6 +6,8 @@ import {createVolumeEnvelopeEvaluator, VOLUME_ENVELOPE_LIMITS} from '../../contr
 import {volumeEnvelopeField} from '../../contracts/src/timeline-volume-envelope-processing.ts';
 import {hasEditorExportSpeed, premiereSpeedAudioUnavailable, type EditorExportSpeed} from './editor-export-speed.ts';
 import type {FcpXmlAsset} from './fcp-xml.ts';
+import {editorExportHasOriginalPicture} from './editor-export-source-clock.ts';
+import {premiereNativeTimebase} from './premiere-source-clock.ts';
 
 export const PREMIERE_XMEML_VERSION = '5';
 
@@ -15,6 +17,7 @@ interface SourceFile {
   asset: FcpXmlAsset;
   duration: number;
   written: boolean;
+  readonly clock: ReturnType<typeof premiereNativeTimebase>;
 }
 interface Cut {
   kind: ClipTransitionKind;
@@ -44,25 +47,30 @@ function field(name: string, value: string | number | boolean): string {
 }
 
 const fps = 30;
-const rate = tag('rate', field('timebase', fps) + field('ntsc', false));
+const rateXml = (timebase: number, ntsc: boolean): string => tag('rate', field('timebase', timebase) + field('ntsc', ntsc));
+const rate = rateXml(fps, false);
+const sourceFramesPerProjectFrame = (clock: SourceFile['clock']): number =>
+  !clock ? 1 : clock.ntsc ? clock.timebase * 1000 / (fps * 1001) : clock.timebase / fps;
 const samples = (content: string): string => tag('samplecharacteristics', content);
-const videoSamples = (width: number, height: number): string => samples(rate + field('width', width) + field('height', height) +
+const videoSamples = (width: number, height: number, clockRate = rate): string => samples(clockRate + field('width', width) + field('height', height) +
   field('anamorphic', false) + field('pixelaspectratio', 'square') + field('fielddominance', 'none'));
 const audioSamples = (sampleRate: number): string => samples(field('depth', 16) + field('samplerate', sampleRate));
 const endFrame = (clip: Format5Clip): number => clip.startFrame + clip.durationFrames;
 const decimal = (value: number): number => Number(value.toFixed(8));
-const timecode = tag('timecode', rate + field('frame', 0) + field('displayformat', 'NDF'));
+const timecodeXml = (clockRate: string): string => tag('timecode', clockRate + field('frame', 0) + field('displayformat', 'NDF'));
+const timecode = timecodeXml(rate);
 
 function fileXml(file: SourceFile, timeline: Format5Timeline): string {
   if (file.written) return tag('file', '', file.id);
   file.written = true;
   const {asset} = file;
-  const video = asset.hasVideo ? tag('video', videoSamples(asset.width ?? timeline.width, asset.height ?? timeline.height)) : '';
+  const fileRate = file.clock ? rateXml(file.clock.timebase, file.clock.ntsc) : rate;
+  const video = asset.hasVideo ? tag('video', videoSamples(asset.width ?? timeline.width, asset.height ?? timeline.height, fileRate)) : '';
   const channels = asset.audioChannels ?? 2;
   const layout = channels === 1 ? field('layout', 'mono') : channels === 2 ? field('layout', 'stereo') : '';
   const audio = asset.hasAudio ? tag('audio', audioSamples(asset.audioRate ?? 48000) + field('channelcount', channels) + layout) : '';
-  return tag('file', field('name', asset.name) + field('pathurl', asset.fileUrl) + rate + field('duration', file.duration) +
-    timecode + tag('media', video + audio), file.id);
+  return tag('file', field('name', asset.name) + field('pathurl', asset.fileUrl) + fileRate + field('duration', file.duration) +
+    timecodeXml(fileRate) + tag('media', video + audio), file.id);
 }
 
 interface Effect {
@@ -87,7 +95,7 @@ const motion = {name: 'Basic Motion', effectId: 'basic', category: 'motion', typ
 const cropEffect = {name: 'Crop', effectId: 'crop', category: 'motion', type: 'motion', media: 'video'} as const;
 const levels = {name: 'Audio Levels', effectId: 'audiolevels', category: 'audiolevels', type: 'filter', media: 'audio'} as const;
 
-function speedFilter(clip: Format5Clip, speed: EditorExportSpeed, media: MediaType): string {
+function speedFilter(clip: Format5Clip, speed: EditorExportSpeed, media: MediaType, clock: SourceFile['clock']): string {
   const {direction, kind, points} = speed;
   if (kind === 'freeze' || media === 'audio' && premiereSpeedAudioUnavailable(speed)) return '';
   const reverse = direction === 'reverse';
@@ -95,7 +103,7 @@ function speedFilter(clip: Format5Clip, speed: EditorExportSpeed, media: MediaTy
   const first = points[0]!, last = points[points.length - 1]!;
   const basis = clip.timing?.profile === 'timeline-speed-v1' ? clip.timing.basis.speed : undefined;
   const nominalRate = basis?.kind === 'constant' ? 100 * basis.rate.numerator / basis.rate.denominator
-    : 100 * Math.abs(last.sourceFrame - first.sourceFrame) / last.outputFrame;
+    : 100 * Math.abs(last.sourceFrame - first.sourceFrame) / (last.outputFrame * sourceFramesPerProjectFrame(clock));
   // XMEML's last keyframe is the exclusive endpoint. Its constant reverse
   // graph stores one-based source coordinates, including that endpoint once.
   const reverseOffset = reverse && !variable ? 1 : 0;
@@ -203,14 +211,18 @@ function premiereTimelineLayout(timeline: Format5Timeline, assets: ReadonlyMap<s
       if (!asset || (track.kind === 'video' ? !asset.hasVideo : !asset.hasAudio)) continue;
       const speed = speedByClip?.get(clip.id);
       const timed = Boolean(speed) || hasEditorExportSpeed(clip, timeline.fps);
-      if (!speed && timed && clip.sourceInFrame + clip.durationFrames > asset.durationFrames) continue;
-      // Files copied by hash share a path. Keep separate definitions if asset
-      // rows disagree about whether those bytes are still, video or audio.
+      if (!speed && timed && !editorExportHasOriginalPicture(clip, asset, track.kind === 'audio' || clip.soundOnly === true)) continue;
+      let clock = speed && track.kind === 'video' && !clip.soundOnly && asset.sourceFps !== undefined
+        ? premiereNativeTimebase({fps: asset.sourceFps, fpsDenominator: asset.sourceFpsDenominator}) : null;
+      if (clock?.timebase === fps && !clock.ntsc) clock = null;
+      // Copied bytes share a path. A native graph requires media ordinals
+      // while legacy clips still read their in/out points on the project clock.
       const kind = asset.isStill ? 'still' : asset.hasVideo ? 'video' : 'audio';
-      const fileKey = JSON.stringify([asset.fileUrl, kind]);
+      const fileKey = JSON.stringify([asset.fileUrl, kind, clock]);
+      const duration = Math.ceil(asset.durationFrames * sourceFramesPerProjectFrame(clock));
       let file = files.get(fileKey);
       if (!file) {
-        file = {id: `file-${files.size + 1}`, asset, duration: asset.durationFrames, written: false};
+        file = {id: `file-${files.size + 1}`, asset, duration, written: false, clock};
         files.set(fileKey, file);
       } else {
         // Duplicate asset rows can contribute different source metadata to the
@@ -218,7 +230,7 @@ function premiereTimelineLayout(timeline: Format5Timeline, assets: ReadonlyMap<s
         file.asset = {...file.asset, hasVideo: file.asset.hasVideo || asset.hasVideo, hasAudio: file.asset.hasAudio || asset.hasAudio,
           width: file.asset.width ?? asset.width, height: file.asset.height ?? asset.height,
           audioChannels: file.asset.audioChannels ?? asset.audioChannels, audioRate: file.asset.audioRate ?? asset.audioRate};
-        file.duration = Math.max(file.duration, asset.durationFrames);
+        file.duration = Math.max(file.duration, duration);
       }
       const attachedSound = track.kind === 'video' && asset.hasAudio && speed?.kind !== 'freeze';
       items.push({clip, file, attachedSound, timed, speed});
@@ -285,7 +297,7 @@ export function serializePremiereXml({timeline, projectName, assets, speed}: {
     const inFrame = source - (cut?.before ?? 0);
     const outFrame = source + clip.durationFrames + (exit?.after ?? 0);
     const filters = media === 'video' ? pictureFilters(clip, file.asset, timeline, source) : audioFilters(clip, track, source);
-    const retime = speed ? speedFilter(clip, speed, media) : '';
+    const retime = speed ? speedFilter(clip, speed, media, file.clock) : '';
     const freeze = speed?.kind === 'freeze' && media === 'video';
     const still = freeze ? field('stillframe', true) + field('stillframeoffset', Math.floor(speed.points[0]!.sourceFrame))
       : file.asset.isStill ? field('stillframe', true) : '';

@@ -11,7 +11,7 @@ import {CLIP_TRANSFORM_PROFILE} from '../packages/contracts/src/timeline-clip-tr
 import {CLIP_TRANSITION_KINDS, CLIP_TRANSITION_PROFILE, type ClipTransitionKind} from '../packages/contracts/src/timeline-clip-transition.ts';
 import {compileClipTimeMap} from '../packages/contracts/src/timeline-clip-timing.ts';
 import {compileTimeMap, initialTimeMap, projectTimeMapToCurrentClipFields, timeMapPlanFrames, timeMapPlanInfo,
-  timeMapSourceAtOutputFrame, trimTimeMap, type TimeMapResult, type TimeMapSpeed} from '../packages/contracts/src/timeline-time-map.ts';
+  timeMapSourceAtOutputFrame, timeMapTailInverse, trimTimeMap, type TimeMapResult, type TimeMapSpeed} from '../packages/contracts/src/timeline-time-map.ts';
 import type {ClipTiming} from '../packages/contracts/src/timeline-speed.ts';
 import {TIMELINE_SUBTITLE_PROFILE_ID} from '../packages/contracts/src/timeline-subtitle-profile.ts';
 import {VOLUME_ENVELOPE_PROFILE} from '../packages/contracts/src/timeline-volume-envelope.ts';
@@ -264,29 +264,34 @@ function fraction(time: string): {numerator: bigint; denominator: bigint} {
   return {numerator: BigInt(match[1]!), denominator: BigInt(match[2] ?? 1)};
 }
 
+const timePointPrecision = 1_000_000n;
+
 function parseTimeMap(xml: string, clip: Format5Clip) {
   const map = new RegExp(`<asset-clip[^>]* name="${clip.name}"[^>]*><timeMap frameSampling="([^"]+)" preservesPitch="([01])">([^<]*(?:<timept[^>]+/>)+)</timeMap>`, 'u').exec(xml);
   assert.ok(map, clip.name);
   const points = Array.from(map[3]!.matchAll(/<timept time="([^"]+)" value="([^"]+)" interp="linear"\/>/gu), match => {
     const time = fraction(match[1]!);
-    const numerator = time.numerator * 30n;
-    assert.equal(numerator % time.denominator, 0n, 'output timepoints are on 30 fps project grid');
-    return {output: Number(numerator / time.denominator), sourceTime: fraction(match[2]!)};
+    const numerator = time.numerator * 30n * timePointPrecision;
+    assert.equal(numerator % time.denominator, 0n, 'output timepoints are on the written time grid');
+    return {output: numerator / time.denominator, sourceTime: fraction(match[2]!)};
   });
-  assert.equal(points[0]?.output, 0);
-  assert.equal(points.at(-1)?.output, clip.durationFrames);
+  assert.equal(points[0]?.output, 0n);
+  assert.equal(points.at(-1)?.output, BigInt(clip.durationFrames) * timePointPrecision);
   assert.ok(points.every((point, index) => index === 0 || point.output > points[index - 1]!.output));
   return {sampling: map[1], pitch: map[2], points};
 }
 
 function interpolateTimeMap({points}: ReturnType<typeof parseTimeMap>, output: number): ReturnType<typeof fraction> {
-  const rightIndex = points.findIndex(point => point.output > output);
+  const tick = BigInt(Math.round(output * Number(timePointPrecision)));
+  const last = points.at(-1)!;
+  if (tick === last.output) return last.sourceTime;
+  const rightIndex = points.findIndex(point => point.output > tick);
   assert.ok(rightIndex > 0);
   const left = points[rightIndex - 1]!, right = points[rightIndex]!;
   const l = left.sourceTime, r = right.sourceTime;
-  return {numerator: BigInt(right.output - output) * l.numerator * r.denominator +
-    BigInt(output - left.output) * r.numerator * l.denominator,
-    denominator: BigInt(right.output - left.output) * l.denominator * r.denominator};
+  return {numerator: (right.output - tick) * l.numerator * r.denominator +
+    (tick - left.output) * r.numerator * l.denominator,
+    denominator: (right.output - left.output) * l.denominator * r.denominator};
 }
 
 test('uses FCPXML retiming to preserve shared constant, trimmed reverse, hold and native CFR frames', () => {
@@ -337,12 +342,15 @@ test('maps sampling policy and bounds curve error while anchoring clip-relative 
   assert.equal(graph.sampling, 'frame-blending');
   assert.equal(graph.pitch, '0', 'Mioon always shifts pitch for a nonconstant curve');
   assert.ok(graph.points.length > 2);
+  assert.ok(graph.points.some(point => point.output % timePointPrecision !== 0n));
   const map = readMap(compileClipTimeMap(curve, timeline));
   let observedError = 0;
-  for (let output = 0; output < curve.durationFrames; output++) {
-    const {source} = readMap(timeMapSourceAtOutputFrame(map, output));
-    const ideal = source.kind === 'exact' ? Number(source.numerator) / Number(source.denominator) : source.value;
-    const graphPoint = interpolateTimeMap(graph, output);
+  for (let tick = 0; tick <= curve.durationFrames * 100; tick++) {
+    const {position} = readMap(timeMapTailInverse(map, {
+      numerator: String(tick + 100 * map.outputWindow.fromFrame), denominator: '100',
+    }, {tailInverse: 'latest'}));
+    const ideal = position.kind === 'exact' ? Number(position.numerator) / Number(position.denominator) : position.value;
+    const graphPoint = interpolateTimeMap(graph, tick / 100);
     const mapped = 30 * Number(graphPoint.numerator) / Number(graphPoint.denominator);
     observedError = Math.max(observedError, Math.abs(mapped - ideal));
   }

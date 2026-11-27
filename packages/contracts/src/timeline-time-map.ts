@@ -1373,6 +1373,111 @@ export function timeMapTailInverse(plan: CompiledTimeMap, position: TimeMapOutpu
   return done({position: {kind: 'numeric', value: inverted.value.value, errorBound: inverted.value.errorBound}, frame: decided.value, tail: false});
 }
 
+interface CurveEstimate { readonly value: number; readonly errorBound: number }
+
+interface TimeMapCurveReference {
+  readonly motionEnd: number;
+  readonly terminalSource: number;
+  readonly heldSource: number;
+  readonly sampleMotion: (outputFrame: number) => TimeMapResult<CurveEstimate>;
+  readonly maxLinearError: (from: number, to: number, sourceFrom: number, sourceTo: number) => TimeMapResult<number>;
+}
+
+/** Compare interchange-format line segments on the shared continuous clock.
+ * Between successive log-PCHIP knots the signed motion rate is monotone.
+ * Line error can peak only at an endpoint, a knot or a rate/line-slope
+ * crossing. The rounded output tail includes both sides of its hold boundary. */
+export function timeMapCurveReference(plan: CompiledTimeMap): TimeMapResult<TimeMapCurveReference> {
+  const view = planState(plan), state = rootState(plan.root);
+  if (state.kind !== 'curve') return fail('INVALID_REQUEST', 'a curve plan is required');
+  const first = planTimeValue(view, 0), firstTime = timeNumber(state, first);
+  const firstError = timeUncertainty(state, first);
+  const sign = view.direction === 'forward' ? 1 : -1;
+  const motionEnd = sign > 0 ? state.lengthNumber - firstTime : firstTime;
+  const motionEndError = firstError + (sign > 0 ? state.lengthError : 0) + 8 * EPSILON * (Math.abs(motionEnd) + 1);
+  const sourceStart = numberFromRat(state.sourceStart), sourceEnd = numberFromRat(state.sourceEnd);
+  const terminalSource = sign > 0 ? sourceEnd : sourceStart;
+  const visible = timeMapVisibleSourceRange(plan);
+  if (!visible.ok) return visible;
+  const heldSource = sign > 0 ? visible.value.sourceWindow.endFrame : visible.value.sourceWindow.startFrame;
+  const framesPerIntegral = numberFromRat(state.framesPerIntegral);
+  const level = CURVE_REFINEMENT_TOLERANCES.length - 1;
+  const samples = new Map<number, CurveEstimate>();
+
+  function sampleMotion(outputFrame: number): TimeMapResult<CurveEstimate> {
+    const cached = samples.get(outputFrame);
+    if (cached) return done(cached);
+    const frame = clampNumber(outputFrame, 0, motionEnd);
+    const time = planTimeValue(view, frame);
+    const result: TimeMapResult<CurveEstimate> = state.rate
+      ? done({value: clampNumber(sourceStart + timeNumber(state, time) * numberFromRat(state.rate) / framesPerIntegral,
+        sourceStart, sourceEnd), errorBound: 8 * EPSILON * (Math.abs(sourceEnd) + 1)})
+      : (() => {
+        const sample = invertAtTime(state, time, level);
+        if (!sample.ok) return sample;
+        return done(sample.value.kind === 'numeric' ? sample.value
+          : {value: Number(sample.value.numerator) / Number(sample.value.denominator), errorBound: 0});
+      })();
+    if (result.ok) samples.set(outputFrame, result.value);
+    return result;
+  }
+
+  function maxLinearError(from: number, to: number, sourceFrom: number, sourceTo: number): TimeMapResult<number> {
+    if (!(from >= 0 && from < to && to <= plan.durationFrames)) return fail('INVALID_WINDOW', 'line outside the output window');
+    const lineSlope = (sourceTo - sourceFrom) / (to - from);
+    const lineAt = (output: number): number => sourceFrom + lineSlope * (output - from);
+    const errorAt = (source: number, output: number): number => Math.abs(source - lineAt(clampNumber(output, from, to)));
+    const end = Math.min(to, motionEnd);
+    let maximum = 0;
+    if (motionEnd < plan.durationFrames && to >= motionEnd - motionEndError) {
+      maximum = Math.max(errorAt(heldSource, Math.max(from, motionEnd)), errorAt(heldSource, to))
+        + Math.abs(lineSlope) * motionEndError;
+      if (from <= motionEnd + motionEndError) {
+        maximum = Math.max(maximum, errorAt(terminalSource, motionEnd) + Math.abs(lineSlope) * motionEndError);
+      }
+    }
+    if (end <= from) return done(maximum);
+    const left = sampleMotion(from), right = sampleMotion(end);
+    if (!left.ok) return left;
+    if (!right.ok) return right;
+    maximum = Math.max(maximum, errorAt(left.value.value, from) + left.value.errorBound,
+      errorAt(right.value.value, end) + right.value.errorBound);
+
+    const curve = state.curve;
+    if (!curve || sign * lineSlope <= 0) return done(maximum);
+    const low = Math.max(sourceStart, Math.min(left.value.value - left.value.errorBound, right.value.value - right.value.errorBound));
+    const high = Math.min(sourceEnd, Math.max(left.value.value + left.value.errorBound, right.value.value + right.value.errorBound));
+    const targetRate = sign * lineSlope * framesPerIntegral;
+    for (let cell = curveSegment(curve, low); cell <= curveSegment(curve, high); cell++) {
+      const cellStart = curve.xs[cell]!;
+      const a = Math.max(low, cellStart), b = Math.min(high, curve.xs[cell + 1]!);
+      const before = curveRateAtSegment(curve, cell, a), after = curveRateAtSegment(curve, cell, b);
+      const crosses = targetRate > Math.min(before, after) && targetRate < Math.max(before, after);
+      let lower = a, upper = b;
+      if (crosses) for (let step = 0; step < 52; step++) {
+        const middle = (lower + upper) / 2;
+        if ((curveRateAtSegment(curve, cell, middle) < targetRate) === (before < after)) lower = middle;
+        else upper = middle;
+      }
+      const candidates = crosses ? [b, (lower + upper) / 2] : [b];
+      for (const source of candidates) {
+        if (source >= high || source <= low) continue;
+        const integral = integrateCurve(curve, cellStart, source, CURVE_REFINEMENT_TOLERANCES[level]!, LOCAL_CELL_BUDGET);
+        if (!integral) return fail('NUMERIC_BUDGET_EXCEEDED', 'curve line measurement exceeded the local integration budget');
+        const output = sign * ((curve.prefix[cell]! + integral.value - state.integralOrigin) * framesPerIntegral - firstTime);
+        const timeError = (curve.prefixError[cell]! + integral.errorBound + state.integralOriginError) * framesPerIntegral
+          + firstError + 8 * EPSILON * (Math.abs(firstTime) + Math.abs(output) + 1);
+        if (output + timeError < from || output - timeError > end) continue;
+        maximum = Math.max(maximum, errorAt(source, output) + Math.abs(lineSlope) * timeError
+          + (source === b ? 0 : (upper - lower) / 2) + 8 * EPSILON * (Math.abs(source) + 1));
+      }
+    }
+    return done(maximum);
+  }
+
+  return done({motionEnd, terminalSource, heldSource, sampleMotion, maxLinearError});
+}
+
 // ---------------------------------------------------------------------------
 // Curve presets (normalized point sets; instantiated to the source range on pick).
 // ---------------------------------------------------------------------------

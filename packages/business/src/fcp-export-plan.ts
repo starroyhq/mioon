@@ -9,7 +9,8 @@ import type {Format5Clip, Format5Timeline} from '../../contracts/src/project-for
 import {volumeEnvelopeField} from '../../contracts/src/timeline-volume-envelope-processing.ts';
 import {compileEditorExportSpeed, hasEditorExportSpeed, premiereSpeedAudioUnavailable,
   type EditorExportSpeed, type EditorSourceClock} from './editor-export-speed.ts';
-import {readEditorSourceClock} from './editor-export-source-clock.ts';
+import {editorExportHasOriginalPicture, readEditorSourceClock} from './editor-export-source-clock.ts';
+import {premiereNativeTimebase} from './premiere-source-clock.ts';
 import {fcpxmlTransitions, type FcpXmlAsset} from './fcp-xml.ts';
 import {premiereTransitionCuts} from './premiere-xml.ts';
 import type {PreparedAssetReference, ProjectAssetReferenceServices} from './project-asset-references.ts';
@@ -190,8 +191,10 @@ export async function planEditorExport(input: EditorExportPlanInput, format: Edi
       throw new EditorExportFailure({code: 'MEDIA_UNREADABLE', values: {file: path.basename(name)}});
     }
     const source = {reference, identity, name};
-    let clock: EditorSourceClock | null = null;
-    if (!still && metadata.hasVideo && used.some(clip => retimed.has(clip.id) && !clip.soundOnly && tracks.get(clip.trackId)?.kind === 'video')) {
+    let picture: Awaited<ReturnType<typeof readEditorSourceClock>> = null;
+    const probesPicture = !still && metadata.hasVideo &&
+      used.some(clip => retimed.has(clip.id) && !clip.soundOnly && tracks.get(clip.trackId)?.kind === 'video');
+    if (probesPicture) {
       const sourceFence = () => {
         signal?.throwIfAborted();
         beforeEffect?.();
@@ -200,13 +203,13 @@ export async function planEditorExport(input: EditorExportPlanInput, format: Edi
           throw new EditorExportFailure({code: 'MEDIA_UNREADABLE', values: {file: path.basename(name)}});
         }
       };
-      try { clock = await readEditorSourceClock(reference.file, {signal, beforeEffect: sourceFence}); }
+      try { picture = await readEditorSourceClock(reference.file, fps, {signal, beforeEffect: sourceFence}); }
       catch (error) {
         sourceFence();
         if (error instanceof EditorExportFailure || (error as {terminationUnconfirmed?: unknown})?.terminationUnconfirmed === true) throw error;
       }
       sourceFence();
-      if (clock) clocks.set(id, clock);
+      if (picture?.clock) clocks.set(id, picture.clock);
     }
     let bundleRelativePath: string | undefined;
     if (copyMedia && sha256) {
@@ -219,8 +222,12 @@ export async function planEditorExport(input: EditorExportPlanInput, format: Edi
       }
       bundleRelativePath = 'Media/' + copy.fileName;
     }
-    assets.set(id, {metadata: clock && format === 'fcpxml'
-      ? {...metadata, sourceFps: clock.fps, sourceFpsDenominator: clock.fpsDenominator} : metadata, source, bundleRelativePath});
+    const clock = picture?.clock;
+    assets.set(id, {metadata: {...metadata,
+      ...(probesPicture && {sourcePictureFrames: picture?.pictureFrames ?? 0}),
+      ...(clock && (format === 'fcpxml' || premiereNativeTimebase(clock)) &&
+        {sourceFps: clock.fps, sourceFpsDenominator: clock.fpsDenominator}),
+    }, source, bundleRelativePath});
   }
 
   const speed = new Map<string, EditorExportSpeed>();
@@ -234,10 +241,11 @@ export async function planEditorExport(input: EditorExportPlanInput, format: Edi
     const hasPicture = asset.metadata.hasVideo && !clip.soundOnly && tracks.get(clip.trackId)?.kind === 'video';
     const hasAudio = asset.metadata.hasAudio && clip.timing?.profile !== 'timeline-freeze-v1';
     const clock = hasPicture && clip.assetId ? clocks.get(clip.assetId) : undefined;
-    const native = clock && (format === 'fcpxml' || clock.fps === fps * (clock.fpsDenominator ?? 1)) ? clock : undefined;
-    const mapping = compileEditorExportSpeed(clip, timeline, native);
+    const native = clock && (format === 'fcpxml' || premiereNativeTimebase(clock)) ? clock : undefined;
+    const mapping = compileEditorExportSpeed(clip, timeline, native, format === 'premiere' ? 'native' : 'project');
     if (!mapping) {
-      affected(missing, 'SPEED', clip, {from: '变速', to: '保留时间线长度，源范围足够时按原速写入，否则留空'});
+      const keepsSource = editorExportHasOriginalPicture(clip, asset.metadata, !hasPicture);
+      affected(missing, 'SPEED', clip, {from: '变速', to: keepsSource ? '保留时间线长度，按原速写入' : '保留时间线长度，留空'});
       continue;
     }
     speed.set(clip.id, mapping);
@@ -277,8 +285,8 @@ export async function planEditorExport(input: EditorExportPlanInput, format: Edi
     if (!asset) continue;
     const track = tracks.get(clip.trackId);
     const mapping = speed.get(clip.id);
-    if (!mapping && retimed.has(clip.id) && !asset.metadata.isStill &&
-        clip.sourceInFrame + clip.durationFrames > asset.metadata.durationFrames) continue;
+    if (!mapping && retimed.has(clip.id) &&
+        !editorExportHasOriginalPicture(clip, asset.metadata, track?.kind === 'audio' || clip.soundOnly === true)) continue;
     if (clip.anchor) affected(approximate, 'ANCHOR', clip);
     const silent = clip.timing?.profile === 'timeline-freeze-v1' ||
       format === 'premiere' && mapping && premiereSpeedAudioUnavailable(mapping);

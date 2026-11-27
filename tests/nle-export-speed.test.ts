@@ -18,8 +18,9 @@ import {createProjectStore} from '../packages/business/src/project-file/store.ts
 import {createProjectServiceApplication} from '../packages/business/src/project-service-application.ts';
 import type {Format5Clip} from '../packages/contracts/src/project-format5.ts';
 import {CLIP_TRANSITION_PROFILE} from '../packages/contracts/src/timeline-clip-transition.ts';
+import {compileClipTimeMap} from '../packages/contracts/src/timeline-clip-timing.ts';
 import type {SpeedSetting} from '../packages/contracts/src/timeline-speed.ts';
-import {compileTimeMap, initialTimeMap, projectTimeMapToCurrentClipFields, timeMapBasisFromCurrentClip} from '../packages/contracts/src/timeline-time-map.ts';
+import {compileTimeMap, initialTimeMap, projectTimeMapToCurrentClipFields, timeMapBasisFromCurrentClip, timeMapSourceAtOutputFrame, trimTimeMap} from '../packages/contracts/src/timeline-time-map.ts';
 import {testEnv} from './helpers/test-env.ts';
 
 const timestamp = '2026-01-01T00:00:00.000Z';
@@ -205,6 +206,75 @@ test('format 5 and format 6 without timing produce identical NLE packages', asyn
   }
 });
 
+test('Premiere selects the exact native frame at every output frame of mixed-rate constant edits', async t => {
+  for (const nativeFps of [24, 25, 60]) await t.test(nativeFps + ' fps source', async scenario => {
+    const temporary = scratch(scenario);
+    const source = path.join(temporary.directory, 'Marker source.mp4');
+    await writeVideo(source, nativeFps);
+    const project = await fixture(temporary, source, FORMAT6_PROJECT_SCHEMA_VERSION, () => {
+      const settings = [
+        {name: 'Forward constant', direction: 'forward', numerator: 2, denominator: 1},
+        {name: 'Reverse constant', direction: 'reverse', numerator: 1, denominator: 2},
+        {name: 'Forward trimmed', direction: 'forward', numerator: 5, denominator: 6, window: [0, 10]},
+        {name: 'Reverse trimmed', direction: 'reverse', numerator: 5, denominator: 6, window: [1, 10]},
+      ] as const;
+      let start = 0;
+      return settings.map((setting, index) => {
+        const base = clip(index + 1, setting.name, start);
+        const initial = speedClip('window' in setting && setting.direction === 'forward'
+          ? {...base, sourceInFrame: 0, durationFrames: 9} : base, {
+          speed: {kind: 'constant', rate: {numerator: setting.numerator, denominator: setting.denominator}},
+          direction: setting.direction, pitchShift: false, interpolation: 'off',
+        });
+        assert.ok(initial.timing?.profile === 'timeline-speed-v1');
+        const full = compileClipTimeMap(initial, {fps});
+        assert.ok(full.ok);
+        const trimmed = 'window' in setting ? trimTimeMap(full.value, ...setting.window) : full;
+        assert.ok(trimmed.ok);
+        const fields = projectTimeMapToCurrentClipFields(initial, trimmed.value);
+        assert.ok(fields.ok);
+        start += trimmed.value.durationFrames;
+        return {...initial, ...fields.value, timing: {...initial.timing, outputWindow: trimmed.value.outputWindow}};
+      });
+    });
+    const {xml, preview} = await exportFiles(project, targets[1]);
+    assert.equal(preview.missing.some(issue => issue.values?.from === '原片帧号对应'), false);
+    const text = xml.toString();
+    assert.match(text, /<sequence\b[^>]*>.*?<rate><timebase>30<\/timebase><ntsc>FALSE<\/ntsc><\/rate>/u);
+    assert.match(text, new RegExp(`<file\\b[^>]*>[^]*?<rate><timebase>${nativeFps}</timebase><ntsc>FALSE</ntsc></rate>`, 'u'));
+    const units = 1_000_000n;
+    for (const item of project.clips) {
+      const plan = compileClipTimeMap(item, {fps});
+      assert.ok(plan.ok);
+      const video = [...text.matchAll(/<clipitem\b[^>]*>[\s\S]*?<\/clipitem>/gu)]
+        .find(match => match[0].includes(`id="video-${item.id}"`))?.[0];
+      assert.ok(video);
+      const dialog = /<parameterid>graphdict<\/parameterid><name>Graph<\/name>(.*?)<\/parameter>/u.exec(video);
+      assert.ok(dialog?.[1]);
+      const variable = /<parameterid>variablespeed<\/parameterid><name>Variable Speed<\/name><value>1<\/value>/u.test(video);
+      const offset = plan.value.direction === 'reverse' && !variable ? units : 0n;
+      const keys = [...dialog[1].matchAll(/<when>(\d+)<\/when><value>(\d+)(?:\.(\d{1,6}))?<\/value>/gu)]
+        .map(([, frame, integer, decimal]) => ({frame: Number(frame), tick: BigInt(integer!) * units +
+          BigInt((decimal ?? '').padEnd(6, '0')) - offset}));
+      assert.equal(keys[0]?.frame, 0);
+      assert.equal(keys.at(-1)?.frame, item.durationFrames);
+      let next = 1;
+      for (let index = 0; index < item.durationFrames; index++) {
+        while (keys[next]!.frame <= index) next++;
+        const left = keys[next - 1]!, right = keys[next]!;
+        const xmlFrame = (left.tick * BigInt(right.frame - index) + right.tick * BigInt(index - left.frame)) /
+          (BigInt(right.frame - left.frame) * units);
+        const sample = timeMapSourceAtOutputFrame(plan.value, index);
+        assert.ok(sample.ok && sample.value.source.kind === 'exact');
+        const numerator = BigInt(sample.value.source.numerator) * BigInt(nativeFps);
+        const denominator = BigInt(sample.value.source.denominator) * BigInt(fps);
+        const expected = (plan.value.direction === 'reverse' && numerator > 0n ? numerator - 1n : numerator) / denominator;
+        assert.equal(xmlFrame, expected, `${nativeFps} fps ${item.name} frame ${index}`);
+      }
+    }
+  });
+});
+
 function checkTimedXml(target: Target, result: Awaited<ReturnType<typeof exportFiles>>, clips: Format5Clip[], t: test.TestContext) {
   const xml = result.xml.toString();
   const names = new Map(clips.map(item => [item.name, item.id]));
@@ -312,9 +382,9 @@ test('the editor export reports which native picture clocks it could verify', as
     for (const target of targets) {
       const {preview, xml} = await exportFiles(project, target);
       const issue = preview.missing.find(item => item.code === 'SPEED' && item.values?.from === '原片帧号对应');
-      if (target.name === 'FCPXML' && filters.length === 0) {
+      if (filters.length === 0) {
         assert.equal(issue, undefined);
-        assert.match(xml.toString(), /frameDuration="1\/60s"/u);
+        assert.match(xml.toString(), target.name === 'FCPXML' ? /frameDuration="1\/60s"/u : /<timebase>60<\/timebase>/u);
       } else {
         assert.deepEqual(issue?.clips, [{id: project.clips[0]!.id, name: project.clips[0]!.name, trackLabel: 'V1'}]);
         assert.doesNotMatch(xml.toString(), /frameDuration="1\/60s"/u);
@@ -322,4 +392,58 @@ test('the editor export reports which native picture clocks it could verify', as
       assert.match(xml.toString(), target.name === 'FCPXML' ? /<timeMap\b/u : /<effectid>timeremap<\/effectid>/u);
     }
   });
+});
+
+test('NLE original-speed fallback only references ranges covered by the decoded picture', async t => {
+  const temporary = scratch(t);
+  const source = path.join(temporary.directory, 'Short picture.mp4');
+  await writeVideo(source, fps, ['-vf', 'trim=end_frame=36']);
+  const inspected = JSON.parse(await run('ffprobe', ['-v', 'error', '-show_entries',
+    'stream=codec_type,duration,nb_frames:format=duration', '-of', 'json', source])) as {
+    streams: Array<{codec_type: string; duration: string; nb_frames: string}>; format: {duration: string};
+  };
+  const video = inspected.streams.find(stream => stream.codec_type === 'video');
+  const audio = inspected.streams.find(stream => stream.codec_type === 'audio');
+  assert.equal(Number(video?.nb_frames), 36);
+  assert.equal(Number(video?.duration), 1.2);
+  assert.equal(Number(audio?.duration), 2.4);
+  assert.equal(Number(inspected.format.duration), 2.4);
+
+  const fallback = (index: number, name: string, startFrame: number, sourceInFrame: number,
+    numerator: number, denominator: number) => speedClip(
+    {...clip(index, name, startFrame), sourceInFrame, muted: true},
+    {speed: {kind: 'constant', rate: {numerator, denominator}}, direction: 'forward', pitchShift: false, interpolation: 'off'},
+  );
+  const project = await fixture(temporary, source, FORMAT6_PROJECT_SCHEMA_VERSION, () => [
+    fallback(1, 'Short tail', 0, 32, 4, 1),
+    fallback(2, 'Long fallback', 6, 32, 1, 2),
+    fallback(3, 'Valid fallback', 54, 28, 4, 1),
+    clip(4, 'Following clip', 60),
+  ]);
+  for (const target of targets) {
+    const result = await exportFiles(project, target);
+    const manifest = JSON.parse(result.manifest.toString()) as Pick<typeof result.preview, 'timeline' | 'missing' | 'approximations'>;
+    assert.equal(manifest.timeline.durationFrames, 84);
+    assert.deepEqual(manifest.missing, result.preview.missing);
+    const fallbackItems = manifest.missing.filter(item => item.code === 'SPEED' && item.values?.from === '变速');
+    assert.deepEqual(fallbackItems.map(item => ({to: item.values?.to, names: item.clips.map(clip => clip.name)})), [
+      {to: '保留时间线长度，留空', names: ['Short tail', 'Long fallback']},
+      {to: '保留时间线长度，按原速写入', names: ['Valid fallback']},
+    ]);
+    assert.deepEqual(manifest.approximations.filter(item => item.code === 'MUTE').flatMap(item => item.clips.map(clip => clip.name)),
+      ['Valid fallback']);
+    const xml = result.xml.toString();
+    if (target.name === 'FCPXML') {
+      assert.match(xml, /<sequence\b[^>]*duration="84\/30s"/u);
+      assert.match(xml, /<gap name="Short tail" start="0s" offset="0s" duration="6\/30s"/u);
+      assert.match(xml, /<gap name="Long fallback" start="0s" offset="6\/30s" duration="48\/30s"/u);
+      assert.match(xml, /<asset-clip\b[^>]*name="Valid fallback"[^>]*offset="54\/30s" start="28\/30s" duration="6\/30s"/u);
+      assert.match(xml, /<asset-clip\b[^>]*name="Following clip"[^>]*offset="2s" start="8\/30s" duration="24\/30s"/u);
+    } else {
+      assert.match(xml, /<sequence\b[^>]*><name>[^<]*<\/name><duration>84<\/duration>/u);
+      assert.doesNotMatch(xml, /<clipitem\b[^>]*><name>(Short tail|Long fallback)<\/name>/u);
+      assert.match(xml, /<clipitem\b[^>]*><name>Valid fallback<\/name>[^]*?<start>54<\/start><end>60<\/end><in>28<\/in><out>34<\/out>/u);
+      assert.match(xml, /<clipitem\b[^>]*><name>Following clip<\/name>[^]*?<start>60<\/start><end>84<\/end><in>8<\/in><out>32<\/out>/u);
+    }
+  }
 });

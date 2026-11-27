@@ -3,6 +3,7 @@ import {clipTransitionSides, isClipTransition, type ClipTransition, type ClipTra
 import {volumeEnvelopeField} from '../../contracts/src/timeline-volume-envelope-processing.ts';
 import type {Format5Anchor, Format5Clip, Format5Timeline} from '../../contracts/src/project-format5.ts';
 import type {TimelineTrackRecord} from '../../contracts/src/timeline-replacement.ts';
+import {editorExportHasOriginalPicture} from './editor-export-source-clock.ts';
 import {hasEditorExportSpeed, type EditorExportSpeed} from './editor-export-speed.ts';
 
 export interface FcpXmlAsset {
@@ -17,6 +18,7 @@ export interface FcpXmlAsset {
   readonly audioChannels?: number;
   readonly audioRate?: number;
   readonly isStill?: boolean;
+  readonly sourcePictureFrames?: number;
   readonly sourceFps?: number;
   readonly sourceFpsDenominator?: number;
 }
@@ -49,12 +51,15 @@ function frameTime(frames: number): string {
 
 const retimeSampling = {off: 'floor', blend: 'frame-blending', optical: 'optical-flow'} as const;
 
-function timeMapXml(speed: EditorExportSpeed): string {
+function retimeTime(frame: number): string {
   const unitsPerFrame = 1_000_000;
+  return Number.isInteger(frame) ? frameTime(frame) : `${Math.round(frame * unitsPerFrame)}/${fps * unitsPerFrame}s`;
+}
+
+function timeMapXml(speed: EditorExportSpeed): string {
   const points = speed.points.map(({outputFrame, sourceFrame}) => element('timept', {
-    time: frameTime(outputFrame),
-    value: Number.isInteger(sourceFrame) ? frameTime(sourceFrame) :
-      `${Math.round(sourceFrame * unitsPerFrame)}/${fps * unitsPerFrame}s`,
+    time: retimeTime(outputFrame),
+    value: retimeTime(sourceFrame),
     interp: 'linear',
   })).join('');
   return element('timeMap', {frameSampling: retimeSampling[speed.interpolation], preservesPitch: speed.pitchShift ? 0 : 1}, points);
@@ -238,7 +243,8 @@ export function serializeFcpXml({timeline, projectName, assets, speed}: {
   const tracks = [...timeline.tracks].sort((a, b) => a.orderIndex - b.orderIndex);
   const clips = [...timeline.clips].sort(compareTime);
   const mainId = timeline.mainTrack.trackId;
-  const mainTrack = tracks.find(track => track.id === mainId);
+  const tracksById = new Map(tracks.map(track => [track.id, track]));
+  const mainTrack = tracksById.get(mainId);
   if (!mainTrack) throw new RangeError('FCPXML export requires a primary video track');
 
   const formats = new Map<string, string>();
@@ -268,7 +274,7 @@ export function serializeFcpXml({timeline, projectName, assets, speed}: {
     }
   }
   const present = (clip: Format5Clip, asset: FcpXmlAsset) => !retimed.has(clip.id) || speedFor(clip) ||
-    asset.isStill || clip.sourceInFrame + clip.durationFrames <= asset.durationFrames;
+    editorExportHasOriginalPicture(clip, asset, clip.soundOnly === true || tracksById.get(clip.trackId)?.kind === 'audio');
   for (const clip of clips) {
     if (clip.sourceState === 'placeholder' || !clip.assetId) continue;
     const asset = assets.get(clip.assetId);
@@ -287,7 +293,8 @@ export function serializeFcpXml({timeline, projectName, assets, speed}: {
   for (const resource of byFile.values()) resourceXml.push(renderAsset(resource));
   const getResource = (clip: Format5Clip): AssetResource | undefined => {
     const resource = clip.assetId && clip.sourceState === 'ready' ? resources.get(clip.assetId) : undefined;
-    return resource && present(clip, resource.asset) ? resource : undefined;
+    const asset = clip.assetId ? assets.get(clip.assetId) : undefined;
+    return resource && asset && present(clip, asset) ? resource : undefined;
   };
 
   function clipXml(clip: Format5Clip, track: TimelineTrackRecord, offset: number, lane?: number, children = ''): string {
