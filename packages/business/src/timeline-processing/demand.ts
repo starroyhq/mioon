@@ -14,7 +14,7 @@ import type {SpeedProcessingReason} from '../../../contracts/src/timeline-speed.
 import {processingDigestSchema as digest} from '../../../contracts/src/timeline-processing-storage.ts';
 import type {ProcessingInput} from '../../../contracts/src/timeline-processing-storage.ts';
 import {REVERSE_PROXY_PROFILE} from './reverse.ts';
-import {OPTICAL_PROXY_PROFILE} from './optical-proxy-port.ts';
+import {OPTICAL_FLOW_CUT_POLICY, OPTICAL_PROXY_PROFILE} from './optical-proxy-port.ts';
 
 export interface ProcessingDemand {
   readonly demandKey: string;
@@ -113,7 +113,7 @@ export function readProcessingDemands(store: ProjectStore): ProcessingDemand[] {
       const colour = clip.colour && typeof clip.colour === 'object' && 'source' in clip.colour ? clip.colour.source : null;
       const reverseRecipe = [REVERSE_PROXY_PROFILE, kind, timing, info?.sourceWindow ?? null,
         media, timeline.width, timeline.height, timeline.fps, colour ?? null];
-      const recipe = processingHash(kind === 'reverse' ? reverseRecipe : [OPTICAL_PROXY_PROFILE, optical ?? timing,
+      const recipe = processingHash(kind === 'reverse' ? reverseRecipe : [OPTICAL_PROXY_PROFILE, OPTICAL_FLOW_CUT_POLICY, optical ?? timing,
         media, info?.mapHash ?? null, colour ?? null]);
       const demandKey = processingHash([store.projectId, recipe, sourceSha256 ?? sourceIdentity ?? clip.assetId ?? clip.id]);
       result.push({demandKey, clipId: clip.id,

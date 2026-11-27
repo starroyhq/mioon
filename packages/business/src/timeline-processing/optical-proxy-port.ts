@@ -2,6 +2,7 @@ import type {ClipTiming, SpeedProcessingReason} from '../../../contracts/src/tim
 
 export const OPTICAL_PROXY_PROFILE = 'timeline-optical-output-v1' as const;
 export const OPTICAL_FLOW_FILTER = 'minterpolate=fps=30:mi_mode=mci:mc_mode=obmc:me_mode=bilat:me=epzs:mb_size=16:search_param=32:vsbmc=0';
+export const OPTICAL_FLOW_CUT_POLICY = 'scene-cut-adjacent-off-v1' as const;
 
 export interface TimelineOpticalProxyRequest {
   readonly projectId: string;

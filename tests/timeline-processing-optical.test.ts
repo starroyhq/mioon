@@ -103,6 +103,44 @@ for (const direction of ['forward', 'reverse'] as const) {
   });
 }
 
+for (const {cut, direction, saved} of [
+  {cut: 41, direction: 'forward', saved: false},
+  {cut: 60, direction: 'forward', saved: true},
+  {cut: 60, direction: 'reverse', saved: true},
+] as const) {
+  test(`optical ${direction} uses off sampling immediately on both sides of hard cut ${cut}`, {timeout: 60_000}, async t => {
+    const {root, stagingDirectory} = await workspace(t);
+    const sourcePath = path.join(root, 'moving-cut.mp4');
+    const sourceFrames = 90, samplesPerSourceFrame = 4, outputFrames = sourceFrames * samplesPerSourceFrame;
+    const left = `lt(N,${cut})`;
+    const movingBox = 'lt(abs(X-12-mod(3*N,36)),8)*lt(abs(Y-32),10)';
+    await run('ffmpeg', [...tools, '-f', 'lavfi', '-i',
+      `nullsrc=s=64x64:r=30,format=yuv420p,geq=lum='if(${left},40,200)+if(${left},90,-90)*${movingBox}':cb='if(${left},80,180)':cr=128`,
+      '-frames:v', String(sourceFrames), '-c:v', 'libx264', '-threads:v', '1', '-pix_fmt', '+yuv420p', '-crf', '0', sourcePath]);
+    const request = {...input(sourcePath, sourceFrames, 0, sourceFrames, direction), ...(saved ? {sceneCuts: () => [cut]} : {})};
+    const options = authority();
+    const prepared = await prepareOpticalProxy(request, options);
+    const result = await renderOpticalProxy(request, prepared, {...options, stagingDirectory});
+    assert.equal(result.frameCount, outputFrames);
+    const original = await decode(sourcePath, sourceFrames);
+    const actual = await decode(path.join(stagingDirectory, 'proxy.mkv'), outputFrames);
+    assert.equal(actual.length, outputFrames * frameBytes);
+    const view = (bytes: Buffer, frame: number) => bytes.subarray(frame * frameBytes, (frame + 1) * frameBytes);
+    const matchesOff = (outputFrame: number): boolean => {
+      const ordinal = Math.floor(outputFrame / samplesPerSourceFrame);
+      const offFrame = direction === 'forward' ? ordinal : sourceFrames - 1 - ordinal;
+      return view(actual, outputFrame).equals(view(original, offFrame));
+    };
+    const cutOutput = (direction === 'forward' ? cut : sourceFrames - cut) * samplesPerSourceFrame;
+    for (let index = cutOutput - samplesPerSourceFrame; index < cutOutput + samplesPerSourceFrame; index++) {
+      assert.ok(matchesOff(index), `cut-adjacent output frame ${index} should match off byte for byte`);
+    }
+    for (const index of [cutOutput - 38, cutOutput + 38]) {
+      assert.ok(!matchesOff(index), `output frame ${index} away from the cut should still use optical flow`);
+    }
+  });
+}
+
 test('optical rejects non-planar and high-bit-depth source formats before staging', {timeout: 60_000}, async t => {
   const {root, stagingDirectory} = await workspace(t);
   for (const format of ['yuv420p10le', 'gbrp', 'yuvj420p']) {

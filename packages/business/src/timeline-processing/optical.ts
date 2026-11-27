@@ -8,7 +8,7 @@ import {createSceneDetector, SCENE_DETECTION_LIMITS} from '../scene-detection.ts
 import {speedPictureWindows} from '../timeline-speed-export-plan.ts';
 import {MANAGED_FILE_IO_LIMITS} from '../managed-file-io.ts';
 import {PROCESSING_CACHE_LIMIT_BYTES, ProcessingFailure} from './cache.ts';
-import {OPTICAL_FLOW_FILTER, OPTICAL_PROXY_PROFILE} from './optical-proxy-port.ts';
+import {OPTICAL_FLOW_CUT_POLICY, OPTICAL_FLOW_FILTER, OPTICAL_PROXY_PROFILE} from './optical-proxy-port.ts';
 import {REVERSE_PROXY_LIMITS, prepareSourceVideo, reverseLocalInput, reverseToolBase} from './reverse-profile.ts';
 import type {VideoProfile} from './reverse-profile.ts';
 import {checkLosslessProxy, decodeVerifiedVideoChunk, losslessProxyEncoderArgs} from './reverse.ts';
@@ -71,6 +71,7 @@ interface PreparedOpticalProxy {
     readonly assembly: 'ffv1-segments-setts-v1';
     readonly video: VideoProfile;
     readonly sceneHash: string;
+    readonly cutPolicy: typeof OPTICAL_FLOW_CUT_POLICY;
     readonly firstOutputFrame: number;
     readonly frameCount: number;
   };
@@ -122,7 +123,10 @@ function makeBlocks(phase: InterpolationPhasePlan, positions: readonly number[],
   const sectionFor = (ordinal: number): number => Math.floor(positions[ordinal]! / sourceChunkFrames);
   const canFlow = (index: number, scene: number): boolean => {
     const frame = phase.frames[index]!;
+    // Keep the shared off sample on each side of every possible native cut.
+    // The off frame identifies that interval in either playback direction.
     return frame.active && frame.fromFrame !== frame.toFrame &&
+      cuts[scene - 1] !== frame.offFrame && cuts[scene] !== frame.offFrame + 1 &&
       sceneFor(frame.fromFrame) === scene && sceneFor(frame.toFrame) === scene;
   };
   for (let from = 0; from < phase.frames.length;) {
@@ -246,7 +250,8 @@ export async function prepareOpticalProxy(input: OpticalProxyInput, options: Rev
   if (outputBytesLimit < 4 * mib || !Number.isSafeInteger(reservationBytes)) throw new ProcessingFailure('CACHE_LIMIT');
   const profile = Object.freeze({id: OPTICAL_PROXY_PROFILE, phase: phases[0]!.profile,
     maxPhaseErrorFrames: Math.max(...phases.map(phase => phase.maxPhaseErrorFrames)), buildSha256: source.buildSha256,
-    filter: OPTICAL_FLOW_FILTER, filterAllocationBytes: flowAllocationBytes(video), assembly: 'ffv1-segments-setts-v1' as const, video, sceneHash: createHash('sha256').update(JSON.stringify(cuts)).digest('hex'),
+    filter: OPTICAL_FLOW_FILTER, filterAllocationBytes: flowAllocationBytes(video), assembly: 'ffv1-segments-setts-v1' as const,
+    video, sceneHash: createHash('sha256').update(JSON.stringify(cuts)).digest('hex'), cutPolicy: OPTICAL_FLOW_CUT_POLICY,
     firstOutputFrame: 0 - beforeFrames, frameCount});
   const prepared = {profile, reservationBytes};
   states.set(prepared, {input, source, blocks, outputBytesLimit});
