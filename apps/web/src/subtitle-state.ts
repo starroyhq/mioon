@@ -3,6 +3,7 @@ import { message, renderMessage } from '../../../packages/i18n/src/index.ts';
 import type { DisplayMessage } from '../../../packages/i18n/src/types.ts';
 import type { MessageKey } from '../../../packages/i18n/src/index.ts';
 import { TIMELINE_SUBTITLE_LIMITS, TIMELINE_SUBTITLE_PROFILE_ID, getTimelineSubtitleIssue, isTimelineMutationResponse } from '@mioon/contracts';
+import { isTimelineFps } from '../../../packages/contracts/src/timeline-fps.ts';
 import { taskInputKey } from './edit-task-client.ts';
 
 export { TIMELINE_SUBTITLE_LIMITS };
@@ -12,6 +13,7 @@ export interface SubtitleTimeline {
   readonly id: string;
   readonly projectId: string;
   readonly revision: number;
+  readonly fps?: number;
   readonly durationFrames: number;
   readonly subtitles?: { readonly cues?: readonly SubtitleCue[] } | null;
 }
@@ -220,7 +222,8 @@ export function createSubtitleController({ submit, createRequestId, getContext, 
       const timeline = state.timeline;
       if (!timeline) return false;
       const nextStart = Math.min(timeline.durationFrames, ...cues(timeline).filter(cue => cue.startFrame > frame).map(cue => cue.startFrame));
-      serial++; emit({ cueId: null, selection: ++sequence, draft: { text: '', startFrame: frame, durationFrames: Math.min(90, nextStart - frame) }, baseRevision: timeline.revision, dirty: true, conflict: false, error: '', errorMessage: null }); return true;
+      const fps = isTimelineFps(timeline.fps) ? timeline.fps : 30;
+      serial++; emit({ cueId: null, selection: ++sequence, draft: { text: '', startFrame: frame, durationFrames: Math.min(3 * fps, nextStart - frame) }, baseRevision: timeline.revision, dirty: true, conflict: false, error: '', errorMessage: null }); return true;
     },
     edit(key: 'text' | 'startFrame' | 'durationFrames', value: string | number, expected: SubtitleState = state): boolean {
       const draft = state.draft;

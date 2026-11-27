@@ -1,9 +1,10 @@
-import {isTimelineFps} from './timeline-fps.ts';
+import {isTimelineFps,type TimelineFps} from './timeline-fps.ts';
 
 export const TIMELINE_OUTPUT_RATIOS=Object.freeze(['9:16','16:9','1:1','4:3','3:4','21:9'] as const);
 export type TimelineOutputRatio=typeof TIMELINE_OUTPUT_RATIOS[number];
 export type TimelineOutputShortEdge=720|1080;
 export type TimelineOutputGeometry=Readonly<{fps:30;width:number;height:number}>;
+export type TimelineDeliveryGeometry=Readonly<{fps:TimelineFps;width:number;height:number}>;
 export type TimelineOutputResolution='native'|'short_360'|'short_720'|'short_1080';
 
 function geometryForRatio(ratio:TimelineOutputRatio,short:360|TimelineOutputShortEdge):TimelineOutputGeometry{
@@ -59,8 +60,8 @@ export function timelineOutputPresetForRatio(ratio:TimelineOutputRatio,short:Tim
   return timelineOutputPreset(geometryForRatio(ratio,short));
 }
 
-export function timelineOutputRatio(value:unknown):TimelineOutputRatio|null{
-  const source=timelineOutputPreset(value);
+export function timelineOutputRatio(value:unknown,{allowProjectFps=false}:{allowProjectFps?:boolean}={}):TimelineOutputRatio|null{
+  const source=timelineOutputPreset(value,{allowProjectFps});
   if(!source)return null;
   const short=Math.min(source.width,source.height) as TimelineOutputShortEdge;
   return TIMELINE_OUTPUT_RATIOS.find(ratio=>matchesGeometry(source,geometryForRatio(ratio,short)))??null;
@@ -68,21 +69,23 @@ export function timelineOutputRatio(value:unknown):TimelineOutputRatio|null{
 
 /** Standalone encoded geometry is one of the same ratios at a closed short
  * edge. An export receipt also binds it to its original timeline and settings. */
-export function isTimelineDeliveryGeometry<Value>(value:Value):value is Value&TimelineOutputGeometry{
+export function isTimelineDeliveryGeometry<Value>(value:Value):value is Value&TimelineDeliveryGeometry{
   if(!value||typeof value!=='object'||Array.isArray(value))return false;
   const geometry=value as Record<string,unknown>,{width,height}=geometry;
-  if(typeof width!=='number'||typeof height!=='number')return false;
+  if(typeof width!=='number'||typeof height!=='number'||!isTimelineFps(geometry.fps))return false;
   const short=Math.min(width,height);
-  return (short===360||short===720||short===1080)&&TIMELINE_OUTPUT_RATIOS.some(ratio=>matchesGeometry(geometry,geometryForRatio(ratio,short)));
+  return (short===360||short===720||short===1080)&&TIMELINE_OUTPUT_RATIOS.some(ratio=>matchesGeometry({width,height,fps:30},geometryForRatio(ratio,short)));
 }
 
 /** Resolve from the frame ratio and selected short edge, with one even-pixel
  * rounding step. Native delivery retains the original frozen dimensions. */
-export function timelineDeliveryGeometry(value:unknown,resolution:TimelineOutputResolution):TimelineOutputGeometry|null{
-  const source=timelineOutputPreset(value);
+export function timelineDeliveryGeometry(value:unknown,resolution:TimelineOutputResolution):TimelineDeliveryGeometry|null{
+  const source=timelineOutputPreset(value,{allowProjectFps:true});
   if(!source)return null;
-  if(resolution==='native')return {fps:30,width:source.width,height:source.height};
+  const suppliedFps=(value as {fps?:unknown}).fps;
+  const fps=isTimelineFps(suppliedFps)?suppliedFps:30;
+  if(resolution==='native')return {fps,width:source.width,height:source.height};
   const short=resolution==='short_360'?360:resolution==='short_720'?720:resolution==='short_1080'?1080:null;
   const ratio=timelineOutputRatio(source);
-  return short===null||ratio===null?null:geometryForRatio(ratio,short);
+  return short===null||ratio===null?null:{...geometryForRatio(ratio,short),fps};
 }

@@ -9,6 +9,7 @@
  */
 import {z} from 'zod';
 import {outputLocaleSchema} from './output-locale.ts';
+import {timelineFpsSchema} from './timeline-fps.ts';
 
 const uuid = z.string().uuid();
 const hash = z.string().regex(/^[a-f0-9]{64}$/u);
@@ -35,9 +36,8 @@ export const clipAudioExportDescriptions: Readonly<Record<string, string>> = Obj
   'clip.audio.export.get': '只读查询本条另存为音频素材任务的记录与本地进度；不启动、不取消、不重试任务。',
 });
 
-/** The frozen source range read when the task was accepted. `sourceInFrame` and
- * `durationFrames` are 30fps timeline frames, so a project copy or backup keeps
- * the exact provenance without the exports row. */
+/** The source range is stored on the project timeline clock when the task is
+ * accepted. Its saved fps keeps those frames meaningful across retries and copies. */
 const sourceSchema = z.object({
   clipId: uuid,
   clipName: z.string().min(1).max(200),
@@ -48,7 +48,7 @@ const sourceSchema = z.object({
   mimeType: z.string().min(1).max(120),
   sourceInFrame: count(0),
   durationFrames: count(1),
-  fps: z.literal(30),
+  fps: timelineFpsSchema,
 }).strict();
 
 const outputSchema = z.object({
@@ -108,7 +108,7 @@ export const clipAudioSourceSchema = z.object({
   sourceHash: hash,
   sourceInFrame: count(0),
   durationFrames: count(1),
-  fps: z.literal(30),
+  fps: timelineFpsSchema,
   taskId: uuid,
   mode: z.enum(['copy', 'transcode']),
 }).strict();

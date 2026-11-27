@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { timelineAudioFadeFilters } from '../packages/business/src/timeline-audio.ts';
+import { timelineClipAudioFilterWithFps } from '../packages/business/src/timeline-audio-filter-clock.ts';
 
 test('legacy omitted and explicit zero fades preserve the old audio graph byte for byte', () => {
   const clip = { startFrame: 30, durationFrames: 120 };
@@ -19,4 +20,13 @@ test('fade graph anchors each render segment in whole-clip integer sample time',
 test('one-frame and meeting fades use exact sample counts without a second envelope', () => {
   assert.equal(timelineAudioFadeFilters({ startFrame: 0, durationFrames: 1, fadeOutFrames: 1 }, 0), 'asettb=1/48000,asetpts=N+0,afade=t=out:ss=0:ns=1600:curve=tri,');
   assert.equal(timelineAudioFadeFilters({ startFrame: 0, durationFrames: 60, fadeInFrames: 30, fadeOutFrames: 30 }, 30), 'asettb=1/48000,asetpts=N+48000,afade=t=in:ss=0:ns=48000:curve=tri,afade=t=out:ss=48000:ns=48000:curve=tri,');
+});
+
+test('project-clock fade uses the original clip sample time after a cut', () => {
+  const clip = {startFrame:30,durationFrames:4,gain:0.5,fadeInFrames:1,fadeOutFrames:1};
+  for (const [fps,frameSamples] of [[24,2000],[25,1920],[60,800]] as const) {
+    const graph = timelineClipAudioFilterWithFps(clip,31,2*frameSamples,1,0,fps);
+    assert.ok(graph.includes(`atrim=end_sample=${2*frameSamples},asettb=1/48000,asetpts=N+${frameSamples},`+
+      `afade=t=in:ss=0:ns=${frameSamples}:curve=tri,afade=t=out:ss=${3*frameSamples}:ns=${frameSamples}:curve=tri,asetpts=N/SR/TB`));
+  }
 });

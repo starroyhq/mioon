@@ -6,6 +6,8 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import {promisify} from 'node:util';
+import {Client} from '@modelcontextprotocol/sdk/client/index.js';
+import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {projectLocation, serverAppDirectories} from '../apps/server/src/project-host/directories.ts';
 import {createFormat5SequenceEditService} from '../packages/business/src/format5-sequence-edit-service.ts';
 import {createProjectBackup, openProjectBackup} from '../packages/business/src/project-file/backup.ts';
@@ -21,6 +23,7 @@ import {PROJECT_READER_UPDATE_REQUIRED, TIMELINE_FPS_READER_FEATURE} from '../pa
 import {isTimelineFormatReadResponse} from '../packages/contracts/src/timeline-format.ts';
 import {TIMELINE_FPS} from '../packages/contracts/src/timeline-fps.ts';
 import {testEnv} from './helpers/test-env.ts';
+import {png} from './helpers/timeline-image-fixtures.ts';
 import {startServer} from './helpers/test-server.ts';
 
 const token = 'synthetic-format-six-fps-token';
@@ -45,6 +48,19 @@ function fixture(t: test.TestContext, enabled: boolean) {
   return {root, rpc};
 }
 
+function transportEnv(url: string): Record<string, string> {
+  const env: Record<string, string> = {...testEnv(), MIOON_BASE_URL: url, MIOON_TOKEN: token};
+  delete env.MIOON_CONNECTION_FILE;
+  delete env.MIOON_TOKEN_FILE;
+  return env;
+}
+
+async function runCli(env: Record<string, string>, operation: string[], input: unknown) {
+  const result = await promisify(execFile)(process.execPath,
+    ['apps/cli/src/index.ts', ...operation, '--input', JSON.stringify(input)], {env, encoding: 'utf8'});
+  return JSON.parse(result.stdout);
+}
+
 test('the development server creates and reads all four clocks, and copied and restored projects keep them', async t => {
   const {root, rpc} = fixture(t, true);
   const options = {dataDir: root, port: 0, token, localDraftChannel: 'development' as const, projectFormatForTest: undefined};
@@ -67,17 +83,10 @@ test('the development server creates and reads all four clocks, and copied and r
     const rpcTimeline = await rpc(server.url, 'timeline.format.get', {projectId}, projectRpcPath(projectId));
     assert.equal(rpcTimeline.status, 200, JSON.stringify(rpcTimeline.result));
     assert.equal(rpcTimeline.result.data.fps, 25);
-    const env: Record<string, string> = {...testEnv(), MIOON_BASE_URL: server.url, MIOON_TOKEN: token};
-    delete env.MIOON_CONNECTION_FILE;
-    delete env.MIOON_TOKEN_FILE;
-    const runCli = async (operation: string[], input: unknown) => {
-      const result = await promisify(execFile)(process.execPath,
-        ['apps/cli/src/index.ts', ...operation, '--input', JSON.stringify(input)], {env, encoding: 'utf8'});
-      return JSON.parse(result.stdout);
-    };
-    const cliCreate = await runCli(['project', 'create'], {name: 'CLI', timelineFps: 60});
+    const env = transportEnv(server.url);
+    const cliCreate = await runCli(env, ['project', 'create'], {name: 'CLI', timelineFps: 60});
     assert.equal(cliCreate.ok, true);
-    const cliRead = await runCli(['timeline', 'format', 'get'], {projectId: cliCreate.data.id});
+    const cliRead = await runCli(env, ['timeline', 'format', 'get'], {projectId: cliCreate.data.id});
     assert.equal(cliRead.ok, true);
     assert.equal(cliRead.data.fps, 60);
     const unsupported = await rpc(server.url, 'project.create', {name: 'Fractional', timelineFps: 29.97});
@@ -170,4 +179,57 @@ test('with the flag off and in older project formats, the create path stays at 3
     } finally {await server.close();}
     process.env[fpsGate] = '1';
   }
+});
+
+
+test('CLI and MCP can confirm and reread a format-6 export while project metadata reads its exact receipt', async t => {
+  const {root, rpc} = fixture(t, true);
+  const server = await startServer({dataDir: root, port: 0, token, localDraftChannel: 'development', projectFormatForTest: undefined});
+  const mcp = new Client({name: 'project-fps-export', version: '1.0.0'});
+  try {
+    const fps = 25;
+    const {projectId} = await server.projectEntries.create({name: 'Export clock', timelineFps: fps, timelinePresetId: 'square_1080'});
+    const route = projectRpcPath(projectId);
+    const call = async (operation: string, input: Record<string, unknown> = {}) => {
+      const response = await rpc(server.url, operation, {projectId, ...input}, route);
+      assert.equal(response.status, 200, JSON.stringify(response.result));
+      return response.result.data;
+    };
+    const asset = await call('asset.import', {name: 'Synthetic.png', mimeType: 'image/png', dataBase64: png().toString('base64')});
+    const preview = await call('sequence.preview', {requestId: randomUUID(), intents: [{side: 'timeline',
+      operation: {kind: 'track', edit: {kind: 'insert-asset', assetId: asset.id, trackId: null, startFrame: 0}}}]});
+    await call('sequence.commit', {envelope: preview.envelope, expectedPlanDigest: preview.planDigest});
+    const before = await call('timeline.format.get');
+    const exportSettings = {profileId: 'mp4_h264_float_checked_v2', resolution: 'short_360', rateControl: {mode: 'crf', quality: 'standard'}};
+    const exportRange = {startFrame: 0, endFrame: 4};
+    const preflight = await call('timeline.export.preflight', {expectedRevision: before.timelineRevision, exportRange, exportSettings});
+    assert.equal(preflight.status, 'ready', JSON.stringify(preflight));
+    const input = {projectId, requestId: randomUUID(), expectedRevision: before.timelineRevision, purpose: 'export',
+      preflightSnapshotHash: preflight.snapshotHash, exportRange, exportSettings};
+    const env = transportEnv(server.url);
+    const ack = await runCli(env, ['timeline', 'render'], input);
+    assert.equal(ack.ok, true);
+    assert.equal(ack.data.snapshot.timeline.fps, fps);
+    assert.equal(ack.data.snapshot.delivery.effective.fps, fps);
+    assert.deepEqual(ack.data.snapshot.exportRange, exportRange);
+    const replay = await runCli(env, ['timeline', 'render'], input);
+    assert.deepEqual(replay, ack);
+    const format = await call('timeline.format.get');
+    assert.equal(format.fps, fps);
+    assert.equal(format.timelineRevision, before.timelineRevision);
+
+    await mcp.connect(new StdioClientTransport({command: process.execPath, args: ['apps/mcp/src/index.ts'], env, stderr: 'pipe'}));
+    const replayTool = await mcp.callTool({name: 'timeline_render', arguments: input});
+    const replayResult = replayTool.structuredContent as {ok?: unknown; data?: unknown} | undefined;
+    assert.equal(replayResult?.ok, true, JSON.stringify(replayResult));
+    assert.deepEqual(replayResult?.data, ack.data);
+    const read = await runCli(env, ['export', 'get'], {projectId, exportId: ack.data.id});
+    assert.equal(read.ok, true);
+    assert.equal(read.data.id, ack.data.id);
+    assert.equal(read.data.snapshot.timeline.fps, fps);
+    const readTool = await mcp.callTool({name: 'export_get', arguments: {projectId, exportId: ack.data.id}});
+    const readResult = readTool.structuredContent as {ok?: unknown; data?: {id?: unknown}} | undefined;
+    assert.equal(readResult?.ok, true, JSON.stringify(readResult));
+    assert.equal(readResult?.data?.id, ack.data.id);
+  } finally {await mcp.close(); await server.close();}
 });

@@ -2,7 +2,6 @@ import { message, renderMessage } from '../../../packages/i18n/src/index.ts';
 import type { DisplayMessage } from '../../../packages/i18n/src/types.ts';
 import { TimelineUiError, timelineFailure } from './timeline-notices.ts';
 import { SOURCE_RANGE_FPS, sourceFrameCount, isSourceRangeResponse } from '@mioon/contracts';
-import { assetRangeInTimeline } from '../../../packages/contracts/src/source-range.ts';
 import type { SourceRange, SourceRangeResponse } from '../../../packages/contracts/src/source-range.ts';
 import { MAX_TIMELINE_FRAME } from './timeline-snapping.ts';
 
@@ -54,7 +53,6 @@ export interface SourceRangePlanTrack { id: string }
 export interface SourceRangePlanTimeline {
   readonly projectId?: string;
   readonly revision?: number;
-  readonly fps?: number;
   readonly tracks?: readonly { readonly id: string; readonly kind?: string }[];
   readonly clips?: readonly { readonly trackId?: string; readonly startFrame: number; readonly durationFrames: number }[];
 }
@@ -222,13 +220,10 @@ export function sourceRangeAddPlan({ snapshot, asset, timeline, blocked = false 
   const kind = asset?.mimeType?.startsWith('audio/') ? 'audio' : 'video';
   const track = timeline?.tracks?.find(item => item.kind === kind);
   const startFrame = track ? Math.max(0, ...(timeline?.clips || []).filter(clip => clip.trackId === track.id).map(clip => clip.startFrame + clip.durationFrames)) : 0;
-  const projectRange = !reason && snapshot ? assetRangeInTimeline(snapshot, timeline?.fps ?? SOURCE_RANGE_FPS) : null;
-  const durationFrames = projectRange ? projectRange.outFrame - projectRange.inFrame
-    : snapshot ? snapshot.outFrame - snapshot.inFrame : 0;
-  if (!reason && !projectRange) { reasonMessage = message('timeline.range.error.noCompleteProjectFrame'); reason = renderMessage('zh-Hans', reasonMessage); }
+  const durationFrames = snapshot ? snapshot.outFrame - snapshot.inFrame : 0;
   if (!reason && !track) { reasonMessage = message(kind === 'audio' ? 'timeline.range.error.audioTrack' : 'timeline.range.error.videoTrack'); reason = renderMessage('zh-Hans', reasonMessage); }
   if (!reason && (!Number.isSafeInteger(startFrame + durationFrames) || startFrame + durationFrames > MAX_TIMELINE_FRAME)) { reason = '追加后的终点超过时间线 18000 帧上限；请缩短已保存范围或调整轨道。'; reasonMessage = message('timeline.range.error.tooLong'); }
   if (!reason && (timeline?.clips || []).length >= 100) { reason = '时间线最多容纳 100 个片段。'; reasonMessage = message('timeline.range.error.clipLimit'); }
   return { valid: !reason, reason, reasonMessage, startFrame, durationFrames, track, expectedRevision: timeline?.revision,
-    input: reason || !track || !projectRange || !asset ? null : Object.freeze({ trackId: track.id, assetId: asset.id ?? '', name: asset.name, startFrame, durationFrames, sourceInFrame: projectRange.inFrame }) };
+    input: reason || !track || !snapshot || !asset ? null : Object.freeze({ trackId: track.id, assetId: asset.id ?? '', name: asset.name, startFrame, durationFrames, sourceInFrame: snapshot.inFrame }) };
 }

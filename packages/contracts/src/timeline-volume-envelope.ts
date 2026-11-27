@@ -1,8 +1,5 @@
 /** Pure value/curve algebra shared by bounded contracts and processing.
  * This module establishes no source-audio eligibility or workspace authority. */
-import {timelineAudioSampleBoundary,timelineAudioSampleSpan} from './timeline-audio-clock.ts';
-import type {TimelineFps} from './timeline-fps.ts';
-
 export interface VolumeEnvelope {profileId: typeof VOLUME_ENVELOPE_PROFILE; points: {frame:number;multiplier:number}[]}
 export interface VolumeEnvelopeClip {durationFrames:number;volumeEnvelope?:VolumeEnvelope|null}
 export type VolumeEnvelopeFields = {volumeEnvelope?:VolumeEnvelope|null};
@@ -48,19 +45,18 @@ function field(clip: VolumeEnvelopeClip): EnvelopeDescriptor|undefined {
   return d as EnvelopeDescriptor|undefined;
 }
 function multiplier(points: VolumeEnvelope['points'],sample: number): number {
-  if(sample<=points[0].frame)return points[0].multiplier;
+  if(sample<=points[0].frame*1600)return points[0].multiplier;
   for(let i=1;i<points.length;i++) {
-    const right=points[i],left=points[i-1],end=right.frame;
+    const right=points[i],left=points[i-1],end=right.frame*1600;
     if(sample===end)return right.multiplier;
-    if(sample<end)return left.multiplier+(right.multiplier-left.multiplier)*((sample-left.frame)/(end-left.frame));
+    if(sample<end)return left.multiplier+(right.multiplier-left.multiplier)*((sample-left.frame*1600)/(end-left.frame*1600));
   }
   return points.at(-1)!.multiplier;
 }
 /** Validated immutable evaluator. Endpoint evaluation is not playback membership.
  * Integers are exact sample positions; interpolation uses IEEE-754 arithmetic. */
-export function createVolumeEnvelopeEvaluator(clip: VolumeEnvelopeClip,fps: TimelineFps = 30): Readonly<{limitAtSample(sample:number):number;atSample(sample:number):number}> {
-  const d=field(clip),end=timelineAudioSampleSpan(0,clip.durationFrames,fps);
-  const points=d?.value==null?null:d.value.points.map(point=>({...point,frame:timelineAudioSampleBoundary(point.frame,fps)}));
+export function createVolumeEnvelopeEvaluator(clip: VolumeEnvelopeClip): Readonly<{limitAtSample(sample:number):number;atSample(sample:number):number}> {
+  const d=field(clip),end=clip.durationFrames*1600,points=d?.value===null||!d?null:copy(d.value)!.points;
   return Object.freeze({
     limitAtSample(sample: number) {
       if(!integer(sample,0,end))fail('Invalid endpoint sample.');
@@ -93,7 +89,7 @@ export function splitVolumeEnvelopeFields(clip: VolumeEnvelopeClip,cutFrame: num
   if(!integer(cutFrame,1,clip.durationFrames-1))fail('Split must be inside clip.');
   if(!d)return [{},{}];
   if(d.value===null)return [{volumeEnvelope:null},{volumeEnvelope:null}];
-  const points=d.value.points,value=multiplier(points,cutFrame);
+  const points=d.value.points,value=multiplier(points,cutFrame*1600);
   const left=points.filter(p=>p.frame<=cutFrame).map(p=>({...p}));
   const right=points.filter(p=>p.frame>=cutFrame).map(p=>({frame:p.frame-cutFrame,multiplier:p.multiplier}));
   if(!left.length)left.push({frame:cutFrame,multiplier:value});

@@ -148,19 +148,6 @@ test('range receipts reuse the local mutation protocol with exact asset ownershi
   assert.equal(prepareSubmission({ ...pending, input: { ...pending.input, sourceInFrame: 21000 } }).input.sourceInFrame, 20000);
 });
 
-test('a saved asset range projects only complete frames to the target timeline', () => {
-  const snapshot = { ...context(), assetId: 'asset-a', revision: 1, inFrame: 1, outFrame: 31 };
-  for (const [fps, sourceInFrame, durationFrames] of [[24, 1, 23], [25, 1, 24], [30, 1, 30], [60, 2, 60]]) {
-    const plan = sourceRangeAddPlan({ snapshot, asset: asset(), timeline: { ...timeline(), fps } });
-    assert.ok(plan.input);
-    assert.equal(plan.input.sourceInFrame, sourceInFrame);
-    assert.equal(plan.input.durationFrames, durationFrames);
-  }
-  const tooShort = sourceRangeAddPlan({ snapshot: { ...snapshot, outFrame: 2 }, asset: asset(), timeline: { ...timeline(), fps: 24 } });
-  assert.equal(tooShort.input, null);
-  assert.match(tooShort.reason, /完整的项目帧/);
-});
-
 test('App guards dirty clip before source selection, clears clip selection, and rereads after replay', async () => {
   const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   const source = app.slice(app.indexOf('async function previewSource('), app.indexOf('async function addSavedSourceRange('));

@@ -35,10 +35,10 @@ test('rasterizing a subpixel inset does not shrink the other axis',()=>{
 
 test('keyframe expressions match the model at every segment frame',()=>{
  const transform=make([{frame:10,x:-100,y:20,scale:0.5},{frame:50,x:100,y:-20,scale:1.5}]),clip={durationFrames:60,transform};
- for(const offset of [0,7,45]){
+ for(const fps of [24,25,30,60])for(const offset of [0,7,45]){
   for(const [channel,pick] of [['x',(point: ClipTransformKeyframe)=>point.x],['y',(point: ClipTransformKeyframe)=>point.y],['scale',(point: ClipTransformKeyframe)=>point.scale]] as const){
-   const expression=keyframeExpression(transform.keyframes,pick,offset);
-   for(let n=0;offset+n<60;n++)assert.ok(Math.abs(evaluate(expression,n/30)-clipTransformAt(clip,offset+n)[channel])<1e-9,`${channel} at offset ${offset}, frame ${n}`);
+   const expression=keyframeExpression(transform.keyframes,pick,offset,fps);
+   for(let n=0;offset+n<60;n++)assert.ok(Math.abs(evaluate(expression,n/fps)-clipTransformAt(clip,offset+n)[channel])<1e-9,`${fps} fps, ${channel} at offset ${offset}, frame ${n}`);
   }
  }
  assert.equal(keyframeExpression(make([{frame:0,x:-3,y:0,scale:1}]).keyframes,point=>point.x,12),'(-3)','a constant needs no frame term');

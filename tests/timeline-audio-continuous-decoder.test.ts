@@ -9,6 +9,7 @@ import {run, runStreaming, runStreamingWithBackpressure, checkMediaEffect} from 
 import {withProbePermit} from '../packages/business/src/media-probe.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {timelineAudioSilenceFilter, timelineClipAudioFilter, timelineMixedAudioFilter} from '../packages/business/src/timeline-audio-filter-graph.ts';
+import {timelineClipAudioFilterWithFps} from '../packages/business/src/timeline-audio-filter-clock.ts';
 import {planTimelineExportRange} from '../packages/business/src/timeline-export-range-plan.ts';
 import {mkdtempPortable} from './helpers/temp-root.ts';
 
@@ -34,12 +35,13 @@ test('preview and export PCM match across cuts at all integer project clocks', {
     const plan = planTimelineExportRange({
       timeline: {fps, durationFrames: 6, clips: [clip]},
       exportRange: {startFrame: 4, endFrame: 6},
-    });
+    }, {allowProjectFps: true});
     assert.equal(plan.segments.length, 1);
     const originalSamples = 3 * frameSamples;
     const filter = [
       timelineAudioSilenceFilter(originalSamples),
-      timelineClipAudioFilter(clip, 3, originalSamples, 0, source.streamIndex, fps),
+      fps===30 ? timelineClipAudioFilter(clip, 3, originalSamples, 0, source.streamIndex)
+        : timelineClipAudioFilterWithFps(clip, 3, originalSamples, 0, source.streamIndex, fps),
       timelineMixedAudioFilter(['silence', 'a0'], originalSamples, plan.segments[0]!.audioOutputTrim),
     ].join(';');
     const parts: Buffer[] = [];

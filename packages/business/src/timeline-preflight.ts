@@ -1,3 +1,4 @@
+import {allowsFrozenProjectFps} from './timeline-record-format.ts';
 import {assertProjectStore} from './store-runtime.ts';
 import {hasSampledTimelineReferences, prepareTimelineReferenceHashes} from './timeline-reference-prepare.ts';
 import {timelineExportRangeFields,isTimelineExportRangeWithinDuration} from '@mioon/contracts/timeline-export-range';
@@ -64,7 +65,7 @@ const object=(value: unknown): value is Record<string, unknown>=>(value!==null&&
 export const timelineSnapshotHash=(snapshot: unknown): string=>createHash('sha256').update(canonical(snapshot) as string).digest('hex');
 function summary(snapshot: TimelinePreflightSnapshot,verified?: Map<string, {hasAudio?: boolean}>|null): Record<string, unknown>|null{
  const t=snapshot.timeline,assets=verified??new Map(snapshot.assets.map(a=>[a.id,a])),tracks=new Map(t.tracks.map(lane=>[lane.id,lane]));
- if(!isTimelineExportRangeWithinDuration(snapshot,t.durationFrames)||!timelineOutputPreset(t)||!Number.isInteger(t.durationFrames)||t.durationFrames<0||t.durationFrames>18000)return null;
+ if(!isTimelineExportRangeWithinDuration(snapshot,t.durationFrames)||!timelineOutputPreset(t,{allowProjectFps:true})||!Number.isInteger(t.durationFrames)||t.durationFrames<0||t.durationFrames>18000)return null;
  return {...timelineDeliveryNameFields(snapshot),...timelineExportRangeFields(snapshot),...(Object.hasOwn(snapshot,'delivery')?{delivery:snapshot.delivery}:{}),fps:t.fps,width:t.width,height:t.height,durationFrames:t.durationFrames,trackCount:t.tracks.length,clipCount:t.clips.length,assetCount:assets.size,
   visualClipCount:t.clips.filter(c=>tracks.get(c.trackId)?.kind==='video'&&!tracks.get(c.trackId)!.hidden).length,
   audibleClipCount:t.clips.filter(c=>tracks.has(c.trackId)&&!tracks.get(c.trackId)!.muted&&c.muted!==true&&c.gain>0&&assets.get(c.assetId)?.hasAudio===true).length,
@@ -178,11 +179,13 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
   const validationTimeline: TimelineRecord=initial.timeline;
   // Early structural check shares the renderer validator. Actual stream flags
   // and durations below replace these saved values and are validated again.
+  let allowProjectFps:boolean;
   try{
+   allowProjectFps=allowsFrozenProjectFps(store.db,validationTimeline.fps);
    if(validateSubtitleSnapshotProfile(validation))report.checks.subtitles={profileId:(validation as TimelinePreflightSnapshot).subtitleProfile!.profileId,fontVerified:false,inkMeasured:false};
    const savedAssets=new Map<string, TimelinePreflightSnapshotAsset>(validation.assets.map((a: TimelinePreflightSnapshotAsset)=>[a.id,a]));
    const trackFn=(timeline: TimelineRecord,id: string)=>timeline.tracks.find(t=>t.id===id)!;
-   validateTimeline(validationTimeline,savedAssets as unknown as ReadonlyMap<string, import('./timeline-inputs.ts').ManagedAssetRecord>,{structureOnly:true});
+   validateTimeline(validationTimeline,savedAssets as unknown as ReadonlyMap<string, import('./timeline-inputs.ts').ManagedAssetRecord>,{structureOnly:true,allowProjectFps});
    validateSavedTimeline(JSON.parse(JSON.stringify(validationTimeline)),{track:trackFn,asset:(_projectId: string,id: string)=>savedAssets.get(id)! as never});
   }
   catch{report.issues=[issue('INVALID_TIMELINE_SNAPSHOT')];return report;}
@@ -197,7 +200,7 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
    if(report.checks.subtitles){await verifySubtitleFontResource({signal,beforeEffect});checkpoint(signal);report.checks.subtitles.fontVerified=true;await inspectSubtitleRenderer({signal,beforeEffect});checkpoint(signal);}
    const options={signal,budget,beforeEffect,probe:async(file: string,probeOptions: PreflightProbeOptions)=>{beforeEffect?.();const result=await probe(file,{...probeOptions,beforeEffect});beforeEffect?.();return result;},onChecked:()=>{report.checks.checkedAssets++;}};
    return prepareTimelineInputs(initial.snapshot as never,{root:store.root,projectId:input.projectId,readAsset:(id: string)=>{beforeEffect?.();return readOwnedTimelineAsset(store.db,input.projectId,id) as unknown as import('./timeline-inputs.ts').ManagedAssetRecord|null;},
-    ...options,readLut:createTimelineColourLutReader(store.db,input.projectId) as never});
+    ...options,allowProjectFps,readLut:createTimelineColourLutReader(store.db,input.projectId) as never});
   })();
   // A caller can observe its deadline, but the exact underlying preparation
   // remains owned until it settles. No new check is admitted, nor successful

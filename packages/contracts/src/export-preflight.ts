@@ -55,7 +55,7 @@ export const exportPreflightResponseSchema = z.object({
     audibleClipCount: count(100),
     mutedTrackCount: count(12),
     hiddenVideoTrackCount: count(12),
-  }).strict().refine(value=>timelineOutputPreset(value)!==null,{message:'Summary dimensions must match a supported timeline-output preset.'}).nullable(),
+  }).strict().refine(value=>timelineOutputPreset(value,{allowProjectFps:true})!==null,{message:'Summary dimensions must match a supported timeline-output preset.'}).nullable(),
   checks: z.object({
     totalAssets: count(EXPORT_PREFLIGHT_LIMITS.assets),
     checkedAssets: count(EXPORT_PREFLIGHT_LIMITS.assets),
@@ -104,5 +104,5 @@ export function isExportPreflightResponse(value: unknown, input?: unknown): bool
   if (!input) return true;
   const request = input as Rec, response = value as ExportPreflightResponse;
   if (!(isTimelineDeliveryNameInput(input) && isTimelineExportRangeInput(input) && response.projectId === request.projectId && response.expectedRevision === request.expectedRevision)) return false;
-  return !response.summary || (isTimelineDeliveryNameSnapshot(response.summary,{input}) && isTimelineExportRangeSnapshot({...response.summary,timeline:response.summary},{input}) && (request.exportSettings!==undefined)===Object.hasOwn(response.summary,'delivery') && (request.exportSettings===undefined||isTimelineExportDelivery(response.summary.delivery,response.summary,request.exportSettings)));
+  return !response.summary || (isTimelineDeliveryNameSnapshot(response.summary,{input}) && isTimelineExportRangeSnapshot({...response.summary,timeline:response.summary},{input,allowProjectFps:true}) && (request.exportSettings!==undefined)===Object.hasOwn(response.summary,'delivery') && (request.exportSettings===undefined||isTimelineExportDelivery(response.summary.delivery,response.summary,request.exportSettings)));
 }

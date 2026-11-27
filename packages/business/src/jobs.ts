@@ -17,7 +17,7 @@ import {requiresPreparedTimelineExportIdentity,hasSelectedTimelineExportRange,ti
 import {timelineRenderDeliveryFields,hasTimelineDeliveryIdentity,TIMELINE_DELIVERY_RECEIPT_SQL} from '@mioon/contracts/timeline-delivery';
 import {createOwnedMediaGraphReader} from './inspection.ts';
 import {isTimelineExportSnapshot} from '@mioon/contracts';
-import {isTimelineRenderRecordFor} from './timeline-record-format.ts';
+import {allowsFrozenProjectFps,isTimelineRenderRecordFor} from './timeline-record-format.ts';
 import {lstatSync} from 'node:fs';
 import {createHash,randomUUID} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
@@ -567,21 +567,22 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
    beforeEffect?.();
    const outputGeometry=e.mode==='timeline'?property(e.snapshot,'timeline'):storyboardOutputGeometry(e);
    if(e.mode==='timeline')assertTimelineSpeedRenderable(outputGeometry);
+   const allowProjectFps=e.mode==='timeline'&&allowsFrozenProjectFps(store.db,property(outputGeometry,'fps'));
    // Every cancellable export owns its staging inode, including legacy
    // delivery without an opt-in profile. A late cancel may land after link.
    if(writerOwner){artifact=readOutputArtifact(writerOwner,outputOwner,'export',outputOwner.inputHash);part=artifact?outputArtifactStage(writerOwner,artifact):createOutputArtifactStage(writerOwner,outputOwner,'export');artifactComplete=Boolean(artifact);resumedArtifact=Boolean(artifact);}
    if(!artifact){
    outputHandle=await open(part,'wx',writerOwner?0o600:0o666);outputIdentity=await outputHandle.stat();beforeEffect?.();
    if(e.mode==='timeline') {
-    if(!isTimelineExportSnapshot(e.snapshot,{purpose:e.purpose}))throw Object.assign(Error('Invalid timeline export delivery profile'),{code:'INVALID_TIMELINE_SNAPSHOT'});
-    const assets=await prepareTimelineInputs(e.snapshot as never,{root,projectId:e.projectId,signal,
+    if(!isTimelineExportSnapshot(e.snapshot,{purpose:e.purpose,allowProjectFps}))throw Object.assign(Error('Invalid timeline export delivery profile'),{code:'INVALID_TIMELINE_SNAPSHOT'});
+    const assets=await prepareTimelineInputs(e.snapshot as never,{root,projectId:e.projectId,signal,allowProjectFps,
      beforeEffect,readLut:readLut as never,readAsset:(id: string)=>{beforeEffect?.();return readOwnedTimelineAsset(store.db,e.projectId,id) as never;},validateLinks:(timeline: unknown)=>{beforeEffect?.();return validateFrozenTimelineSourceGraph(store.db,e.projectId,timeline as never);}});checkpoint(signal);
     if(currentOwnedExport(e)?.status!=='running')return;
     preparedAssets=assets as unknown as Map<string, unknown>;
     validateSources=()=>validatePreparedTimelineSources(store.db,e.projectId,e.snapshot as never,preparedAssets as never,{root});
     exportStage(store,e.id,'encoding');
     const rendered=await renderTimeline(e.snapshot as never,assets as never,part,{
-     signal,beforeEffect,...(agentBound?{beforeStart}:{}),readLut:readLut as never,
+     signal,beforeEffect,allowProjectFps,...(agentBound?{beforeStart}:{}),readLut:readLut as never,
      onSegmentProgress:(completed,total)=>exportEncodingProgress(store,e.id,completed,total),
      ...(customExport(e)?{beforeEncode:()=>{if(currentOwnedExport(e)?.status!=='running')throw Object.assign(Error('The frozen export changed during local capability checking.'),{code:'INVALID_TIMELINE_SNAPSHOT'});checkCustomSources();}}:{}),
     });checkpoint(signal);
@@ -649,7 +650,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     const {relativePath:_publishedPath,...locator}=published;
     await registerVerifiedProjectOutputs(writerOwner, {signal, beforeEffect}, () => {
      tx(()=>{try{assertPublishedProjectOutput(writerOwner,published.publication);}catch(error){if(property(error,'code')==='INVALID_MEDIA')throw effectError();throw error;}beforeEffect();if(!resumedArtifact)checkCustomSources();if(!artifact)throw Error('Missing completed export artifact');
-     const asset={id:artifact.assetId,projectId:e.projectId,name:exportAssetName(store.db,e,outputGeometry),mimeType:'video/mp4',...info,...locator,producer:{kind:'export',id:e.id},provenance:'export',createdAt:artifact.createdAt,url:`/media/${artifact.assetId}`};
+     const asset={id:artifact.assetId,projectId:e.projectId,name:exportAssetName(store.db,e,outputGeometry,allowProjectFps),mimeType:'video/mp4',...info,...locator,producer:{kind:'export',id:e.id},provenance:'export',createdAt:artifact.createdAt,url:`/media/${artifact.assetId}`};
      put('assets',asset);put('exports',{...e,status:'succeeded',assetId:asset.id,url:asset.url,error:null,...(audioCheck?{audioCheck}:{}),updatedAt:now()});
      });
      publicationAccepted=true;

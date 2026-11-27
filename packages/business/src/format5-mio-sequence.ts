@@ -254,7 +254,8 @@ export function previewMioSequenceAction(store: ProjectStore, projectId: string,
   else if (['connect', 'disconnect', 'insert', 'delete-node', 'board-root-create', 'board-shot-append', 'board-layout-move',
     'board-node-create', 'board-shot-update', 'board-node-update', 'board-restore', 'board-duplicate'].includes(action.kind)) request.intents = [boardIntent(action)];
   else if (action.kind === 'insert-asset') request.intents = [sequenceSyncIntent({kind: 'insert-asset',
-    assetId: action.assetId, trackId: action.trackId, startFrame: action.startFrame})];
+    assetId: action.assetId, trackId: action.trackId, startFrame: action.startFrame,
+    ...(action.assetRange === undefined ? {} : {assetRange: action.assetRange})})];
   else if (['reorder', 'remove', 'split', 'copy-move', 'set-mode', 'split-at-scenes'].includes(action.kind)) request.intents = [trackCommand(store, action, timeline)];
   else if (action.kind === 'generate') request.generateIntent = {side: 'timeline', operation: {kind: 'generate-placeholder',
     placement: action.placement, shotId: randomUUID(), clipId: randomUUID(), title: action.title ?? 'Mio 剪辑生成',

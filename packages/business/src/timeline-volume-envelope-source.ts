@@ -3,7 +3,7 @@ import type {TimelineAudioPreviewSourceProbe} from './timeline-audio-preview-dec
 /** Call only with the existing trusted audio parser's result after managed
  * ownership/hash/identity verification. Cached metadata is never this proof. */
 export function assertVolumeEnvelopeSource(clip: {durationFrames:number;sourceInFrame?:number;volumeEnvelope?:unknown},
-  source: {mimeType:string;audio:TimelineAudioPreviewSourceProbe|null}): void {
+  source: {mimeType:string;audio:TimelineAudioPreviewSourceProbe|null}, fps = 30): void {
   if (volumeEnvelopeField(clip).volumeEnvelope == null) return;
   const audio = source.audio;
   if (!['audio/wav','audio/mpeg','audio/mp4','video/mp4','video/webm'].includes(source.mimeType) || !audio ||
@@ -11,6 +11,6 @@ export function assertVolumeEnvelopeSource(clip: {durationFrames:number;sourceIn
       !Number.isSafeInteger(audio.sampleRate) || audio.sampleRate < 1 || audio.sampleRate > 999999 ||
       ![1,2].includes(audio.channels) || audio.channelLayout !== (audio.channels === 1 ? 'mono' : 'stereo') ||
       !Number.isFinite(audio.durationSeconds) || audio.durationSeconds <= 0 ||
-      (clip.sourceInFrame ?? 0) + clip.durationFrames > Math.floor(audio.durationSeconds * 30 + 1e-6))
+      (clip.sourceInFrame ?? 0) + clip.durationFrames > Math.floor(audio.durationSeconds * fps + 1e-6))
     throw Object.assign(new Error('Volume automation requires a verified supported audio source.'), {code:'VOLUME_ENVELOPE_SOURCE_UNSUPPORTED'});
 }

@@ -1,8 +1,10 @@
 import {z} from 'zod';
+import {timelineAudioFpsSchema,timelineAudioSampleBoundary} from './timeline-audio-clock.ts';
+import {isTimelineFps,timelineFpsSchema,type TimelineFps} from './timeline-fps.ts';
 import {timelineExportOutputFrames} from './timeline-export-range.ts';
 import {timelineRenderDeliveryFields} from './timeline-delivery.ts';
 import {TIMELINE_OUTPUT_MAX_EDGE,isTimelineDeliveryGeometry,timelineDeliveryGeometry,timelineOutputPreset} from './timeline-output-geometry.ts';
-import type {TimelineOutputResolution,TimelineOutputGeometry} from './timeline-output-geometry.ts';
+import type {TimelineOutputResolution} from './timeline-output-geometry.ts';
 
 /** Opt-in export policy only. Neither this profile nor a within-limit report
  * promises AAC reconstruction, true-peak, loudness or source-clipping safety. */
@@ -37,17 +39,18 @@ export const timelineExportFloatSettingsSchema = z.object({
 
 export const timelineExportFloatEffectiveSchema = z.object({
   profileId:z.literal(TIMELINE_EXPORT_FLOAT_PROFILE_ID),container:z.literal('mp4'),
-  width:z.number().int().min(2).max(TIMELINE_OUTPUT_MAX_EDGE).multipleOf(2),height:z.number().int().min(2).max(TIMELINE_OUTPUT_MAX_EDGE).multipleOf(2),fps:z.literal(30),
+  width:z.number().int().min(2).max(TIMELINE_OUTPUT_MAX_EDGE).multipleOf(2),height:z.number().int().min(2).max(TIMELINE_OUTPUT_MAX_EDGE).multipleOf(2),fps:timelineFpsSchema,
   videoCodec:z.literal('libx264'),pixelFormat:z.literal('yuv420p'),preset:z.literal('veryfast'),
   rateControl:z.discriminatedUnion('mode',[
     z.object({mode:z.literal('crf'),crf:z.union([z.literal(28),z.literal(23),z.literal(18)])}).strict(),
     z.object({mode:z.literal('bitrate'),targetKbps:bitrate}).strict(),
   ]),
-  bFrames:z.literal(0),gopFrames:z.literal(60),videoTrackTimescale:z.literal(30000),scaling:z.literal('lanczos'),
+  bFrames:z.literal(0),gopFrames:z.number().int().min(48).max(120),videoTrackTimescale:z.literal(30000),scaling:z.literal('lanczos'),
   audioCodec:z.literal('aac'),audioKbps:z.literal(128),audioSampleRate:z.literal(48000),audioChannels:z.literal(2),movflags:z.literal('faststart'),
   intermediateAudio:z.object({container:z.literal('mov'),codec:z.literal('pcm_f32le'),sampleFormat:z.literal('flt'),sampleRate:z.literal(48000),channels:z.literal(2)}).strict(),
   preencodeAudioPolicy:z.object({policyId:z.literal(TIMELINE_EXPORT_FLOAT_POLICY_ID),maxPeakLinear:z.literal(1),overRange:z.literal('reject')}).strict(),
-}).strict().refine(isTimelineDeliveryGeometry,{message:'Unsupported encoded timeline dimensions.'});
+}).strict().refine(isTimelineDeliveryGeometry,{message:'Unsupported encoded timeline dimensions.'})
+  .refine(value=>value.gopFrames===2*value.fps,{message:'GOP must match the frozen project clock.'});
 export type TimelineExportEffectiveV2 = z.infer<typeof timelineExportFloatEffectiveSchema>;
 export type TimelineExportEffectiveV1 = Omit<TimelineExportEffectiveV2,'profileId'|'intermediateAudio'|'preencodeAudioPolicy'> & {profileId:'mp4_h264_v1'};
 export const timelineExportFloatDeliverySchema = z.object({
@@ -61,8 +64,8 @@ const own = (value:object,key:PropertyKey):boolean => Object.hasOwn(value,key);
 const same = (a:unknown,b:unknown):boolean => object(a)&&object(b)
   ? Object.keys(a).length===Object.keys(b).length&&Object.keys(a).every(key=>own(b,key)&&same(a[key],b[key])) : a===b;
 function invalid():never {throw Object.assign(new Error('Invalid timeline export delivery profile'),{code:'INVALID_TIMELINE_SNAPSHOT'});}
-function isGeometry(value:unknown):value is TimelineOutputGeometry {
-  return timelineOutputPreset(value)!==null;
+function isGeometry(value:unknown):boolean {
+  return timelineOutputPreset(value,{allowProjectFps:true})!==null;
 }
 
 /** Separate v2 resolver; the old resolver's object order and bytes are untouched. */
@@ -73,10 +76,10 @@ export function resolveTimelineExportFloatDelivery(timeline:unknown,settings:unk
   if(!geometry)invalid();
   const rate=exportSettings.rateControl;
   return {exportSettings:JSON.parse(JSON.stringify(settings)) as TimelineExportSettingsV2,effective:{
-    profileId:TIMELINE_EXPORT_FLOAT_PROFILE_ID,container:'mp4',width:geometry.width,height:geometry.height,fps:30,
+    profileId:TIMELINE_EXPORT_FLOAT_PROFILE_ID,container:'mp4',width:geometry.width,height:geometry.height,fps:geometry.fps,
     videoCodec:'libx264',pixelFormat:'yuv420p',preset:'veryfast',
     rateControl:rate.mode==='crf'?{mode:'crf',crf:({compact:28,standard:23,high:18} as const)[rate.quality]}:{mode:'bitrate',targetKbps:rate.targetKbps},
-    bFrames:0,gopFrames:60,videoTrackTimescale:30000,scaling:'lanczos',audioCodec:'aac',audioKbps:128,audioSampleRate:48000,audioChannels:2,movflags:'faststart',
+    bFrames:0,gopFrames:2*geometry.fps,videoTrackTimescale:30000,scaling:'lanczos',audioCodec:'aac',audioKbps:128,audioSampleRate:48000,audioChannels:2,movflags:'faststart',
     intermediateAudio:{container:'mov',codec:'pcm_f32le',sampleFormat:'flt',sampleRate:48000,channels:2},
     preencodeAudioPolicy:{policyId:TIMELINE_EXPORT_FLOAT_POLICY_ID,maxPeakLinear:1,overRange:'reject'},
   }};
@@ -125,7 +128,7 @@ export type AudioCheckIncompleteCode=typeof TIMELINE_EXPORT_AUDIO_INCOMPLETE_COD
 const audioIdentity={
   schemaVersion:z.literal(1),profileId:z.literal(TIMELINE_EXPORT_FLOAT_PROFILE_ID),policyId:z.literal(TIMELINE_EXPORT_FLOAT_POLICY_ID),
   stage:z.literal('preencode_float_mix'),projectId:id,exportId:id,attemptId:id,snapshotSha256:digest,
-  outputFrames:count(TIMELINE_EXPORT_FLOAT_LIMITS.outputFrames).min(1),checkedAt:z.string().max(30).datetime(),
+  outputFrames:count(TIMELINE_EXPORT_FLOAT_LIMITS.outputFrames).min(1),fps:timelineAudioFpsSchema,checkedAt:z.string().max(30).datetime(),
 };
 export const timelineExportAudioOutputSchema=z.object({assetId:id,sha256:digest}).strict();
 export type TimelineExportAudioOutput=z.infer<typeof timelineExportAudioOutputSchema>;
@@ -137,7 +140,7 @@ export const timelineExportAudioCheckSchema=z.discriminatedUnion('status',[
 ]).superRefine((value,context)=>{
   const fail=(message:string):void=>context.addIssue({code:'custom',message});
   if(value.status==='complete'){
-    if(value.measurement.sampleFrames!==value.outputFrames*1600)fail('The complete float stream must contain exactly 1600 sample frames per output frame.');
+    if(value.measurement.sampleFrames!==timelineAudioSampleBoundary(value.outputFrames,value.fps))fail('The complete float stream must match the frozen project clock.');
     if((value.measurement.peakLinear>1)!==(value.code==='EXPORT_AUDIO_OVER_RANGE'))fail('The report code must match the strict pre-encode threshold.');
     if(value.code==='EXPORT_AUDIO_OVER_RANGE'&&value.output!==null)fail('An over-range stream must not bind a published output.');
   }
@@ -168,11 +171,11 @@ function boundedAudioData(value:unknown):boolean {
   }
   return visit(value,0)&&new TextEncoder().encode(JSON.stringify(value)).byteLength<=TIMELINE_EXPORT_FLOAT_LIMITS.reportBytes;
 }
-export function isTimelineExportAudioMeasurement(value:unknown,outputFrames?:number):value is TimelineExportAudioMeasurement {
+export function isTimelineExportAudioMeasurement(value:unknown,outputFrames?:number,fps:TimelineFps=30):value is TimelineExportAudioMeasurement {
   try{
     if(!boundedAudioData(value))return false;
     const parsed=timelineExportAudioMeasurementSchema.safeParse(value);
-    return parsed.success&&(outputFrames===undefined||Number.isSafeInteger(outputFrames)&&outputFrames>=1&&outputFrames<=18000&&parsed.data.sampleFrames===outputFrames*1600);
+    return parsed.success&&(outputFrames===undefined||Number.isSafeInteger(outputFrames)&&outputFrames>=1&&outputFrames<=18000&&parsed.data.sampleFrames===timelineAudioSampleBoundary(outputFrames,fps));
   }catch{return false;}
 }
 export function isTimelineExportAudioCheck(value:unknown):value is TimelineExportAudioCheck {
@@ -200,8 +203,10 @@ export function isTimelineExportAudioOutcome(value:unknown,binding:TimelineExpor
     if(!hasReport)return value.status==='failed'&&(!object(value.error)||value.error.code!=='EXPORT_AUDIO_OVER_RANGE');
     if(!hasAttempt||!isTimelineExportAudioCheck(value.audioCheck))return false;
     const report=value.audioCheck;
+    if(!object(value.snapshot)||!object(value.snapshot.timeline)||!isTimelineFps(value.snapshot.timeline.fps)||
+      (report.fps??30)!==value.snapshot.timeline.fps)return false;
     if(report.projectId!==value.projectId||report.exportId!==value.id||report.attemptId!==value.renderAttemptId||
-      report.outputFrames!==timelineExportOutputFrames(value.snapshot)||
+      report.outputFrames!==timelineExportOutputFrames(value.snapshot,{allowProjectFps:true})||
       binding.snapshotSha256!==undefined&&report.snapshotSha256!==binding.snapshotSha256)return false;
     if(value.status==='succeeded')return report.status==='complete'&&report.code==='EXPORT_AUDIO_WITHIN_LIMIT'&&
       report.output!==null&&report.output.assetId===value.assetId&&

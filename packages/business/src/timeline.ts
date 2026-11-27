@@ -449,6 +449,9 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
     return JSON.parse(String(previous.response));
    }
    const frozen=freezeFormat5RenderSnapshot(store as unknown as Parameters<typeof freezeFormat5RenderSnapshot>[0],input);
+   if(process.env.MIOON_FORMAT6_DEV==='1'&&input.preflightSnapshotHash!==undefined&&
+      timelineStorageFormat(db,timelineStorageSchema(db))===FORMAT6_PROJECT_SCHEMA_VERSION&&hash(frozen)!==input.preflightSnapshotHash)
+    throw new AppError('PREFLIGHT_STALE','导出检查已过期，请重新检查已保存的时间线',409);
    const createdAt=now();
    const result={id:randomUUID(),projectId:input.projectId,requestId:input.requestId,mode:'timeline',purpose:input.purpose,
      timelineRevision:(frozen as {timeline:{revision:number}}).timeline.revision,snapshot:frozen,status:'queued',

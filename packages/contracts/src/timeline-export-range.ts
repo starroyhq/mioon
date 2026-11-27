@@ -6,6 +6,7 @@ const object = (value: unknown): value is Record<string, unknown> =>
 const own = (value: object, key: PropertyKey): boolean => Object.hasOwn(value, key);
 const duration = (value: unknown): value is number =>
   typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= 18000;
+const timelineClock = (value: unknown, allowProjectFps = false): boolean => value === 30 || allowProjectFps && isTimelineFps(value);
 function invalid(): never {
   throw Object.assign(new Error('Invalid frozen timeline export range'), {code: 'INVALID_TIMELINE_SNAPSHOT'});
 }
@@ -40,12 +41,12 @@ export function isTimelineExportRangeWithinDuration(value: unknown, durationFram
 
 export function isTimelineExportRangeSnapshot(
   snapshot: unknown,
-  options: {purpose?: unknown; input?: unknown} = {},
+  options: {purpose?: unknown; input?: unknown; allowProjectFps?: boolean} = {},
 ): boolean {
   if (!isTimelineExportRangeInput(snapshot)) return false;
   if (own(snapshot, 'exportRange')) {
     if (own(options, 'purpose') && options.purpose !== 'export') return false;
-    if (!object(snapshot) || !object(snapshot.timeline) || !isTimelineFps(snapshot.timeline.fps) ||
+    if (!object(snapshot) || !object(snapshot.timeline) || !timelineClock(snapshot.timeline.fps, options.allowProjectFps) ||
         !isTimelineExportRangeWithinDuration(snapshot, snapshot.timeline.durationFrames)) return false;
   }
   if (!own(options, 'input')) return true;
@@ -57,10 +58,10 @@ export function isTimelineExportRangeSnapshot(
 
 // Only use this for an accepted nonempty frozen composition. It does not make
 // an unchecked or malformed snapshot valid, and it never modifies that data.
-export function timelineExportOutputFrames(snapshot: unknown): number {
-  if (!object(snapshot) || !object(snapshot.timeline) || !isTimelineFps(snapshot.timeline.fps) ||
+export function timelineExportOutputFrames(snapshot: unknown, {allowProjectFps = false}: {allowProjectFps?: boolean} = {}): number {
+  if (!object(snapshot) || !object(snapshot.timeline) || !timelineClock(snapshot.timeline.fps, allowProjectFps) ||
       !duration(snapshot.timeline.durationFrames) || snapshot.timeline.durationFrames < 1 ||
-      !isTimelineExportRangeSnapshot(snapshot)) invalid();
+      !isTimelineExportRangeSnapshot(snapshot, {allowProjectFps})) invalid();
   const range = timelineExportRangeFields(snapshot).exportRange;
   return range === undefined ? snapshot.timeline.durationFrames : range.endFrame - range.startFrame;
 }

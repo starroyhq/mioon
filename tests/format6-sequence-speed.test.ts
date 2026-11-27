@@ -224,6 +224,44 @@ test('integer project clocks persist through two-times speed, default freeze, re
   });
 });
 
+test('native and Mio placement project a standalone range inward on all four project clocks', async t => {
+  const previous = process.env.MIOON_FORMAT6_DEV;
+  process.env.MIOON_FORMAT6_DEV = '1';
+  t.after(() => {
+    if (previous === undefined) delete process.env.MIOON_FORMAT6_DEV;
+    else process.env.MIOON_FORMAT6_DEV = previous;
+  });
+  for (const [fps, inFrame, length] of [[24, 1, 23], [25, 1, 24], [30, 1, 30], [60, 2, 60]] as const) {
+    await t.test(`${fps} fps`, t => {
+      const store = fixture(t, fps), api = editor(store);
+      const action = {kind: 'insert-asset', assetId: assetA, trackId: videoTrack2, startFrame: 0,
+        assetRange: {inFrame: 1, outFrame: 31}} as const;
+      const plan = previewMioSequenceAction(store, store.projectId, randomUUID(), action);
+      const committed = commitMioSequenceAction(store, plan);
+      const overlay = saved(store).clips.find(clip => clip.trackId === videoTrack2)!;
+      assert.equal(overlay.sourceInFrame, inFrame);
+      assert.equal(overlay.durationFrames, length);
+      assert.deepEqual(commitMioSequenceAction(store, plan), committed);
+
+      const native = api.service.preview({projectId: store.projectId, requestId: randomUUID(), intents: [
+        {side: 'timeline', operation: {kind: 'track', edit: {...action, trackId: null}}},
+      ]});
+      assert.ok('envelope' in native, JSON.stringify(native));
+      const nativeReceipt = api.service.commit({projectId: store.projectId, envelope: native.envelope,
+        expectedPlanDigest: native.planDigest}) as SequenceEditReceipt;
+      assert.equal(nativeReceipt.status, 'applied');
+      const inserted = saved(store).clips.find(clip => clip.trackId === videoTrack && clip.assetId === assetA && clip.id !== clipA)!;
+      assert.equal(inserted.sourceInFrame, inFrame);
+      assert.equal(inserted.durationFrames, length);
+
+      assert.throws(() => previewMioSequenceAction(store, store.projectId, randomUUID(),
+        {...action, trackId: null, assetRange: {inFrame: 1, outFrame: 61}}), {code: 'SOURCE_BOUNDS'});
+      if (fps < 30) assert.throws(() => previewMioSequenceAction(store, store.projectId, randomUUID(),
+        {...action, trackId: null, assetRange: {inFrame: 1, outFrame: 2}}), {code: 'INVALID_CLIP_FRAMES'});
+    });
+  }
+});
+
 test('eight constant rates preserve source range and carry suffix clips and anchors', async t => {
   const rates = [[1, 10, 600], [1, 4, 240], [1, 2, 120], [11, 10, 55], [3, 2, 40], [2, 1, 30], [4, 1, 15], [10, 1, 6]];
   for (const [numerator, denominator, frames] of rates) {

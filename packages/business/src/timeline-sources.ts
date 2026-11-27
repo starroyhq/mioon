@@ -1,3 +1,4 @@
+import {allowsFrozenProjectFps} from './timeline-record-format.ts';
 import {mediaLocatorFields, sameMediaLocator} from './asset-reference-record.ts';
 import type {MediaReference} from '../../contracts/src/media-reference.ts';
 import {assertVolumeEnvelopeSource} from './timeline-volume-envelope-source.ts';
@@ -50,7 +51,7 @@ interface PrepareOptions {
  signal?: AbortSignal;budget?: PreflightBudget;
  probe?: (file: string,options: ProbeOptions)=>Promise<TimelineProbeResult>;
  onChecked?: (assetId: string)=>void;validateLinks?: (timeline: TimelineRecord)=>void;
- beforeEffect?: ()=>void;readLut?: (value: unknown)=>unknown;retainOpacitySourceIdentity?: boolean;
+ allowProjectFps?: boolean;beforeEffect?: ()=>void;readLut?: (value: unknown)=>unknown;retainOpacitySourceIdentity?: boolean;
 }
 
 const object=(value: unknown): boolean=>value!==null&&typeof value==='object'&&!Array.isArray(value);
@@ -127,6 +128,7 @@ export function readTimelinePreflightSnapshot(store: {db: DatabaseSync},projectI
    !Number.isSafeInteger(timeline.revision)||timeline.revision<1||!Array.isArray(timeline.clips)||timeline.clips.length>100||
    !Array.isArray(timeline.tracks)||timeline.tracks.length>12||timeline.clips.some((c: unknown)=>!object(c)||!uuid((c as {id?: unknown}).id)||!uuid((c as {assetId?: unknown}).assetId)||!uuid((c as {trackId?: unknown}).trackId))||
    timeline.tracks.some((t: unknown)=>!object(t)||!uuid((t as {id?: unknown}).id)))throw invalid();
+  allowsFrozenProjectFps(db,timeline.fps);
   if(Object.hasOwn(timeline,'subtitles')&&getTimelineSubtitleIssue(timeline.subtitles,timeline.durationFrames))throw invalid();
   let assets;
   try{assets=readTimelineSourceGraph(db,projectId,timeline);}
@@ -168,12 +170,12 @@ function timelineInputSourceError(error:unknown,assetId:string):unknown {
  }
  return error;
 }
-export async function prepareTimelineInputs(snapshot: TimelineSnapshotLike,{root,projectId,readAsset,signal,budget,probe=probeTimelineSource,onChecked,validateLinks,beforeEffect,readLut,retainOpacitySourceIdentity=false}: PrepareOptions): Promise<Map<string, PreparedSource>>{
+export async function prepareTimelineInputs(snapshot: TimelineSnapshotLike,{root,projectId,readAsset,signal,budget,probe=probeTimelineSource,onChecked,validateLinks,beforeEffect,readLut,retainOpacitySourceIdentity=false,allowProjectFps=false}: PrepareOptions): Promise<Map<string, PreparedSource>>{
  checkMediaEffect(beforeEffect,signal);
  if(!snapshot?.timeline||!Array.isArray(snapshot.assets))throw Error('Timeline render has no frozen snapshot');
- if(snapshot.timeline.projectId!==projectId||!isTimelineSubtitleSnapshotProfile(snapshot)||!isTimelineExportSnapshot(snapshot)||!isTimelineColourSnapshot(snapshot))throw invalid();
+ if(snapshot.timeline.projectId!==projectId||!isTimelineSubtitleSnapshotProfile(snapshot)||!isTimelineExportSnapshot(snapshot,{allowProjectFps})||!isTimelineColourSnapshot(snapshot))throw invalid();
  if(snapshot.assets.length>100||snapshot.assets.some(a=>!object(a)||!uuid(a.id)||typeof a.mimeType!=='string'||typeof a.sha256!=='string'||!/^[a-f0-9]{64}$/.test(a.sha256))||new Set(snapshot.assets.map(a=>a.id)).size!==snapshot.assets.length)throw invalid();
- validateTimeline(snapshot.timeline,new Map(snapshot.assets.map(a=>[a.id,a])) as unknown as ReadonlyMap<string, ManagedAssetRecord>,{structureOnly:true});
+ validateTimeline(snapshot.timeline,new Map(snapshot.assets.map(a=>[a.id,a])) as unknown as ReadonlyMap<string, ManagedAssetRecord>,{structureOnly:true,allowProjectFps});
  const referenced=new Set(snapshot.timeline.clips.map(clip=>clip.assetId));
  if(referenced.size!==snapshot.assets.length||snapshot.assets.some(asset=>!referenced.has(asset.id)))throw invalid();
  validateLinks?.(snapshot.timeline);
@@ -209,7 +211,7 @@ export async function prepareTimelineInputs(snapshot: TimelineSnapshotLike,{root
    // The actual probe is bracketed by managed hash/identity checks. Include
    // muted/zero-gain automation; cached hasAudio is not stream evidence.
    const audio=parseTimelineAudioPreviewProbe(JSON.stringify(media.probe));
-   for(const clip of automated)assertVolumeEnvelopeSource(clip,{mimeType:a.mimeType,audio});
+   for(const clip of automated)assertVolumeEnvelopeSource(clip,{mimeType:a.mimeType,audio},snapshot.timeline.fps);
   }
   if(snapshot.colourPlan)for(const planned of snapshot.colourPlan.clips.filter(item=>item.assetId===a.id)){
    const clip=snapshot.timeline.clips.find(item=>item.id===planned.clipId);
@@ -221,7 +223,7 @@ export async function prepareTimelineInputs(snapshot: TimelineSnapshotLike,{root
   onChecked?.(a.id);
   }catch(error){throw timelineInputSourceError(error,a.id);}
  }
- checkMediaEffect(beforeEffect,signal);validateTimeline(snapshot.timeline,assets);
+ checkMediaEffect(beforeEffect,signal);validateTimeline(snapshot.timeline,assets,{allowProjectFps});
  if(snapshot.colourPlan||retainOpacitySourceIdentity){
   for(const verified of assets.values()){
    try{

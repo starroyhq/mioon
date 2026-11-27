@@ -1,3 +1,5 @@
+import {timelineAudioFpsFields} from '../../contracts/src/timeline-audio-clock.ts';
+import {isTimelineFps} from '../../contracts/src/timeline-fps.ts';
 import {createHash, randomUUID} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
 import {isTimelineExportFloatSnapshot, isTimelineExportAudioOutcome, timelineExportAudioCheckSchema,
@@ -57,10 +59,12 @@ export function floatSnapshotSha256(snapshot: unknown): string {
 }
 function identity(value: unknown, checkedAt: string) {
   if (!isFloatTimelineExport(value) || !uuid(value.id) || !uuid(value.projectId) || !uuid(value.renderAttemptId)) invalid();
+  const timeline=value.snapshot.timeline;
+  if(!object(timeline)||!isTimelineFps(timeline.fps))invalid();
   return {schemaVersion: 1 as const, profileId: TIMELINE_EXPORT_FLOAT_PROFILE_ID,
     policyId: TIMELINE_EXPORT_FLOAT_POLICY_ID, stage: 'preencode_float_mix' as const,
     projectId: value.projectId, exportId: value.id, attemptId: value.renderAttemptId,
-    snapshotSha256: floatSnapshotSha256(value.snapshot), outputFrames: timelineExportOutputFrames(value.snapshot), checkedAt};
+    snapshotSha256: floatSnapshotSha256(value.snapshot), outputFrames: timelineExportOutputFrames(value.snapshot,{allowProjectFps:true}), ...timelineAudioFpsFields(timeline.fps), checkedAt};
 }
 /** A result object from an injected renderer is insufficient: only a measurement
  * produced by the bounded media checker in this lifetime is accepted. */

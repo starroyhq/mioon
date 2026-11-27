@@ -7,6 +7,7 @@
  * ticket rules before any media metadata is frozen.
  */
 import {assertTimelineSpeedRenderable} from '../../contracts/src/timeline-speed-render.ts';
+import {isTimelineExportSnapshot} from '../../contracts/src/timeline-export-profile.ts';
 import {AppError} from '../../contracts/src/app-error.ts';
 import type {Format5Cue, Format5Timeline} from '../../contracts/src/project-format5.ts';
 import {getFormat5TimelineIssue} from '../../contracts/src/project-format5.ts';
@@ -18,6 +19,7 @@ import {mediaReferenceSchema} from '../../contracts/src/media-reference.ts';
 import {format5ExportBlockersFromTimeline} from './format5-timeline-export.ts';
 import {timelineExportRangeBoundsIssue} from './timeline-export-range.ts';
 import type {ProjectStore} from './project-file/store.ts';
+import {allowsFrozenProjectFps} from './timeline-record-format.ts';
 import {timelineStorageFormat} from './project-file/timeline-storage.ts';
 
 type Row = Record<string, unknown>;
@@ -63,6 +65,7 @@ function exportRange(input: {exportRange?: unknown}): {startFrame: number; endFr
 export function readFormat5RenderProjection(store: ProjectStore): Format5RenderProjection | null {
   const timeline = readFormat5TimelineRecord(store.db, 'project');
   if (!timeline) return null;
+  allowsFrozenProjectFps(store.db,timeline.fps);
   assertTimelineSpeedRenderable(timeline);
   const {mainTrack: _mainTrack, clips, subtitles, ...header} = timeline as Format5Timeline & Row;
   const legacyClips = clips.map(stripClip);
@@ -96,6 +99,7 @@ export function readFormat5AudioProjection(store: ProjectStore): {legacy: Timeli
   if (!timeline) return null;
   const issue = getFormat5TimelineIssue(timeline, {projectId: store.projectId, formatVersion: timelineStorageFormat(store.db, 'project')});
   if (issue) throw new AppError('TIMELINE_SOURCE_UNAVAILABLE', '时间线数据不可用。', 409, {clipIds: issue.ids ?? []});
+  allowsFrozenProjectFps(store.db,timeline.fps);
   assertTimelineSpeedRenderable(timeline);
   const {mainTrack: _mainTrack, clips, subtitles, ...header} = timeline as Format5Timeline & Row;
   const ready = clips.filter(clip => clip.sourceState !== 'placeholder' && clip.assetId !== null);
@@ -147,5 +151,7 @@ export function freezeFormat5RenderSnapshot(store: ProjectStore, input: {
   }
   if (!projection.legacy.clips.length) throw new AppError('EMPTY_TIMELINE', '请先向时间线添加片段', 409);
   const frozen = freezeTimelineSnapshot(projection.legacy, projection.assets, input.exportSettings, input) as Row;
+  if (timeline.fps !== 30 && !isTimelineExportSnapshot(frozen,{allowProjectFps:allowsFrozenProjectFps(store.db,timeline.fps)}))
+    throw new AppError('INVALID_TIMELINE_SNAPSHOT', '时间线超出导出配置的范围。', 409);
   return frozen;
 }

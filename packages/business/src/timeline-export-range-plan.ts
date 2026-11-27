@@ -33,8 +33,8 @@ export interface TimelineExportRangePlan {
 
 /** No defaults are written to the snapshot. In particular, absent-range and
  * explicit full-span plans retain the original graph's exact argument strings. */
-export function planTimelineExportRange(snapshot: TimelineExportRangePlanInput): TimelineExportRangePlan {
-  const outputFrames = timelineExportOutputFrames(snapshot);
+export function planTimelineExportRange(snapshot: TimelineExportRangePlanInput,{allowProjectFps=false}: {allowProjectFps?: boolean} = {}): TimelineExportRangePlan {
+  const outputFrames = timelineExportOutputFrames(snapshot,{allowProjectFps});
   const {timeline} = snapshot, fps = timeline.fps as TimelineFps;
   const start = snapshot.exportRange?.startFrame ?? 0;
   const end = snapshot.exportRange?.endFrame ?? timeline.durationFrames;

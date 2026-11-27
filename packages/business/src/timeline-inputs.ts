@@ -121,8 +121,8 @@ export function validateSavedTimeline(timeline: TimelineRecord,{track,asset}: {t
     if(item.sourceInFrame!==0)throw new AppError('SOURCE_BOUNDS','图片的素材入点必须为0',400,{clipId:item.id});
    }else{
     // A fractional final frame cannot supply a complete output frame. The tiny
-    // tolerance only absorbs the binary representation of exact 30fps times.
-    const sourceFrames=sourceFrameCount(source.duration)??0;
+    // tolerance only absorbs the binary representation of exact project-frame times.
+    const sourceFrames=sourceFrameCount(source.duration,timeline.fps)??0;
     if(sourceFrames<1||item.sourceInFrame+item.durationFrames>sourceFrames)
      throw new AppError('SOURCE_BOUNDS','素材入点和片段时长超出素材范围',400,{clipId:item.id,assetId:source.id,availableFrames:sourceFrames});
    }

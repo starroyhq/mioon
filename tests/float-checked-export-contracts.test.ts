@@ -86,6 +86,14 @@ test('queued receipt is unchanged and running requires only a fresh attempt toke
   assert.equal(JSON.stringify(queued),before);
 });
 
+test('24 fps preserves the float PCM budget on the selected interval',()=>{
+  const i=input(),base=record(i).snapshot;
+  const timeline={...base.timeline,fps:24,durationFrames:14401};
+  const delivery=resolveTimelineExportDelivery(timeline,i.exportSettings);
+  assert.equal(isTimelineExportSnapshot({...base,timeline,delivery},{allowProjectFps:true}),false);
+  assert.equal(isTimelineExportSnapshot({...base,timeline,delivery,exportRange:{startFrame:1,endFrame:14401}},{allowProjectFps:true}),true);
+});
+
 test('complete measurement has exact counts and strict >1 threshold',()=>{
   for(const value of ([0,0.5,1,1.0000001192092896,1.4] as const))assert.ok(isTimelineExportAudioMeasurement(measurement(value),30));
   assert.ok(isTimelineExportAudioMeasurement(measurement(0.5,18000),18000));

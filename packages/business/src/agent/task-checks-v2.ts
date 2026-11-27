@@ -4,7 +4,7 @@ import {isDeepStrictEqual} from 'node:util';
 import {createHash} from 'node:crypto';
 import path from 'node:path';
 import {isClipAudioExportRecord,exportPreflightResponseSchema} from '@mioon/contracts';
-import {isTimelineRecordFor,isTimelineRenderRecordFor} from '../timeline-record-format.ts';
+import {allowsFrozenProjectFps,isTimelineRecordFor,isTimelineRenderRecordFor} from '../timeline-record-format.ts';
 import {agentTaskChecksSchema} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskCheck,AgentTaskChecks,AgentTaskCheckValues,AgentTaskCheckGroup,AgentTaskCheckReason} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskSnapshot,AgentTaskStep} from '@mioon/contracts/agent-tasks-v2';
@@ -202,7 +202,11 @@ export async function readAgentTaskChecks(store:Store,snapshot:AgentTaskSnapshot
     // This is the accepted output interval, not a probe of encoded frame
     // count. Reuse the same domain range calculation as the render worker;
     // do not alter H3's historical expected/current groups.
-    try{goalExportValues.set(origin.step.id,{durationFrames:timelineExportOutputFrames(value.snapshot)});}
+    try{
+     const frozen=object(value.snapshot)&&object(value.snapshot.timeline)?value.snapshot.timeline:undefined;
+     const allowProjectFps=allowsFrozenProjectFps(store.db,frozen?.fps);
+     goalExportValues.set(origin.step.id,{durationFrames:timelineExportOutputFrames(value.snapshot,{allowProjectFps})});
+    }
     catch(error){if(!knownObservationFailure(error))throw error;}
    }
    add('export_render','export_parameters',target,artifactProof,!matches?reason('failed','PARAMETERS_MISMATCH'):result.status==='pending'?reason('pending','TASK_PENDING'):result.status==='passed'&&!published?reason('failed','ARTIFACT_UNAVAILABLE'):result.status!=='passed'?reason('not_applicable','TASK_FAILED'):{status:'passed'},{expected,current:observed});

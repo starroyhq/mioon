@@ -6,7 +6,7 @@ import {mediaLocatorFields, validAssetLocator} from './asset-reference-record.ts
 import type {MediaLocator} from './asset-reference-record.ts';
 import {createHash} from 'node:crypto';
 import {volumeEnvelopeField, volumeEnvelopeSnapshotFields, volumeEnvelopeReadSnapshot} from '../../contracts/src/timeline-volume-envelope-processing.ts';
-import {createVolumeEnvelopeEvaluator} from '../../contracts/src/timeline-volume-envelope.ts';
+import {createTimelineVolumeEnvelopeSampler} from './timeline-volume-envelope-clock.ts';
 import {assertVolumeEnvelopeSource} from './timeline-volume-envelope-source.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import {CONTINUOUS_AUDIO_LIMITS as LIMITS, CONTINUOUS_AUDIO_PROFILE,
@@ -369,7 +369,7 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
     const start = timelineAudioSampleSpan(clip.startFrame, from, fps), end = timelineAudioSampleSpan(clip.startFrame, to, fps);
     const blockOffset = timelineAudioSampleSpan(blockStart, from, fps);
     if (clip.volumeEnvelope != null) {
-      const envelope = createVolumeEnvelopeEvaluator(clip, fps);
+      const envelope = createTimelineVolumeEnvelopeSampler(clip, fps);
       for (let sample = start; sample < end; sample++) {
         // Linear fade × linear automation is generally quadratic, not a ramp.
         const gain = audioPreviewEnvelopeGainAtLocalSample(voice, sample, fps) * envelope.atSample(sample);
@@ -475,7 +475,7 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
           beforeEffect();
           const verified = await verifiedAsset(owned, clip.assetId, signal);
           const asset = owned.initial.snapshot.assets.find(asset => asset.id === clip.assetId)!;
-          assertVolumeEnvelopeSource(clip, {mimeType: asset.mimeType, audio: verified.probe ?? null});
+          assertVolumeEnvelopeSource(clip, {mimeType: asset.mimeType, audio: verified.probe ?? null}, fps);
           if (asset.hasAudio !== true) throw fail('AUDIO_PREVIEW_STALE');
           if (!verified.complete && !owned.initial.voices.some(voice => voice.assetId === clip.assetId &&
               voice.startFrame < endFrame && voice.startFrame + voice.durationFrames > startFrame)) {

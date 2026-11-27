@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="c025f24286578f12c8b527f846ae323e47874d2ea56a5c95b6769f28b639881c";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="7d59140d6aa01f4b7bd01bce20220df73744d3791e7b1b6ba25d011e781256f9";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "sequence.preview": {
   "type": "object",
@@ -960,6 +960,27 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
                "type": "integer",
                "minimum": 0,
                "maximum": 9007199254740991
+              },
+              "assetRange": {
+               "type": "object",
+               "properties": {
+                "inFrame": {
+                 "type": "integer",
+                 "minimum": 0,
+                 "maximum": 9007199254740991
+                },
+                "outFrame": {
+                 "type": "integer",
+                 "minimum": 0,
+                 "maximum": 9007199254740991
+                }
+               },
+               "required": [
+                "inFrame",
+                "outFrame"
+               ],
+               "additionalProperties": false,
+               "description": "Optional half-open range on the standalone 30 fps asset grid, supported when placing an asset in a format 6 development project."
               }
              },
              "required": [
@@ -7934,6 +7955,27 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
       "type": "integer",
       "minimum": 0,
       "maximum": 9007199254740991
+     },
+     "assetRange": {
+      "type": "object",
+      "properties": {
+       "inFrame": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991
+       },
+       "outFrame": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991
+       }
+      },
+      "required": [
+       "inFrame",
+       "outFrame"
+      ],
+      "additionalProperties": false,
+      "description": "Optional half-open range on the standalone 30 fps asset grid, supported when placing an asset in a format 6 development project."
      }
     },
     "required": [
@@ -19574,6 +19616,27 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
       "type": "integer",
       "minimum": 0,
       "maximum": 9007199254740991
+     },
+     "assetRange": {
+      "type": "object",
+      "properties": {
+       "inFrame": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991
+       },
+       "outFrame": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991
+       }
+      },
+      "required": [
+       "inFrame",
+       "outFrame"
+      ],
+      "additionalProperties": false,
+      "description": "Optional half-open range on the standalone 30 fps asset grid, supported when placing an asset in a format 6 development project."
      }
     },
     "required": [

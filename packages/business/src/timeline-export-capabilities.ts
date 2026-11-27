@@ -1,4 +1,5 @@
-import {TIMELINE_OUTPUT_PRESETS,isTimelineExportDelivery} from '@mioon/contracts';
+import {isTimelineExportDeliveryForSupportedGeometry} from '@mioon/contracts';
+import type {TimelineFps} from '../../contracts/src/timeline-fps.ts';
 import {run,runStreaming,checkMediaEffect,isMediaEffectRestriction} from './media-runtime.ts';
 import {interruptedMediaError,throwIfMediaAborted,waitForMediaProcesses,MEDIA_TERMINATION_POLICY} from './media-processes.ts';
 import {createPrivateTemporaryDirectory,validatePrivateDirectory} from '@mioon/contracts/private-storage';
@@ -9,7 +10,7 @@ import {TIMELINE_EXPORT_FLOAT_PROFILE_ID} from '@mioon/contracts/timeline-export
 interface TimelineExportDeliveryEffective {
  profileId?: string;width: number;height: number;scaling: string;
  videoCodec: string;preset: string;rateControl: {mode: string;crf?: number;targetKbps?: number};
- bFrames: number;gopFrames: number;pixelFormat: string;fps: number;videoTrackTimescale: number;
+ bFrames: number;gopFrames: number;pixelFormat: string;fps: TimelineFps;videoTrackTimescale: number;
  audioCodec: string;audioKbps: number;audioSampleRate: number;audioChannels: number;
 }
 interface TimelineExportDelivery {effective: TimelineExportDeliveryEffective}
@@ -26,7 +27,7 @@ export const TIMELINE_EXPORT_CAPABILITY_LIMITS=Object.freeze({concurrent:1,queue
 let active: unknown=null;
 const result=(status: string,code: string): CapabilityResult=>({status,code});
 const error=(code: string): Error=>Object.assign(Error('The selected local export profile could not be verified.'),{code});
-const validDelivery=(delivery: unknown): boolean=>TIMELINE_OUTPUT_PRESETS.some(timeline=>isTimelineExportDelivery(delivery,timeline,undefined));
+const validDelivery=(delivery: unknown): boolean=>isTimelineExportDeliveryForSupportedGeometry(delivery);
 function advertisedEncoders(listing: string): Set<string>{
  const lines=listing.split(/\r?\n/),separator=lines.findIndex(line=>line.trim()==='------');
  if(!lines.some(line=>line.trim()==='Encoders:')||separator<0)throw error('EXPORT_CAPABILITY_FAILED');
@@ -114,7 +115,7 @@ export async function inspectTimelineExportCapability(delivery: unknown,{signal,
   }
   const chunks: Buffer[]=[];
   const output=await runStreaming('ffmpeg',['-hide_banner','-loglevel','error','-nostdin','-filter_complex_threads','1',
-   '-f','lavfi','-i','color=c=black:s=64x64:r=30:d=0.1','-f','lavfi','-i','anullsrc=r=48000:cl=stereo:d=0.1',
+   '-f','lavfi','-i',`color=c=black:s=64x64:r=${p.fps}:d=0.1`,'-f','lavfi','-i','anullsrc=r=48000:cl=stereo:d=0.1',
    '-filter_complex',`[0:v]scale=${p.width}:${p.height}:flags=${p.scaling},setsar=1,format=${p.pixelFormat}[v]`,
    '-map','[v]','-map','1:a:0',...timelineExportVideoArgs(typedDelivery),'-frames:v',String(TIMELINE_EXPORT_CAPABILITY_LIMITS.frames),
    '-c:a',p.audioCodec,'-b:a',`${p.audioKbps}k`,'-ar',String(p.audioSampleRate),'-ac',String(p.audioChannels),'-t','0.1',
