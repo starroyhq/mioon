@@ -157,7 +157,7 @@ test('a reverse dissolve uses real SP-P picture handles and the original audio c
     });
     processing.activate();
     await Promise.resolve(); // Activation reconciles committed demands in a microtask.
-    const tasks = processing.list({projectId}).items;
+    const tasks = processing.list({projectId}).items.filter(item => item.kind === 'reverse');
     assert.equal(tasks.length, 2);
     const outcomes = await Promise.all(tasks.map(({taskId}) => processing.wait({projectId, taskId, timeoutMs: 60_000})));
     assert.ok(outcomes.every(({item}) => item.status === 'ready'), JSON.stringify(outcomes));

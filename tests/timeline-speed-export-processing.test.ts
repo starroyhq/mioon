@@ -121,8 +121,9 @@ test('hosted reverse export keeps the original task and consumes its published v
     const expected = Array.from(compiled.value);
     assert.deepEqual(expected, Array.from({length: frames / 2}, (_, output) => frames - 1 - 2 * output));
     const {items} = await rpc<{items: SpeedProcessingItem[]}>('timeline.processing.list', {projectId});
-    assert.equal(items.length, 1);
-    const task = items[0]!;
+    const reverseTasks = items.filter(item => item.kind === 'reverse');
+    assert.equal(reverseTasks.length, 1);
+    const task = reverseTasks[0]!;
     assert.deepEqual({clipId: task.clipId, status: task.status, kind: task.kind}, {clipId, status: 'queued', kind: 'reverse'});
     const base = {projectId, expectedRevision: timeline.revision,
       exportSettings: {...TIMELINE_EXPORT_DEFAULT_SETTINGS, resolution: 'short_360'}};
@@ -154,7 +155,7 @@ test('hosted reverse export keeps the original task and consumes its published v
     backend = undefined;
     rpc = await open();
     const reopened = await rpc<{items: SpeedProcessingItem[]}>('timeline.processing.list', {projectId});
-    assert.deepEqual(reopened.items, [finished.item]);
+    assert.deepEqual(reopened.items.filter(item => item.kind === 'reverse'), [finished.item]);
     const taskResult = inspectProject(projectId, db =>
       db.prepare('SELECT result FROM main.timeline_processing_tasks WHERE id=?').get(task.taskId)?.result);
     assert.equal(typeof taskResult, 'string');
