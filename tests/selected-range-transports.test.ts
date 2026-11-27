@@ -126,6 +126,16 @@ test('real HTTP, CLI and official MCP preflight/render preserve exact range, ful
     assert.equal(checked.data.checks.bytesHashed, f.sources.reduce((n, value) => n + value.sizeBytes, 0));
     await f.unchanged(beforeCheck); assert.equal((f.store.db.prepare('SELECT total_changes() n').get())!.n, changes, 'each transport preflight is read-only');
     const input = {...checkInput, requestId: randomUUID(), purpose: 'export', preflightSnapshotHash: checked.data.snapshotHash};
+    if (index === 0) {
+      const staleInput = {...input, requestId: randomUUID(), preflightSnapshotHash: '0'.repeat(64)};
+      const rejected = await wire.all[0].call('timeline.render', staleInput);
+      assert.equal(f.observations.at(-1)?.status, 409);
+      assert.equal(rejected.ok, false);
+      assert.equal(rejected.error.code, 'PREFLIGHT_STALE');
+      for (const other of wire.all.slice(1)) assert.deepEqual(await other.call('timeline.render', staleInput), rejected);
+      assert.equal(f.receipt(staleInput.requestId), undefined);
+      await f.unchanged(beforeCheck);
+    }
     f.lose(projectRpcPath(f.project.id)); const start = f.submissions.length;
     if (transport.name === 'HTTP') await assert.rejects(transport.call('timeline.render', input));
     else {
