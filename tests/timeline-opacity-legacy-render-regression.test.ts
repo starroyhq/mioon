@@ -39,6 +39,7 @@ const mediaRuntimeUrl = new URL('../packages/business/src/media-runtime.ts', imp
 const imageStageUrl = new URL('../packages/business/src/timeline-image-staging.ts', import.meta.url).href;
 const actualRuntimeUrl = mediaRuntimeUrl + '?opacity-legacy-actual-runtime';
 const actualMediaUrl = mediaUrl + '?opacity-legacy-actual-media';
+const actualImageStageUrl = imageStageUrl + '?opacity-legacy-actual-image-stage';
 let activeRuntime!:ReturnType<typeof fakeRuntime>;
 (globalThis as typeof globalThis & {[runtimeKey]?:unknown})[runtimeKey] = {
   run: (...args: Parameters<ReturnType<typeof fakeRuntime>['run']>) => activeRuntime.run(...args),
@@ -58,7 +59,7 @@ const hooks = registerHooks({resolve(specifier,context,next){
   if (url === mediaUrl) return {format: 'module', shortCircuit: true,
     source: `export * from ${JSON.stringify(actualMediaUrl)};export const run=(...args)=>${runtimeExpression}.run(...args);export const probe=(...args)=>${runtimeExpression}.probe(...args);`};
   if (url === imageStageUrl) return {format: 'module', shortCircuit: true,
-    source: `export const prepareTimelineImageLayers=(...args)=>${runtimeExpression}.prepareImages(...args);`};
+    source: `export * from ${JSON.stringify(actualImageStageUrl)};export const prepareTimelineImageLayers=(...args)=>${runtimeExpression}.prepareImages(...args);`};
   return next(url, context);
 }});
 
