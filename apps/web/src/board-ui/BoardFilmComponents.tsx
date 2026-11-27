@@ -1,5 +1,5 @@
 import React, {useId} from 'react';
-import {Film as FilmIcon} from '@mioon/ui/components/workbench-icons';
+import {ChevronDown, ChevronUp, Film as FilmIcon, Plus} from '@mioon/ui/components/workbench-icons';
 import {useI18n} from '../i18n/I18nProvider.tsx';
 import type {BoardUiProjection} from './projection.ts';
 import './board-ui.css';
@@ -62,7 +62,7 @@ export function BoardFilmStrip({film, open, onOpenChange, selectedNodeId, onLoca
       <span>{durationLabel(film.durationFrames)}</span><span>·</span><span data-testid="board-film-sync" data-synced={synced ? 'true' : 'false'}>{t(synced ? 'boardUi.synced' : 'boardUi.outOfSync')}</span>
       <button type="button" className="board-strip-toggle" data-testid="board-film-strip-toggle" aria-expanded={open} aria-controls={listId}
         aria-label={t(open ? 'boardUi.collapse' : 'boardUi.expand')} title={t(open ? 'boardUi.collapse' : 'boardUi.expand')} onClick={() => onOpenChange(!open)}>
-        <span aria-hidden="true">{open ? '⌄' : '⌃'}</span>
+        {open ? <ChevronDown size={14} aria-hidden="true"/> : <ChevronUp size={14} aria-hidden="true"/>}
       </button>
     </header>
     <div id={listId} hidden={!open} className="board-film-strip-body">
@@ -74,7 +74,7 @@ export function BoardFilmStrip({film, open, onOpenChange, selectedNodeId, onLoca
           <span className="board-film-duration">{durationLabel(item.durationFrames, true)}</span>
         </button>
       </li>)}</ol> : <p className="board-film-empty">{t('boardUi.empty')}</p>}
-      <button type="button" className="board-film-add" data-testid="board-film-add" aria-label={t('redesign.board.addShot')} title={t('redesign.board.addShot')} onClick={onAddShot}>+</button>
+      <button type="button" className="board-film-add" data-testid="board-film-add" aria-label={t('redesign.board.addShot')} title={t('redesign.board.addShot')} onClick={onAddShot}><Plus size={14} aria-hidden="true"/></button>
     </div>
   </section>;
 }

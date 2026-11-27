@@ -83,3 +83,33 @@ test('approved light tokens preserve readable text and semantic media colors', (
   assert.ok(ratio('--wb-accent-foreground','--wb-accent')>=4.5);assert.ok(ratio('--wb-danger-foreground','--wb-danger-fill')>=4.5);
   for(const media of ['video','image','audio','subtitle'])assert.ok(ratio('--wb-media-text',`--wb-${media}`)>=9,media);
 });
+
+test('icons use unified 1.5px stroke width via workbench-icons without bare Unicode icon glyphs', () => {
+  const wbIcons = readFileSync(new URL('packages/ui/src/components/workbench-icons.tsx', root), 'utf8');
+  const appIcons = readFileSync(new URL('apps/web/src/icons.tsx', root), 'utf8');
+  const pfIcons = readFileSync(new URL('apps/web/src/project-file/project-file-icons.tsx', root), 'utf8');
+  assert.match(wbIcons, /WORKBENCH_ICON_STROKE_WIDTH\s*=\s*1\.5/);
+  assert.match(controls, /svg\.lucide\s*\{\s*stroke-width:\s*1\.5;/);
+  assert.match(controls, /details\s*>\s*summary::-webkit-details-marker\s*\{\s*display:\s*none;/);
+  assert.match(appIcons, /from '@mioon\/ui\/components\/workbench-icons'/);
+  assert.match(pfIcons, /from '@mioon\/ui\/components\/workbench-icons'/);
+  assert.doesNotMatch(appIcons, /strokeWidth=["']?(?:1\.65|2|3)/);
+  assert.doesNotMatch(pfIcons, /strokeWidth=["']?(?:1\.65|2|3)/);
+  const walk = (dir: URL): URL[] => readdirSync(dir, { withFileTypes: true }).flatMap(entry =>
+    entry.isDirectory() ? walk(new URL(`${entry.name}/`, dir)) : /\.(?:tsx|css)$/.test(entry.name) ? [new URL(entry.name, dir)] : [],
+  );
+  const forbidden = /[▱⌄⌃▸▾ⓘ⋯]/u;
+  for (const file of walk(new URL('apps/web/src/', root))) {
+    const body = readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    assert.doesNotMatch(body, forbidden, `${file.pathname} still uses a bare Unicode icon glyph`);
+  }
+});
+
+test('single global 1.5px focus-visible ring uses inset offset in tight containers without competing resets', () => {
+  const styles = readFileSync(new URL('apps/web/src/styles.css', root), 'utf8');
+  const light = readFileSync(new URL('packages/ui/src/styles/light.css', root), 'utf8');
+  assert.match(controls, /outline:\s*1\.5px solid var\(--wb-accent-line\);[\s\S]*?outline-offset:\s*1px;/);
+  assert.match(controls, /\.topbar,[\s\S]*?outline:\s*1\.5px solid var\(--wb-accent-line\);[\s\S]*?outline-offset:\s*-2px;/);
+  assert.doesNotMatch(styles, /button:focus-visible,a:focus-visible\{outline:2px/);
+  assert.doesNotMatch(light, /:focus-visible\s*\{[\s\S]*?outline:\s*2px/);
+});

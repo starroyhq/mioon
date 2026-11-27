@@ -39,7 +39,7 @@ function CheckRow({ item, preflighting, snapshot, readOnly, visible, targetName,
   };
   return <div className="mio-check-row" data-testid="agent-task-check" data-check-id={item.id} data-status={status}>
     <span className="mio-check-icon" data-tone={status === 'passed' ? 'success' : status === 'failed' ? 'danger' : 'neutral'} role="img" aria-label={t(`agent.checks.status.${status}`)}>
-      {working ? <span className="wb-spinner" aria-hidden="true" /> : status === 'failed' ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="m9 9 6 6m0-6-6 6" /></svg> : <Icon name={status === 'passed' ? 'check' : 'clock'} />}
+      {working ? <span className="wb-spinner" aria-hidden="true" /> : status === 'failed' ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="m9 9 6 6m0-6-6 6" /></svg> : <Icon name={status === 'passed' ? 'check' : 'clock'} />}
     </span>
     <div className="mio-check-copy">
       <p className="mio-check-name">{t(`agent.checks.type.${item.type}`)}</p>
@@ -47,7 +47,7 @@ function CheckRow({ item, preflighting, snapshot, readOnly, visible, targetName,
       {explanation && <p className="mio-check-reason">{explanation}</p>}
     </div>
     {canLocate && <WorkbenchTooltip content={t('agent.checks.locate', { name })}><Button variant="icon" className="mio-check-locate" aria-label={t('agent.checks.locate', { name })} disabled={!visible} onClick={locate}>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" aria-hidden="true"><circle cx="12" cy="12" r="7" /><path d="M12 2v4m0 12v4M2 12h4m12 0h4" /></svg>
+      <Icon name="locate" size={16} />
     </Button></WorkbenchTooltip>}
   </div>;
 }
@@ -56,7 +56,7 @@ function RequirementRow({item,snapshot}:{item:AgentTaskRequirement;snapshot:Agen
   const {t,locale}=useI18n(),status=taskRequirementStatus(item,snapshot);
   return <div className="mio-check-row mio-requirement-row" data-testid="agent-task-requirement" data-requirement-id={item.id} data-status={status}>
     <span className="mio-check-icon" data-tone={status==='passed'?'success':status==='failed'?'danger':'neutral'} role="img" aria-label={t(`agent.requirements.status.${status}`)}>
-      {status==='repairing'?<span className="wb-spinner" aria-hidden="true"/>:status==='failed'?<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m9 9 6 6m0-6-6 6"/></svg>:<Icon name={status==='passed'?'check':'clock'}/>}
+      {status==='repairing'?<span className="wb-spinner" aria-hidden="true"/>:status==='failed'?<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m9 9 6 6m0-6-6 6"/></svg>:<Icon name={status==='passed'?'check':'clock'}/>}
     </span>
     <div className="mio-check-copy"><p className="mio-check-name">{taskRequirementTitle(item,locale)}</p><p className="mio-check-reason">{taskRequirementCurrent(item,locale)}</p></div>
     {status==='repairing'&&<span className="mio-requirement-status">{t('agent.requirements.status.repairing')}</span>}

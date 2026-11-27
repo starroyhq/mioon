@@ -8,8 +8,8 @@
   box-shadow: none; overflow-wrap: anywhere;
 }
 .pf-rules-dialog textarea.pf-rules-text::placeholder { color: var(--wb-muted); }
-.pf-rules-dialog textarea.pf-rules-text[data-slot="textarea"]:focus,
-.pf-rules-dialog textarea.pf-rules-text[data-slot="textarea"]:focus-visible { outline: none; border-color: var(--wb-accent-line); box-shadow: 0 0 0 1px var(--wb-accent-line); }
+.pf-rules-dialog textarea.pf-rules-text[data-slot="textarea"]:focus { outline: none; border-color: var(--wb-accent-line); box-shadow: none; }
+.pf-rules-dialog textarea.pf-rules-text[data-slot="textarea"]:focus-visible { outline: 1.5px solid var(--wb-accent-line); outline-offset: -2px; border-color: var(--wb-accent-line); box-shadow: none; }
 .pf-rules-dialog textarea.pf-rules-text[readonly] { color: var(--wb-soft); }
 .pf-rules-dialog textarea.pf-rules-text[aria-invalid="true"] { border-color: var(--wb-danger); box-shadow: none; }
 .pf-rules-count { align-self: flex-end; color: var(--wb-muted); font-family: var(--wb-font-mono); font-size: var(--wb-text-caption); line-height: 1.5; }

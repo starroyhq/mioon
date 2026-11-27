@@ -3,6 +3,7 @@ import React, { useLayoutEffect, useMemo, useRef } from 'react';
 import { Button } from '@mioon/ui/components/button';
 import { Input } from '@mioon/ui/components/input';
 import { Textarea } from '@mioon/ui/components/textarea';
+import { X } from '@mioon/ui/components/workbench-icons';
 import { useI18n } from './i18n/I18nProvider.tsx';
 import { useWorkspaceVisibility } from './workspace-visibility.tsx';
 import type { AnnotationState, AssetAnnotationController } from './asset-annotation-state.ts';
@@ -33,7 +34,7 @@ export default function AssetAnnotations({ asset, state, controller, blocked,  o
       {entry?.error && <p role="alert" data-testid="annotation-error">{renderMessage(entry.error)}</p>}
       {entry?.row && !entry.dirty && !entry.row.tags.length && !entry.row.note && <p>{t('annotations.empty')}</p>}
       <label htmlFor="asset-annotation-tag">{t('annotations.tags')}</label>
-      <div className="annotation-tags">{draft?.tags.map(tag => <span key={tag}>{tag}<Button variant="ghost" type="button" size="sm" disabled={disabled} aria-label={t('annotations.removeTag', { tag })} onClick={() => admit(() => controller.removeTag(owned.id, tag, state!.scope))}>×</Button></span>)}</div>
+      <div className="annotation-tags">{draft?.tags.map(tag => <span key={tag}>{tag}<Button variant="ghost" type="button" size="sm" disabled={disabled} aria-label={t('annotations.removeTag', { tag })} onClick={() => admit(() => controller.removeTag(owned.id, tag, state!.scope))}><X size={12} aria-hidden="true" /></Button></span>)}</div>
       <div className="annotation-tag-input"><Input id="asset-annotation-tag" data-testid="annotation-tag-input" value={draft?.tagInput || ''} disabled={disabled} onChange={event => admit(() => controller.editTagInput(owned.id, event.target.value, state!.scope))} onKeyDown={event => { if (event.key === 'Enter' && !event.nativeEvent.isComposing) { event.preventDefault(); admit(() => controller.addTag(owned.id, state!.scope)); } }} /><Button type="button" variant="outline" size="sm" data-testid="annotation-add-tag" disabled={disabled || !draft?.tagInput.trim()} onClick={() => admit(() => controller.addTag(owned.id, state!.scope))}>{t('annotations.addTag')}</Button></div>
       <label htmlFor="asset-annotation-note">{t('annotations.note')}</label>
       <Textarea id="asset-annotation-note" data-testid="annotation-note" rows={4} value={draft?.note || ''} disabled={disabled} onChange={event => admit(() => controller.editNote(owned.id, event.target.value, state!.scope))} />

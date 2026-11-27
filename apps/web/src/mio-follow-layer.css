@@ -84,7 +84,6 @@
   translate: none;
 }
 .mio-follow-locator[data-placed="true"] { pointer-events: auto; }
-.mio-follow-locator.wb-button:focus-visible { outline: 2px solid var(--wb-accent-line); outline-offset: 2px; }
 .mio-follow-locator > span:nth-child(2) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .mio-follow-locator-mark {
   display: grid;
@@ -96,8 +95,8 @@
   background: var(--mio-follow-color);
   color: var(--wb-mio-follow-ink);
 }
-.mio-follow-locator .mio-follow-locator-mark svg { width: 10px; height: 10px; stroke-width: 1.65; }
-.mio-follow-locator svg.mio-follow-locator-arrow { width: 14px; height: 14px; stroke-width: 1.65; flex: none; color: var(--wb-soft); }
+.mio-follow-locator .mio-follow-locator-mark svg { width: 10px; height: 10px; stroke-width: 1.5; }
+.mio-follow-locator svg.mio-follow-locator-arrow { width: 14px; height: 14px; stroke-width: 1.5; flex: none; color: var(--wb-soft); }
 .mio-follow-locator[data-side="left"] .mio-follow-locator-arrow { transform: rotate(180deg); }
 .mio-follow-locator[data-side="top"] .mio-follow-locator-arrow { transform: rotate(-90deg); }
 .mio-follow-locator[data-side="bottom"] .mio-follow-locator-arrow { transform: rotate(90deg); }

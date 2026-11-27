@@ -5,7 +5,6 @@
 .board-ui-canvas {position:relative;min-width:0;min-height:0;background:var(--board-bg);border:1px solid var(--board-line);border-radius:10px;overflow:hidden;}
 .board-ui-inspector {border:1px solid var(--board-line);border-radius:10px;background:var(--board-panel);overflow:auto;}
 .board-ui-static button {font:inherit;color:inherit;cursor:pointer;}
-.board-ui-static button:focus-visible {outline:2px solid var(--wb-accent-line,#fff);outline-offset:3px;}
 .board-ui-static .react-flow__node-board-card {border:0;border-radius:8px;background:transparent;box-shadow:none;}
 .board-ui-card {position:relative;width:240px;background:var(--board-surface);border:1px solid var(--board-line);border-radius:8px;}
 .board-ui-card.is-selected {outline:2px solid var(--wb-accent-line,#fff);outline-offset:0;}

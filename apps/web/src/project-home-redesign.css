@@ -65,11 +65,11 @@
 .project-home-presets legend { margin-bottom: 8px; font-size: var(--wb-text-label); }
 .project-home-presets label { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 16px 8px 14px; border: 1px solid var(--wb-line); border-radius: var(--wb-radius-card); background: var(--wb-card); color: var(--wb-soft); cursor: pointer; }
 .project-home-presets label[data-selected="true"] { border-color: var(--wb-accent-line); box-shadow: 0 0 0 1px var(--wb-accent-line); background: var(--wb-selected); color: var(--wb-text); }
-.project-home-presets label[data-selected="true"]::after { content: "✓"; position: absolute; top: 8px; right: 8px; display: grid; place-items: center; width: 14px; height: 14px; border: 1px solid currentColor; border-radius: 50%; font-size: 10px; line-height: 1; pointer-events: none; }
+.project-home-preset-check { position: absolute; top: 8px; right: 8px; display: grid; place-items: center; width: 14px; height: 14px; border: 1px solid currentColor; border-radius: 50%; pointer-events: none; }
 .project-home-format-icon { flex: none; margin-bottom: 8px; }
 .project-home-presets label > span { font-size: var(--wb-text-body); font-weight: 500; }
 .project-home-presets input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
-.project-home-presets label:focus-within { outline: 2px solid var(--wb-accent); outline-offset: 2px; }
+.project-home-presets label:focus-within { outline: 1.5px solid var(--wb-accent-line); outline-offset: 1px; }
 .project-home-presets small { font: 11px/1.5 var(--wb-font-mono); color: var(--wb-muted); white-space: nowrap; }
 .project-home-presets input:disabled { cursor: default; }
 .project-home-create-dialog .project-home-form-error { color: var(--wb-danger); font-size: var(--wb-text-label); margin-top: 12px; }

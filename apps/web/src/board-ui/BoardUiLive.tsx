@@ -4,7 +4,7 @@
  * surrounding workbench supplies data, session and refresh. */
 import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {WorkbenchButton} from '@mioon/ui/components/workbench-controls';
-import {Box, Clapperboard, ClipboardPaste, Copy, CopyPlus, Grid2X2, Image, Plus, Sparkles, Trash2, Type, User, Video} from '@mioon/ui/components/workbench-icons';
+import {Box, Clapperboard, ClipboardPaste, Copy, CopyPlus, Grid2X2, Image, Plus, Sparkles, Trash2, Type, User, Video, X} from '@mioon/ui/components/workbench-icons';
 import {useI18n} from '../i18n/I18nProvider.tsx';
 import {canvasEditMacShortcuts} from '../CanvasEditingControls.tsx';
 import {format5BoardFailureMessageKey} from '../edit-ui/session.ts';
@@ -405,7 +405,7 @@ export default function BoardUiLive(props: BoardUiLiveProps): React.ReactElement
     {subjectPicker && <div className="board-ui-live-subject-picker" data-testid="board-ui-subject-picker" role="dialog"
       aria-label={t('boardUi.addSubject')}>
       <header><strong>{t('boardUi.addSubject')}</strong><button type="button" aria-label={t('boardUi.collapse')}
-        onClick={() => setSubjectPicker(false)}>×</button></header>
+        onClick={() => setSubjectPicker(false)}><X size={14} aria-hidden="true"/></button></header>
       {(props.mount?.subjects ?? []).filter(subject => !props.board.nodes.some(node => node.subjectId === subject.id)).length
         ? <ul>{(props.mount?.subjects ?? []).filter(subject => !props.board.nodes.some(node => node.subjectId === subject.id))
           .map(subject => <li key={subject.id}><span title={subject.name}>{subject.name}</span>
@@ -426,7 +426,7 @@ export default function BoardUiLive(props: BoardUiLiveProps): React.ReactElement
     {archiveOpen && <div className="board-ui-live-archive" data-testid="board-ui-archive-popover" role="dialog"
       aria-label={t('boardUi.archivedTitle')}>
       <header><strong>{t('boardUi.archivedTitle')}</strong><button type="button" aria-label={t('boardUi.collapse')}
-        onClick={() => setArchiveOpen(false)}>×</button></header>
+        onClick={() => setArchiveOpen(false)}><X size={14} aria-hidden="true"/></button></header>
       {archived.length ? <ul>{archived.map(item => <li key={item.id}>
         <span title={item.name}>{item.name}</span>
         <button type="button" data-testid={`board-ui-restore-${item.id}`} disabled={busy}

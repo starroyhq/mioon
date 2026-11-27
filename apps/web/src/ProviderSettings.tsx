@@ -48,7 +48,7 @@ export default function ProviderSettings({ providers, provider, model, modelEntr
             return <option key={generationProviderIdentity(item)} value={generationProviderIdentity(item)}>{[providerDisplayName(item, t), renderMessage(providerStatusDescriptor(item)), source].filter(Boolean).join(' · ')}</option>;
           })}
         </WorkbenchSelect>
-        {provider?.mock && <WorkbenchTooltip content={t('generation.provider.simulationWarning')}><Button type="button" variant="ghost" size="icon-sm" className="icon-button" aria-label={t('generation.provider.simulationWarning')}>ⓘ</Button></WorkbenchTooltip>}
+        {provider?.mock && <WorkbenchTooltip content={t('generation.provider.simulationWarning')}><Button type="button" variant="ghost" size="icon-sm" className="icon-button" aria-label={t('generation.provider.simulationWarning')}><Icon name="info" size={14} /></Button></WorkbenchTooltip>}
       </div>
     </div>
     {provider && <>

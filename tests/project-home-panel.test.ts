@@ -103,7 +103,7 @@ function harness(patch:Record<string,unknown> = {}) {
     if (name === '../../../packages/i18n/src/index.ts') return i18nCore;
     if (name === './LanguageControl.tsx') return { __esModule: true, default: 'LanguageControl' };
     if (name === 'react') return react;
-    if (name === '@mioon/ui/components/workbench-icons') return { WorkbenchIcon: () => null };
+    if (name === '@mioon/ui/components/workbench-icons') return new Proxy({}, { get: () => () => null });
     if (name === '@mioon/ui/components/dialog') return { Dialog: ({children}:{children?:import("react").ReactNode}) => actual.React.createElement(actual.React.Fragment, null, children) };
     if (name === '@mioon/ui/components/workbench-controls') return { WorkbenchButton: actual.WorkbenchButton, WorkbenchDialogContent: ({children, footer}:{children?:import("react").ReactNode; footer?:import("react").ReactNode}) => actual.React.createElement('section', {role:'dialog'}, children, footer) };
     if (name.endsWith('.css')) return {};

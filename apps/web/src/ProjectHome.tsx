@@ -7,7 +7,7 @@ import type {MenuHelpControl} from './desktop-menu-client.ts';
 import { Button } from '@mioon/ui/components/button';
 import { Input } from '@mioon/ui/components/input';
 import { Label } from '@mioon/ui/components/label';
-import { ChevronRight, Clapperboard, FolderOpen, Info, WorkbenchIcon } from '@mioon/ui/components/workbench-icons';
+import { Check, ChevronRight, CircleHelp, Clapperboard, FolderOpen, Info, WorkbenchIcon } from '@mioon/ui/components/workbench-icons';
 import { Dialog } from '@mioon/ui/components/dialog';
 import { WorkbenchButton, WorkbenchDialogContent } from '@mioon/ui/components/workbench-controls';
 import type { ProjectSummary } from '../../../packages/contracts/src/project-home.ts';
@@ -102,7 +102,7 @@ function ProjectSymbol({ size = 20 }: { size?: number }) {
 }
 
 function HelpSymbol() {
-  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M9.5 9a2.5 2.5 0 1 1 4.1 1.9c-1 .7-1.6 1.1-1.6 2.6M12 17h.01" /></svg>;
+  return <CircleHelp size={16} aria-hidden="true" />;
 }
 
 function FormatSymbol({ format }: { format: string }) {
@@ -375,7 +375,7 @@ export default function ProjectHome({ projects, phase, openingName, deferOpening
               <div className="project-home-direction"><Textarea id={`${prefix}-description`} data-testid="project-home-description" value={description} rows={2} maxLength={500} disabled={locked || createBlocked}
                 placeholder={t('projects.directionPlaceholder')} onChange={event => { if (canAct() && current.current.showProjectOptions && !current.current.createBlocked) { publishCreate({ description: event.target.value }); setDescription(event.target.value); setFormError(''); } }} /><span className="project-home-direction-count" aria-hidden="true">{description.length} / 500</span></div>
             </div>
-            <fieldset className="project-home-presets"><legend>{t('redesign.projects.format')}</legend>{([['portrait_1080', 'portrait', '9:16', '1080×1920'], ['landscape_1080', 'landscape', '16:9', '1920×1080'], ['square_1080', 'square', '1:1', '1080×1080']] as const).map(([value, label, ratio, dimensions]) => <label key={value} data-selected={timelinePresetId === value}><input type="radio" name={`${prefix}-preset`} value={value} checked={timelinePresetId === value} disabled={locked || createBlocked} onChange={() => { if (canAct() && current.current.showProjectOptions && !current.current.createBlocked) { publishCreate({ preset: value }); setTimelinePresetId(value); } }} /><FormatSymbol format={value} /><span>{t(`redesign.projects.${label}`)}</span><small>{ratio} · {dimensions}</small></label>)}</fieldset>
+            <fieldset className="project-home-presets"><legend>{t('redesign.projects.format')}</legend>{([['portrait_1080', 'portrait', '9:16', '1080×1920'], ['landscape_1080', 'landscape', '16:9', '1920×1080'], ['square_1080', 'square', '1:1', '1080×1080']] as const).map(([value, label, ratio, dimensions]) => <label key={value} data-selected={timelinePresetId === value}><input type="radio" name={`${prefix}-preset`} value={value} checked={timelinePresetId === value} disabled={locked || createBlocked} onChange={() => { if (canAct() && current.current.showProjectOptions && !current.current.createBlocked) { publishCreate({ preset: value }); setTimelinePresetId(value); } }} />{timelinePresetId === value && <span className="project-home-preset-check" aria-hidden="true"><Check size={10} /></span>}<FormatSymbol format={value} /><span>{t(`redesign.projects.${label}`)}</span><small>{ratio} · {dimensions}</small></label>)}</fieldset>
             </>}
             {formError && <p id={`${prefix}-form-error`} className="project-home-form-error" role="alert">{renderMessage(formError)}</p>}
           </form></WorkbenchDialogContent></Dialog>}

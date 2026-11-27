@@ -13,7 +13,7 @@ import {createSettingsWorkspaceIdentityOwner} from './project-entry-identity.ts'
 import type { SettingsConnectionPage, SettingsPage } from './settings-window-state.ts';
 import { createSettingsWindowNavigation } from './settings-window-state.ts';
 import { Button } from '@mioon/ui/components/button';
-import { WorkbenchIcon } from '@mioon/ui/components/workbench-icons';
+import { ChevronDown, WorkbenchIcon } from '@mioon/ui/components/workbench-icons';
 import { useUiPreferences } from './UiPreferencesProvider.tsx';
 import { retireSettingsBootClose } from './settings-boot-close.ts';
 import type { SettingsBootView } from './settings-boot.ts';
@@ -120,7 +120,7 @@ export default function SettingsRoot({ context, bridge, contractChecks, renderSe
   }, [boot, workspace, initialAppearance, appearancePhase]);
   useEffect(() => receiveEntry.current(context), [context]);
   return <main className="project-home project-home-settings-window native-settings-panel"><header className="native-settings-panel-header"><span className="native-settings-panel-title">{t('settings.title')}</span>
-      <details className="settings-workspace-status settings-workspace-status-global" open={workspace === 'failed' || identity.getState().identityBlocked}><summary>{t('settings.workspaceStatus')}</summary><div><ProjectEntryIdentityStatus owner={identity} workspace /></div></details>
+      <details className="settings-workspace-status settings-workspace-status-global" open={workspace === 'failed' || identity.getState().identityBlocked}><summary>{t('settings.workspaceStatus')}<ChevronDown size={14} className="settings-workspace-status-chevron" aria-hidden="true" /></summary><div><ProjectEntryIdentityStatus owner={identity} workspace /></div></details>
       <Button type="button" variant="ghost" className="native-settings-panel-close" data-testid="native-settings-panel-close" aria-label={t('common.closeSettings')} title={t('common.closeSettings')} onClick={() => { void requestClose(); }}><WorkbenchIcon name="close" /></Button>
     </header>
     <section className="project-home-settings" aria-label={t('settings.title')}>

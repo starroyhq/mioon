@@ -131,7 +131,7 @@
 .pf-create-preset-cards > label { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; height: 120px; border: 1px solid var(--wb-line); border-radius: var(--wb-radius-card); background: var(--wb-card); color: var(--wb-text); cursor: pointer; }
 .pf-create-preset-cards > label[data-selected] { border-color: var(--wb-accent-line); box-shadow: inset 0 0 0 1px var(--wb-accent-line); background: var(--wb-hover); }
 .pf-create-preset-cards > label > input { position: absolute; opacity: 0; pointer-events: none; }
-.pf-create-preset-cards > label:focus-within { outline: 1.5px solid var(--wb-accent-line); outline-offset: 2px; }
+.pf-create-preset-cards > label:focus-within { outline: 1.5px solid var(--wb-accent-line); outline-offset: 1px; }
 .pf-create-presets:disabled .pf-create-preset-cards > label { cursor: default; color: var(--wb-soft); }
 .pf-create-preset-check { position: absolute; top: 9px; right: 9px; padding: 1px; border: 1px solid currentColor; border-radius: 50%; }
 .pf-create-preset-name { color: var(--wb-soft); font-size: var(--wb-text-body); line-height: 1.5; }

@@ -117,16 +117,6 @@
   border-color: var(--wb-line);
   background: var(--wb-input);
 }
-:root.light :is(button, a, input, textarea, select, [tabindex]):focus-visible {
-  outline: 2px solid var(--wb-accent-line);
-  outline-offset: 2px;
-}
-/* The range input receives keyboard focus inside the visual thumb. */
-:root.light [data-slot="slider-thumb"]:has(input:focus-visible) {
-  outline: 2px solid var(--wb-accent-line);
-  outline-offset: 2px;
-  box-shadow: 0 0 0 4px var(--wb-accent-subtle);
-}
 
 /* A light timeline is a working surface, rather than a full-width table grid. */
 :root.light .dock-workbench .timeline-panel.edit-timeline :is(.timeline-toolbar, .timeline-track, .track-label) {

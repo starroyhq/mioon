@@ -22,6 +22,7 @@ function fixture() {
   Function('require','module','exports','document','requestAnimationFrame',transformSync(readFileSync(new URL('../apps/web/src/CompactPanelRail.tsx',import.meta.url),'utf8'),{loader:'tsx',format:'cjs'}).code)((name: string) => {
     if(name==='react')return react;
     if(name==='@mioon/ui/components/workbench-controls')return{WorkbenchButton:'WorkbenchButton'};
+    if(name==='@mioon/ui/components/workbench-icons')return new Proxy({},{get:(_,key)=>String(key)});
     if(name==='./WorkspaceControls.tsx')return{WorkbenchTooltip:'WorkbenchTooltip'};
     if(name==='./workspace-visibility.tsx')return{WorkspaceVisibilityProvider:'WorkspaceVisibilityProvider'};
     if(name==='./i18n/I18nProvider.tsx')return{useI18n:()=>createI18nTestContext(locale)};

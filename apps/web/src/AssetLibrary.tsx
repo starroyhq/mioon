@@ -6,6 +6,7 @@ import { Input } from '@mioon/ui/components/input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@mioon/ui/components/tabs';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@mioon/ui/components/collapsible';
 import { ScrollArea } from '@mioon/ui/components/scroll-area';
+import { PanelLeftClose } from '@mioon/ui/components/workbench-icons';
 import { WorkbenchTooltip, WorkbenchSelect } from './WorkspaceControls.tsx';
 import { WorkbenchPanelHeader, WorkbenchPanelTabList } from './WorkbenchPanelHeader.tsx';
 import AssetContextMenu from './AssetContextMenu.tsx';
@@ -133,7 +134,7 @@ export default function AssetLibrary({ activeTab, onTabChange, assets, filter, o
   const menuAsset = menu && menu.scope === libraryScope && interaction.visible ? visible.find(asset => asset.id === menu.assetId) ?? null : null;
 
   return <Collapsible open={!collapsed} onOpenChange={open => { if (!open) onCollapse(); }} className={`asset-panel ${collapsed ? 'panel-collapsed' : ''}`} render={<aside aria-label={t('assets.indexedLibrary')} />} data-testid="asset-panel" onDragOver={(e: DragEvent) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); } }} onDrop={(e: DragEvent) => { if (e.dataTransfer.files.length) { e.preventDefault(); if (typeof onFiles === 'function') onFiles(Array.from(e.dataTransfer.files)); } }}>
-    {subjects ? <WorkbenchPanelHeader collapseLabel={t('assets.collapse')} collapseTestId="toggle-assets">
+    {subjects ? <WorkbenchPanelHeader side="left" collapseLabel={t('assets.collapse')} collapseTestId="toggle-assets">
       <Tabs value={libraryView} className="panel-header-tabs" onValueChange={value => {
         if (value === 'assets' || value === 'subjects') chooseLibraryTab(value);
       }}>
@@ -142,7 +143,7 @@ export default function AssetLibrary({ activeTab, onTabChange, assets, filter, o
           <TabsTrigger value="subjects" id="library-subjects-tab" aria-controls="library-subjects-pane" data-testid="library-subjects-tab">{t('subjects.subjects')}</TabsTrigger>
         </WorkbenchPanelTabList>
       </Tabs>
-    </WorkbenchPanelHeader> : <div className="asset-panel-heading"><h2>{t('assets.library')}</h2><span>{assets.length}</span><CollapsibleTrigger render={<Button variant="ghost" className="icon-button" aria-label={t('assets.collapse')} title={t('assets.collapse')} data-testid="toggle-assets" />}><Icon name="minus" size={16} /></CollapsibleTrigger></div>}
+    </WorkbenchPanelHeader> : <div className="asset-panel-heading"><h2>{t('assets.library')}</h2><span>{assets.length}</span><CollapsibleTrigger render={<Button variant="ghost" className="icon-button" aria-label={t('assets.collapse')} title={t('assets.collapse')} data-testid="toggle-assets" />}><PanelLeftClose size={16} aria-hidden="true" /></CollapsibleTrigger></div>}
     <CollapsibleContent keepMounted className="asset-panel-content">
        <WorkspaceVisibilityProvider visible={libraryView === 'assets'}><div className="library-view-pane" id="library-assets-pane" role={subjects ? 'tabpanel' : undefined} aria-labelledby={subjects ? 'library-assets-tab' : undefined} hidden={libraryView !== 'assets'} inert={libraryView !== 'assets'}>
        <Button variant="outline" className="button import-button full" data-testid="import-button" disabled={busy.import || typeof onImport !== 'function'} onClick={onImport}>{busy.import ? <span className="spinner" /> : <Icon name="upload" size={15} />}{busy.import ? t('assets.importing') : t('assets.importMedia')}</Button>

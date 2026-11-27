@@ -244,11 +244,6 @@
   pointer-events: none;
 }
 
-.external-agents-disabled-wrap:focus-visible {
-  outline: 1.5px solid var(--wb-accent-line);
-  outline-offset: 2px;
-}
-
 .external-agents-mcp-card {
   display: flex;
   flex-direction: column;
@@ -272,11 +267,6 @@
 
 .external-agents-mcp-row.is-disabled > * {
   pointer-events: none;
-}
-
-.external-agents-mcp-row.is-disabled:focus-visible {
-  outline: 1.5px solid var(--wb-accent-line);
-  outline-offset: 2px;
 }
 
 .external-agents-mcp-agent {

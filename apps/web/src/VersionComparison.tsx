@@ -4,7 +4,7 @@ import React, { useLayoutEffect, useRef, useState } from 'react';
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogClose } from '@mioon/ui/components/dialog';
 import { Button } from '@mioon/ui/components/button';
 import { Switch } from '@mioon/ui/components/switch';
-import { Play, Pause, MoreHorizontal } from '@mioon/ui/components/workbench-icons';
+import { Play, Pause, MoreHorizontal, X } from '@mioon/ui/components/workbench-icons';
 import { useI18n } from './i18n/I18nProvider.tsx';
 import { captureComparison, comparisonAvailable, comparisonCurrent, comparisonOptions, comparisonPairCurrent } from './version-comparison-state.ts';
 import type { ComparisonBinding, ComparisonContext } from './version-comparison-state.ts';
@@ -124,7 +124,7 @@ export default function VersionComparison(props: Props) {
     : !pairReady ? 'comparison.chooseBoth' : null;
   return <Dialog open onOpenChange={open => { if (!open) close(); }}><DialogContent className="modal wide version-comparison version-comparison-dialog" showCloseButton={false}>
     <header className="modal-header"><div><DialogTitle>{t('projects.comparison.title')}</DialogTitle><DialogDescription className="sr-only">{t('comparison.help')}</DialogDescription></div>
-      <DialogClose render={<Button variant="ghost" aria-label={t('shell.closeDialog')} onClick={close} />}>×</DialogClose></header>
+      <DialogClose render={<Button variant="ghost" aria-label={t('shell.closeDialog')} onClick={close} />}><X size={16} aria-hidden="true" /></DialogClose></header>
     {comparisonStatus && <p className="comparison-status" role="status">{t(comparisonStatus)}</p>}
     {choices.some(Boolean) && <Button variant="ghost" className="button comparison-reset" onClick={() => { if (live.current.closed || live.current.props.getContext().scope !== renderedScope || choiceKey(live.current.choices) !== renderedChoices) return; pause(); live.current.choices = [null, null]; setChoices([null, null]); setErrors([null, null]); }}>{t('comparison.reset')}</Button>}
     <div className="comparison-content"><div className="comparison-grid">{(['A', 'B'] as const).map((label, index) => {

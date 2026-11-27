@@ -58,7 +58,6 @@
 .previs-icon-button{display:inline-flex;align-items:center;justify-content:center;width:var(--wb-control);height:var(--wb-control);padding:0;border:0;border-radius:var(--wb-radius-control);background:transparent;color:var(--wb-soft);cursor:pointer}
 .previs-icon-button:hover:not(:disabled){background:var(--wb-hover);color:var(--wb-text)}
 .previs-icon-button:disabled{color:var(--wb-disabled);cursor:default}
-.previs-icon-button:focus-visible,.previs-segment:focus-visible,.previs-outline-select:focus-visible,.previs-eye:focus-visible,.previs-anchor:focus-visible,.previs-viewport:focus-visible{outline:2px solid var(--wb-accent-line);outline-offset:1px}
 .previs-save-status{display:inline-flex;align-items:center;gap:6px;font-size:var(--wb-text-caption);color:var(--wb-soft);white-space:nowrap}
 .previs-save-status[data-status="pending"] .previs-saved-dot,.previs-save-status[data-status="saving"] .previs-saved-dot,.previs-save-status[data-status="retrying"] .previs-saved-dot{background:var(--wb-warning)}
 .previs-save-status[data-status="conflict"],.previs-save-status[data-status="failed"]{color:var(--wb-danger)}
@@ -189,7 +188,6 @@
 .previs-play:hover:not(:disabled){color:var(--wb-text)}
 .previs-play[aria-pressed="true"]{background:var(--wb-raised);color:var(--wb-text);font-weight:600}
 .previs-play:disabled{cursor:default;opacity:.55}
-.previs-play:focus-visible{outline:2px solid var(--wb-accent-line);outline-offset:1px}
 .previs-focal-value{font-family:var(--wb-font-mono);font-size:var(--wb-text-label)}
 .previs-keyframe-list{display:flex;align-items:stretch;gap:var(--wb-space-2);min-height:100px;padding:0 var(--wb-space-3) var(--wb-space-3);overflow-x:auto;overscroll-behavior-x:contain;scroll-padding-inline:var(--wb-space-3) calc(136px + var(--wb-space-2) + var(--wb-space-3))}
 .previs-keyframe-cards{flex:none;display:flex;gap:var(--wb-space-2)}
@@ -219,7 +217,6 @@
 .previs-keyframe-add:disabled{color:var(--wb-disabled);cursor:default}
 .previs-keyframe-add-icon{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border:1px solid var(--wb-line);border-radius:50%;background:var(--wb-raised)}
 .previs-keyframe-add>kbd{padding:0 5px;border:1px solid var(--wb-line);border-radius:4px;font-family:var(--wb-font-mono);font-size:var(--wb-text-min);color:var(--wb-muted)}
-.previs-keyframe-select:focus-visible,.previs-keyframe-more:focus-visible,.previs-keyframe-add:focus-visible{outline:2px solid var(--wb-accent-line);outline-offset:1px}
 .previs-keyframe-menu{min-width:248px}
 .previs-menu-item{gap:8px}
 .previs-menu-copy{flex:1;min-width:0;display:flex;flex-direction:column}
