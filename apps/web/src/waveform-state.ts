@@ -47,6 +47,10 @@ export interface WaveformWindow {
   key: string;
   unsupported?: boolean;
   blockedReason?: typeof SPEED_RENDER_NOT_READY;
+  outputStartFrame?: number;
+  outputEndFrame?: number;
+  outputPoints?: number;
+  speedFreeze?: boolean;
 }
 export interface WaveformReason { code: string; message: string }
 export interface WaveformEntry {
@@ -59,6 +63,11 @@ export interface WaveformEntry {
   width: number;
   key: string;
   unsupported?: boolean;
+  outputStartFrame?: number;
+  outputEndFrame?: number;
+  outputPoints?: number;
+  speedFreeze?: boolean;
+  outputDomain?: boolean;
   status: WaveformEntryStatus;
   reason?: WaveformReason;
   phase: WaveformPhase;
@@ -115,20 +124,21 @@ export function waveformWindow(clip: WaveformClip, pixelsPerFrame: number, leftF
   return { ...item, key: waveformKey(item) };
 }
 
-export function visibleWaveformWindows({ timeline, assets, pixelsPerFrame, leftFrame, rightFrame, visibleTrackIds }: {
+export function visibleWaveformWindows({ timeline, assets, pixelsPerFrame, leftFrame, rightFrame, visibleTrackIds, windowForClip }: {
   timeline: WaveformTimeline | null | undefined;
   assets: readonly WaveformAsset[];
   pixelsPerFrame: number;
   leftFrame: number;
   rightFrame: number;
   visibleTrackIds: ReadonlySet<string>;
+  windowForClip?: (clip: WaveformClip, pixelsPerFrame: number, leftFrame: number, rightFrame: number) => WaveformWindow | null;
 }): WaveformWindow[] {
   const sources = new Map<string | undefined, WaveformAsset>(assets.map(asset => [asset.id, asset] as const));
   return (timeline?.clips || []).flatMap(clip => {
     const asset = sources.get(clip.assetId);
     if (!visibleTrackIds.has(clip.trackId) || !supportsWaveform(asset) || (asset.projectId && asset.projectId !== timeline?.projectId)) return [];
-    const item = waveformWindow(clip, pixelsPerFrame, leftFrame, rightFrame, timeline?.fps);
-    return item ? [{ ...item, unsupported: Number(asset.duration) > WAVEFORM_LIMITS.seconds }] : [];
+    const item = windowForClip ? windowForClip(clip, pixelsPerFrame, leftFrame, rightFrame) : waveformWindow(clip, pixelsPerFrame, leftFrame, rightFrame, timeline?.fps);
+    return item ? [{ ...item, unsupported: !item.speedFreeze && Number(asset.duration) > WAVEFORM_LIMITS.seconds }] : [];
   });
 }
 
@@ -163,7 +173,10 @@ const retriable = (entry: WaveformEntry | undefined): boolean => ['error', 'inte
 const protocolError = (): Error => Object.assign(new Error('波形状态返回无效，请重试。'), { code: 'WAVEFORM_PROTOCOL' });
 const sameWindow = (left: WaveformWindow, right: WaveformWindow): boolean => left.key === right.key && left.clipId === right.clipId && left.assetId === right.assetId
   && left.sourceStartFrame === right.sourceStartFrame && left.sourceEndFrame === right.sourceEndFrame && left.points === right.points
-  && left.left === right.left && left.width === right.width && Boolean(left.unsupported) === Boolean(right.unsupported) && left.blockedReason === right.blockedReason;
+  && left.left === right.left && left.width === right.width && Boolean(left.unsupported) === Boolean(right.unsupported)
+  && left.blockedReason === right.blockedReason
+  && left.outputStartFrame === right.outputStartFrame && left.outputEndFrame === right.outputEndFrame
+  && left.outputPoints === right.outputPoints && Boolean(left.speedFreeze) === Boolean(right.speedFreeze);
 
 interface WaveformReply {
   readonly status: WaveformStatus;
@@ -202,7 +215,18 @@ export function createWaveformController({ api, onChange = () => {}, now = Date.
     if (!entry) {
       const reason = item.blockedReason ? {code: item.blockedReason, message: SPEED_RENDER_NOT_READY_MESSAGE}
         : item.unsupported ? {code: 'DURATION_LIMIT', message: '超过10分钟暂不支持波形'} : undefined;
-      entry = { ...item, status: reason ? 'unsupported' : 'loading', reason, phase: reason ? 'idle' : 'discover', nextAt: 0, retry: false };
+      entry = item.speedFreeze
+        ? {
+            ...item,
+            status: 'ready',
+            peaks: Array<number>(Math.max(1, Math.min(WAVEFORM_LIMITS.points, item.outputPoints ?? item.points))).fill(0),
+            clipped: false,
+            outputDomain: true,
+            phase: 'idle',
+            nextAt: 0,
+            retry: false,
+          }
+        : { ...item, status: reason ? 'unsupported' : 'loading', reason, phase: reason ? 'idle' : 'discover', nextAt: 0, retry: false };
       entries.set(item.key, entry);
     }
     // Touch LRU; never keep peak arrays for the entire library.

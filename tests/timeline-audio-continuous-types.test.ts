@@ -84,9 +84,10 @@ test('strict real compiler rejects unsuppressed runner and coordinator implement
   const formal = JSON.parse(await readFile(path.join(repository, configurationName), 'utf8')) as {compilerOptions: Record<string, unknown>};
   const options = ts.convertCompilerOptionsFromJson(formal.compilerOptions, path.join(repository, 'tests/typecheck'));
   assert.deepEqual(options.errors, []);
-  const copied = await copySourceClosure(directory, [...sources, 'packages/contracts/src/timeline-volume-envelope.ts', ...consumers.map(name => `tests/typecheck/${name}`)], options.options);
+  const copied = await copySourceClosure(directory, [...sources, 'packages/contracts/src/timeline-volume-envelope.ts',
+    'packages/i18n/src/locale.ts', ...consumers.map(name => `tests/typecheck/${name}`)], options.options);
   t.diagnostic(`Isolated strict compiler copied ${copied} real source modules and the genuine contracts package`);
-  for (const name of ['package.json', 'packages/contracts/package.json']) {
+  for (const name of ['package.json', 'packages/contracts/package.json', 'packages/i18n/package.json']) {
     const destination = path.join(directory, name);
     await mkdir(path.dirname(destination), {recursive: true});
     await writeFile(destination, await readFile(path.join(repository, name)));
@@ -95,11 +96,12 @@ test('strict real compiler rejects unsuppressed runner and coordinator implement
   // its root files are narrowed to this isolated copy and its genuine consumers.
   await writeFile(path.join(directory, configurationName), JSON.stringify({compilerOptions: formal.compilerOptions,
     files: [...sources.map(name => `../../${name}`), ...consumers.map(name => `./${name}`)]}));
-  // The public package route must resolve to copied source as well. Zod is its
-  // real installed dependency; no ambient declarations or resolver aliases are
-  // supplied to hide missing or incompatible types.
+  // Keep the real sibling locale import when resolving the copied public
+  // contracts package. Zod is copied from the installed dependency unchanged.
   await cp(path.join(repository, 'packages/contracts/src'), path.join(directory, 'packages/contracts/src'), {recursive: true});
-  await cp(path.join(directory, 'packages/contracts'), path.join(directory, 'node_modules/@mioon/contracts'), {recursive: true});
+  for (const name of ['contracts', 'i18n']) {
+    await cp(path.join(directory, 'packages', name), path.join(directory, 'node_modules/@mioon', name), {recursive: true});
+  }
   await cp(await realpath(path.join(repository, 'packages/contracts/node_modules/zod')), path.join(directory, 'node_modules/zod'), {recursive: true});
   const initial = await compile(directory, compiler);
   assert.equal(initial.status, 0, initial.stdout + initial.stderr);

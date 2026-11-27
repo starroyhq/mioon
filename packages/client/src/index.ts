@@ -31,6 +31,7 @@ import {fcpExportSchemas} from '../../contracts/src/fcp-export.ts';
 import {premiereExportSchemas} from '../../contracts/src/premiere-export.ts';
 import {schemas as coreSchemas, descriptions as coreDescriptions, parse, operationEffect, effectAnnotations, LOCAL_MUTATION_OPERATIONS, isLocalMutationResponse, isExportPreflightResponse, isTimelineFormatReadResponse, TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, SUBJECT_MUTATION_OPERATIONS, isSubjectMutationResponse, hasRequestNotAppliedProof} from '@mioon/contracts';
 import {isTimelineProcessingOperation, timelineProcessingResponseSchemas, TIMELINE_PROCESSING_WAIT_DEFAULT_MS} from '@mioon/contracts';
+import {isPreviewMediaForClip} from '@mioon/contracts/timeline-preview-media';
 import {resolveConnection, connectionSource, ConnectionError, type ConnectionSource, type LocalConnection} from './connection.ts';
 import {IMAGE_MUTATION_OPERATIONS,isImageMutationResponse,isImageTaskResponse,isImageGroupResponse,isImageRequestResponse,isImageProfilesResponse,isImageListResponse} from '@mioon/contracts';
 import {canonicalImageInput,isComfyObserveResponse,isComfyRemoteResponse} from '@mioon/contracts';
@@ -431,7 +432,8 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
       const decoded = timelineProcessingResponseSchemas[operation].safeParse(result);
       if (!decoded.success ||
           'item' in decoded.data && decoded.data.item.taskId !== parsed.taskId ||
-          'taskId' in decoded.data && decoded.data.taskId !== parsed.taskId) {
+          'taskId' in decoded.data && !('mode' in decoded.data) && decoded.data.taskId !== parsed.taskId ||
+          'mode' in decoded.data && !isPreviewMediaForClip(decoded.data, String(parsed.projectId), String(parsed.clipId))) {
         throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid timeline processing response.', {details: uncertainRequestDetails(body)});
       }
       return decoded.data as T;

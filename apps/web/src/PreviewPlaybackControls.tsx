@@ -11,6 +11,7 @@ interface Props {
   bindingKey: string; getMedia: () => HTMLMediaElement | null; isCurrent: (media: HTMLMediaElement) => boolean;
   position: number; duration: number; fps: number; format: 'timecode'|'seconds'; standaloneSource: boolean;
   onStep: (delta: number) => void; metadata: string;
+  customPlayback?: {readonly isPlaying: () => boolean; readonly subscribe: (listener: () => void) => () => void; readonly toggle: () => void} | null;
 }
 /** A control always re-reads the current binding; a retained event cannot play
  * a hidden/disposed source after workspace or preview-mode navigation. */
@@ -19,11 +20,12 @@ export default function PreviewPlaybackControls(props: Props) {
   const current = useRef(props);current.current = props;
   const actionEpoch = useRef(0);
   const [state,setState] = useState({playing:false,ready:false}), [failed,setFailed] = useState(false);
+  const hasCustomPlayback = Boolean(props.customPlayback);
   useLayoutEffect(() => {
     let active = true;
     const control: MenuPlaybackControl = {scope: () => {
       const value = current.current, media = value.getMedia();
-      return JSON.stringify([value.bindingKey, actionEpoch.current, media?.paused ?? null, media?.ended ?? null]);
+      return JSON.stringify([value.bindingKey, actionEpoch.current, media?.paused ?? null, media?.ended ?? null, value.customPlayback ? value.customPlayback.isPlaying() : null]);
     }, available: () => {
       const value = current.current, media = value.getMedia();
       return Boolean(active && media && value.isCurrent(media) && media.readyState >= 1);
@@ -35,18 +37,26 @@ export default function PreviewPlaybackControls(props: Props) {
   // sampled, including a retained player reopened after its metadata loaded.
   useEffect(() => {
     const media = props.getMedia();setFailed(false);
-    const update = () => {setState({playing:Boolean(media && props.isCurrent(media) && !media.paused && !media.ended),ready:Boolean(media && props.isCurrent(media) && media.readyState >= 1)});current.current.onMenuStateChange?.();};
+    const update = () => {
+      const custom = current.current.customPlayback;
+      const isValid = Boolean(media && props.isCurrent(media));
+      const playing = custom ? Boolean(isValid && custom.isPlaying()) : Boolean(isValid && media && !media.paused && !media.ended);
+      setState({playing,ready:Boolean(isValid && media && media.readyState >= 1)});
+      current.current.onMenuStateChange?.();
+    };
     update();
     const events = ['play','playing','pause','ended','loadedmetadata','emptied','error'];
     for (const name of events) media?.addEventListener(name,update);
-    return () => {for (const name of events) media?.removeEventListener(name,update);};
-  }, [props.bindingKey,props.getMedia,props.isCurrent]);
+    const unsubscribe = current.current.customPlayback?.subscribe(update);
+    return () => {unsubscribe?.();for (const name of events) media?.removeEventListener(name,update);};
+  }, [props.bindingKey,props.getMedia,props.isCurrent,hasCustomPlayback]);
   async function toggle() {
     const value = current.current, media = value.getMedia();
     if (!media || !value.isCurrent(media) || media.readyState < 1) return;
     // Revoke an older toggle before play() can resolve. A subsequent native
     // pause must not become Play after another control already paused/ended.
     actionEpoch.current++; value.onMenuStateChange?.();
+    if (value.customPlayback) { setFailed(false); value.customPlayback.toggle(); return; }
     if (!media.paused) {media.pause();return;}
     setFailed(false);
     try {await media.play();} catch {if (current.current.bindingKey===value.bindingKey && value.isCurrent(media)) setFailed(true);}

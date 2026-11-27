@@ -93,7 +93,7 @@ test('CLI localizes only prose; default help snapshot, schema, version and error
   expectedOperations.splice(expectedOperations.indexOf('sequence.inspect') + 1, 0, 'sequence.generation-inputs.get');
   expectedOperations.splice(expectedOperations.indexOf('export.output.get') + 1, 0, 'clip.audio.export', 'clip.audio.export.get');
   expectedOperations.splice(expectedOperations.indexOf('clip.audio.export.get') + 1, 0,
-    'timeline.processing.list', 'timeline.processing.inspect', 'timeline.processing.wait', 'timeline.processing.retry',
+    'timeline.preview.media', 'timeline.processing.list', 'timeline.processing.inspect', 'timeline.processing.wait', 'timeline.processing.retry',
     'timeline.processing.cancel', 'timeline.processing.cache.get', 'timeline.processing.cache.clear');
   expectedOperations.splice(expectedOperations.indexOf('timeline.processing.cache.clear') + 1, 0, ...fcpOperations, ...premiereOperations);
   expectedOperations.splice(expectedOperations.indexOf('timeline.loudness.prepare') + 1, 0, 'timeline.clip.loudness');

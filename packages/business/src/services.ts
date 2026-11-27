@@ -7,6 +7,7 @@ import {createProjectBackgroundState} from './background-task-state.ts';
 import {createTimelineProcessingService} from './timeline-processing/service.ts';
 import type {ProcessingServiceOptions} from './timeline-processing/service.ts';
 import {isTimelineProcessingOperation, timelineProcessingSchemas, timelineProcessingResponseSchemas} from '../../contracts/src/timeline-processing.ts';
+import {readTimelinePreviewMedia} from './timeline-preview-media.ts';
 import {createWorkspaceConfiguration} from './workspace-configuration.ts';
 import {isProjectStore} from './project-file/store.ts';
 import type {ProjectStore} from './project-file/store.ts';
@@ -41,6 +42,8 @@ import {readFormat5AudioProjection} from './format5-timeline-render.ts';
 import {createTimelineAudioPreviewServices} from './timeline-audio-preview.ts';
 import {createTimelineAudioPreviewDecoder} from './timeline-audio-preview-decoder.ts';
 import {createTimelineAudioContinuousServices} from './timeline-audio-continuous.ts';
+import {FORMAT6_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
+import {timelineStorageFormat, timelineStorageSchema} from './project-file/timeline-storage.ts';
 import {createTimelineAudioContinuousDecoder} from './timeline-audio-continuous-decoder.ts';
 import {createTimelineAudioPreviewCoordinator} from './timeline-audio-preview-coordinator.ts';
 import {validateTimeline} from './timeline-inputs.ts';
@@ -775,11 +778,12 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  const loudnessApply=createTimelineLoudnessApplyServices({
   measurement:mixLoudness as unknown as Parameters<typeof createTimelineLoudnessApplyServices>[0]['measurement'],transactions:timeline.createLoudnessApplyTransactions(assertLoudnessApplyAvailable),assertAvailable:assertLoudnessApplyAvailable,
  });
- const readSavedAudioTimeline=(projectId: string)=>{
+ const speedAudioPreview=isProjectStore(store)&&timelineStorageFormat(db,timelineStorageSchema(db))===FORMAT6_PROJECT_SCHEMA_VERSION;
+ const readSavedAudioTimeline=(projectId: string, previewSpeed=false)=>{
   // Audio readers must not use the render projection: a format-5 placeholder
   // has no source, but it must not make every other clip unreadable.
   if(isProjectStore(store)&&isFormat5Project(store)){
-   const projection=readFormat5AudioProjection(store);
+   const projection=readFormat5AudioProjection(store,{previewSpeed});
    return projection?{timeline:projection.legacy,assets:[...projection.assets.values()]}:null;
   }
   const outer=db.isTransaction;if(!outer)db.exec('BEGIN DEFERRED');
@@ -790,14 +794,15 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  };
  const audioPreviewV1=createTimelineAudioPreviewServices(store,{signal:ownerSignal,runtime:{
   assertOrdinaryWorkspace:assertOrdinaryObservation,ownsLock:()=>ownsStoreLock(store),
-  readSavedTimeline:readSavedAudioTimeline,
-  validateSource:validateManagedSource,hash:verifiedManagedHash,
+  readSavedTimeline:(projectId: string)=>readSavedAudioTimeline(projectId,speedAudioPreview),
+  validateSource:validateManagedSource,hash:verifiedManagedHash,speedPreview:speedAudioPreview,reverseProxy,
   decode:createTimelineAudioPreviewDecoder({run,runStreaming,withProbePermit,checkMediaEffect}),
   terminate:(signal?: AbortSignal)=>terminateMediaProcesses({signal}),waitForClose:(signal?: AbortSignal)=>waitForMediaProcesses({signal}),boundedShutdown,
  }});
  const continuousAudio=createTimelineAudioContinuousServices(store,{signal:ownerSignal,runtime:{
   assertOrdinaryWorkspace:assertOrdinaryObservation,ownsLock:()=>ownsStoreLock(store),
-  readSavedTimeline:readSavedAudioTimeline,validateSource:validateManagedSource,hash:verifiedManagedHash,
+  readSavedTimeline:(projectId: string)=>readSavedAudioTimeline(projectId,speedAudioPreview),
+  validateSource:validateManagedSource,hash:verifiedManagedHash,speedPreview:speedAudioPreview,reverseProxy,
   decoder:createTimelineAudioContinuousDecoder({run,runStreamingWithBackpressure,withProbePermit,checkMediaEffect}),boundedShutdown,
  }});
  const audioPreview=createTimelineAudioPreviewCoordinator(audioPreviewV1 as unknown as Parameters<typeof createTimelineAudioPreviewCoordinator>[0],continuousAudio as unknown as Parameters<typeof createTimelineAudioPreviewCoordinator>[1],AppError);
@@ -1163,6 +1168,11 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
     if (!parsed.success) throw new AppError('VALIDATION_ERROR', '变速任务参数无效。', 400);
     const approved = typeof context.beforeEffect === 'function' ? context.beforeEffect as () => void : undefined;
     const result = await ({
+     'timeline.preview.media': (value: {projectId: string; clipId: string}) => {
+      if (!processing.enabled() || !isProjectStore(store)) throw new AppError('SPEED_PROCESSING_UNAVAILABLE', '当前项目的变速预览不可用。', 409);
+      approved?.();
+      return readTimelinePreviewMedia(store, value, processing.preview);
+     },
      'timeline.processing.list': processing.list,
      'timeline.processing.inspect': processing.inspect,
      'timeline.processing.wait': (value: never) => processing.wait(value, signal),

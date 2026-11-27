@@ -34,6 +34,7 @@ import { clipDraftRaw, clipDraftPatch, createClipDraftController } from '../apps
 import { clipDraftRawSchema, clipDraftDiskSchema } from '../packages/contracts/src/local-drafts.ts';
 import { clipReplacementAcknowledged } from '../apps/web/src/clip-source-replacement.ts';
 import { DEFAULT_UI_PREFERENCES } from '../packages/contracts/src/ui-preferences.ts';
+import * as speedRenderContracts from '../packages/contracts/src/timeline-speed-render.ts';
 import * as creationI18n from '../apps/web/src/creation-i18n.ts';
 import * as exportSettings from '../apps/web/src/export-settings-state.ts';
 import * as sourceRanges from '../apps/web/src/source-range-state.ts';
@@ -237,6 +238,7 @@ test('source Preview keeps the media stage free of unprocessed-score disclosures
       if (name === './UiPreferencesProvider.tsx') return {useUiPreferences:() => ({preferences:DEFAULT_UI_PREFERENCES})};
       if (name === './creation-i18n.ts') return creationI18n;
       if (name === './export-settings-state.ts') return exportSettings;
+      if (name === '../../../packages/contracts/src/timeline-speed-render.ts') return speedRenderContracts;
       if (name === './source-range-state.ts') return sourceRanges;
       if (name === './api.ts') return {assetUrl, mediaUrl};
       if (name === './Timeline.tsx') return {assetKind:(asset: {mimeType?:string} | null | undefined) => asset?.mimeType?.split('/')[0]};

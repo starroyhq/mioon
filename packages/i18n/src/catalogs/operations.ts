@@ -129,6 +129,12 @@ export const operationMessages = {
     "en": "Read one clip-audio save task's record and local progress without starting, cancelling or retrying it",
     "ja": "この音声素材保存タスクの記録とローカル進捗を読み取り専用で取得します。タスクの開始、キャンセル、再試行は行いません"
   },
+  "operation.timeline.preview.media": {
+    "zh-Hans": "读取当前项目片段的预览速率或代理状态",
+    "zh-Hant": "讀取目前專案片段的預覽速率或代理檔狀態",
+    "en": "Read the playback rate or preview proxy status for a clip in the current project",
+    "ja": "現在のプロジェクトのクリップのプレビュー速度またはプロキシの状態を取得します"
+  },
   "operation.timeline.processing.list": {
     "zh-Hans": "查询当前项目的变速处理任务摘要",
     "zh-Hant": "查詢目前專案的變速處理任務摘要",

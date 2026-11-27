@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {randomUUID} from 'node:crypto';
+import {createHash, randomUUID} from 'node:crypto';
 import {mkdtemp, readdir, readFile, realpath, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -156,10 +156,12 @@ test('hosted reverse export keeps the original task and consumes its published v
     rpc = await open();
     const reopened = await rpc<{items: SpeedProcessingItem[]}>('timeline.processing.list', {projectId});
     assert.deepEqual(reopened.items.filter(item => item.kind === 'reverse'), [finished.item]);
-    const taskResult = inspectProject(projectId, db =>
-      db.prepare('SELECT result FROM main.timeline_processing_tasks WHERE id=?').get(task.taskId)?.result);
-    assert.equal(typeof taskResult, 'string');
-    const {cacheKey} = JSON.parse(String(taskResult)) as {cacheKey: string};
+    const taskRow = inspectProject(projectId, db =>
+      db.prepare('SELECT requestId,result FROM main.timeline_processing_tasks WHERE id=?').get(task.taskId));
+    assert.ok(taskRow);
+    assert.equal(typeof taskRow.requestId, 'string');
+    assert.equal(typeof taskRow.result, 'string');
+    const {cacheKey} = JSON.parse(String(taskRow.result)) as {cacheKey: string};
     const entry = inspectApp(db => processingApplication(db, cacheDir).cache.lookupWithClock(projectId, cacheKey, REVERSE_PROXY_PROFILE));
     assert.ok(entry);
     assert.equal(entry.entry.result.frameCount, expected[0]! - expected.at(-1)! + 1);
@@ -173,7 +175,11 @@ test('hosted reverse export keeps the original task and consumes its published v
     const snapshot = inspectProject(projectId, db => db.prepare('SELECT data FROM exports WHERE id=?').get(queued.id)?.data);
     assert.equal(typeof snapshot, 'string');
     const proof = timelineSpeedExportSnapshotSchema.parse(JSON.parse(String(snapshot)).snapshot.speedExport);
-    assert.deepEqual(proof.clips, [{clipId, mapHash: map.value.root.mapHash, proxy: {taskId: task.taskId, sha256: entry.digest}}]);
+    const clipCredential = createHash('sha256').update(JSON.stringify(['mioon.reverse-proxy-clip-proof.v1',
+      projectId, timeline.id, clipId, task.taskId, taskRow.requestId, entry.digest,
+    ])).digest('hex');
+    assert.notEqual(clipCredential, entry.digest);
+    assert.deepEqual(proof.clips, [{clipId, mapHash: map.value.root.mapHash, proxy: {taskId: task.taskId, sha256: clipCredential}}]);
     let record: {status: string; assetId?: string; error?: unknown} | undefined;
     const end = Date.now() + 40_000;
     while (Date.now() < end) {

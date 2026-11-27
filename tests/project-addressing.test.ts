@@ -35,12 +35,12 @@ const requires = (schema: unknown, field: string): boolean => {
 
 test('every operation has exactly one address: app-level, entity-addressed, or the project its input names', () => {
   const operations = Object.keys(schemas);
-  assert.equal(operations.length, 190);
+  assert.equal(operations.length, 191);
   assert.deepEqual(operations.filter(operation => operation.startsWith('timeline.processing.')).sort(), [...PROCESSING_OPERATIONS].sort());
   for(const operation of ['canvas.copy.snapshot','image.service.list','asset.media.location.list'])assert.ok(operations.includes(operation),operation);
   assert.equal(operations.includes('project.notes.set'), false);
   assert.equal(operations.includes('sequence.undo-action'), false);
-  for (const operation of [...PREVIS_OUTPUT_OPERATIONS, ...PROCESSING_OPERATIONS, ...FCP_EXPORT_OPERATIONS, ...PREMIERE_EXPORT_OPERATIONS]) {
+  for (const operation of [...PREVIS_OUTPUT_OPERATIONS, 'timeline.preview.media', ...PROCESSING_OPERATIONS, ...FCP_EXPORT_OPERATIONS, ...PREMIERE_EXPORT_OPERATIONS]) {
     assert.ok(Object.hasOwn(schemas, operation), operation);
     assert.equal(isAppLevelOperation(operation), false, operation);
     assert.equal(isEntityAddressedOperation(operation), false, operation);
@@ -81,7 +81,7 @@ test('rpcPathFor and the CLI/MCP project address', () => {
   assert.deepEqual(splitProjectAddress('job.get', {projectId, jobId}), {input: {jobId}, projectId});
   assert.deepEqual(splitProjectAddress('job.get', {jobId}), {input: {jobId}});
   assert.deepEqual(splitProjectAddress('project.get', {projectId}), {input: {projectId}}, 'an input that names its project is left whole');
-  for (const operation of [...PREVIS_OUTPUT_OPERATIONS, ...PROCESSING_OPERATIONS, ...FCP_EXPORT_OPERATIONS, ...PREMIERE_EXPORT_OPERATIONS]) {
+  for (const operation of [...PREVIS_OUTPUT_OPERATIONS, 'timeline.preview.media', ...PROCESSING_OPERATIONS, ...FCP_EXPORT_OPERATIONS, ...PREMIERE_EXPORT_OPERATIONS]) {
     const input = {projectId};
     assert.equal(inputProjectId(operation, input), projectId, operation);
     assert.equal(rpcPathFor(operation, input, other), projectRpcPath(projectId), operation);

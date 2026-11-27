@@ -21,6 +21,7 @@ const standaloneMediaGate=(()=>{
 })();
 assert.equal((standaloneMediaGate.useProjectMediaReadGate as ()=>unknown)(),null);
 import { TIMELINE_EXPORT_DEFAULT_SETTINGS, resolveTimelineExportDelivery } from '@mioon/contracts';
+import * as speedRenderContracts from '../packages/contracts/src/timeline-speed-render.ts';
 import * as settingsState from '../apps/web/src/export-settings-state.ts';
 import * as deliveryState from '../apps/web/src/export-delivery-state.ts';
 import * as rangeState from '../apps/web/src/export-range-state.ts';
@@ -339,7 +340,8 @@ test('successful timeline preview keeps its original download and never probes t
 
 
 test('actual playback plays the produced artifact at its project and shows its frozen dimensions instead of editor preview dimensions', () => {
-  const View = component('Preview.tsx', { './ClipTransformBox.tsx': { __esModule: true, default: 'ClipTransformBox' }, './workspace-visibility.tsx': { useWorkspaceVisibility: () => true }, './api.ts': { assetUrl: () => '', statusText: String, mediaUrl }, './Timeline.tsx': { assetKind: () => 'video', framesLabel: String }, './source-range-state.ts': { SOURCE_RANGE_FPS: 30 } });
+  const View = component('Preview.tsx', { './ClipTransformBox.tsx': { __esModule: true, default: 'ClipTransformBox' }, './workspace-visibility.tsx': { useWorkspaceVisibility: () => true }, './api.ts': { assetUrl: () => '', statusText: String, mediaUrl }, './Timeline.tsx': { assetKind: () => 'video', framesLabel: String }, './source-range-state.ts': { SOURCE_RANGE_FPS: 30 },
+    '../../../packages/contracts/src/timeline-speed-render.ts': speedRenderContracts });
   const delivery = resolveTimelineExportDelivery(timeline, settings({ resolution: 'short_360', rateControl: { mode: 'crf', quality: 'compact' } }));
   const job = { id: id(90), projectId, mode: 'timeline', purpose: 'export', timelineRevision: 4, status: 'succeeded', assetId: id(91), url: `/media/${id(91)}`, snapshot: { timeline, delivery } };
   const transformBox = {clip: {id: id(3)}};

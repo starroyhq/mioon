@@ -1,10 +1,5 @@
-/** Timeline clip context menu (0.3.0 items only).
- *
- * Order follows the confirmed design: the 0.4.0 speed group is not rendered;
- * `切开` comes first, the sound group (separate sound / mute or unmute / save as
- * audio asset) sits in the middle, and the generate group owned by a later card
- * keeps a structural insert point. No disabled placeholder items are shown.
- */
+/** Timeline clip context menu. The speed group precedes the shared split,
+ * copy, sound and generate actions when the speed capability is available. */
 import React, {useEffect, useLayoutEffect, useRef, useState} from 'react';
 import {Button} from '@mioon/ui/components/button';
 import {AudioLines, Check, Copy, Download, Gauge, Rewind, Scissors, Snowflake, Sparkles, Volume2, VolumeX} from '@mioon/ui/components/workbench-icons';
@@ -20,7 +15,6 @@ export interface TimelineClipSpeedMenu {
   readonly onOpenSpeed: (clipId: string) => unknown;
   readonly onToggleReverse: (clipId: string) => unknown;
   readonly onFreeze: (clipId: string) => unknown;
-  readonly onCopyAsNewShot?: (clipId: string) => unknown;
 }
 
 export interface TimelineClipContextMenuProps {
@@ -121,8 +115,8 @@ export default function TimelineClipContextMenu({anchor, plan, canSplit, busy, o
     </>}
     {item(index++, 'clip-menu-split', t('clipSound.split'), <Scissors size={16} />,
       () => onSplit(anchor.clipId), canSplit && !busy)}
-    {(onCopyAsNewShot ?? speedMenu?.onCopyAsNewShot) && item(index++, 'clip-menu-copy-new-shot', t('editUi.menu.copyAsNewShot'), <Copy size={16} />,
-      () => (onCopyAsNewShot ?? speedMenu?.onCopyAsNewShot)?.(anchor.clipId), !busy)}
+    {onCopyAsNewShot && item(index++, 'clip-menu-copy-new-shot', t('editUi.menu.copyAsNewShot'), <Copy size={16} />,
+      () => onCopyAsNewShot(anchor.clipId), !busy)}
     {plan.sound && <>
       <div className="timeline-clip-menu-separator" role="separator" />
       <div data-slot="sound-group" data-testid="clip-menu-sound-group" role="group">

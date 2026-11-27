@@ -1125,16 +1125,16 @@ function patchMainTimeline(context: SyncContext, plan: SequenceEditPlan,
   const clipCopy = plan.copiedNode?.clipCopy;
   const mainClips = speedTimeline?.clips.filter(clip => clip.trackId === mainTrackId)
     ?? plan.after.clips.map(clip => {
-    if (!clipCopy) return nextMainClip(context, clip, timed?.get(clip.id) ?? existing.get(clip.id), planNodes.get(clip.nodeId), copiedNodes);
-    const isCopy = clip.id === clipCopy.toClipId;
-    const source = existing.get(isCopy ? clipCopy.fromClipId : clip.id)!;
-    if (!isCopy) return {...source, startFrame: clip.startFrame};
-    // Keep all persisted clip properties, including future properties that do
-    // not affect the planner. Start and group follow the new timeline position.
-    return {...source, id: clip.id, startFrame: clip.startFrame,
-      sequenceSource: {...source.sequenceSource!, nodeId: clip.nodeId, segmentGroupId: clip.id},
-      ...(source.sourceState === 'placeholder' && source.shotId !== undefined ? {shotId: clip.nodeId} : {})};
-  });
+      if (!clipCopy) return nextMainClip(context, clip, timed?.get(clip.id) ?? existing.get(clip.id), planNodes.get(clip.nodeId), copiedNodes);
+      const isCopy = clip.id === clipCopy.toClipId;
+      const source = existing.get(isCopy ? clipCopy.fromClipId : clip.id)!;
+      if (!isCopy) return {...source, startFrame: clip.startFrame};
+      // Keep saved properties such as timing and applied lineage. Start and
+      // group follow the new timeline position.
+      return {...source, id: clip.id, startFrame: clip.startFrame,
+        sequenceSource: {...source.sequenceSource!, nodeId: clip.nodeId, segmentGroupId: clip.id},
+        ...(source.sourceState === 'placeholder' && source.shotId !== undefined ? {shotId: clip.nodeId} : {})};
+    });
   if (meta) for (const clip of mainClips) {const name = meta.clipNames.get(clip.id); if (name) clip.name = name;}
   // GE-b: a generation placeholder is named after the shot it creates. The new
   // shot is not in `context.shots` yet while the plan is projected, so the

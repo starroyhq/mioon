@@ -6,6 +6,7 @@ import {projectRulesToolInputSchema} from '../../../contracts/src/mio-rules.ts';
 import {mioAssetImportInputSchema} from '../../../contracts/src/mio-asset-import.ts';
 import {publicOperationSchemas} from '../../../contracts/src/public-operations.ts';
 import {isTimelineProcessingOperation,timelineProcessingResponseSchemas,timelineProcessingSchemas} from '../../../contracts/src/timeline-processing.ts';
+import {isPreviewMediaForClip} from '../../../contracts/src/timeline-preview-media.ts';
 import {subjectVariantSnapshotSchema,SUBJECT_VARIANT_LIMITS} from '../../../contracts/src/subject-variants.ts';
 import {createProjectVersions} from '../project-versions/service.ts';
 import {readTimelineHeaderStorage,readTimelineStorage} from '../project-file/timeline-storage.ts';
@@ -114,7 +115,7 @@ const readOperations=[
  'scene.detect','scene.request.get','scene.task.get','scene.task.list','scene.result.get','image.profile.list','image.request.get','image.task.get','image.task.list','image.group.list','image.group.get','image.version.list','image.task.remote.get',
  'project.inspect','asset.inspect','shot.inspect','timeline.inspect','subject.list','subject.version.list','subject.binding.list','asset.range.get','asset.disposition.list','asset.annotation.list','asset.waveform.get',
  'sequence.inspect','sequence.generation-inputs.get','timeline.export.preflight','timeline.export.samplePeak','timeline.export.loudness','timeline.loudness.prepare','timeline.clip.loudness','timeline.audioPreview.plan','timeline.audioPreview.continuousPlan','timeline.export.capabilities',
- 'timeline.processing.list','timeline.processing.inspect','timeline.processing.wait','timeline.processing.cache.get',
+ 'timeline.processing.list','timeline.processing.inspect','timeline.processing.wait','timeline.processing.cache.get','timeline.preview.media',
  'asset.list','provider.list','job.get','job.list','version.list','export.get','timeline.history.get',
  'export.fcpxml.preview','export.fcpxml.get',
  'export.premiere.preview','export.premiere.get',
@@ -698,7 +699,7 @@ export const listAgentTaskTools=(frameTransaction=false,format5=false,timelinePr
   {name:'mioon_sequence_reference_edit',operation:'sequence.tool.reference',description:'按需加载的格式 5 引用线动作：素材引用线连接、改角色、断开、整组排序（第一条参考图是主图）。服务器预览 envelope 后按审批提交。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.reference'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
   {name:'mioon_sequence_subject_edit',operation:'sequence.tool.subject',description:'按需加载的格式 5 主体动作：主体绑定创建/跟随锁定/断开/恢复、主体卡建卡/删卡。服务器预览 envelope 后按审批提交。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.subject'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
   {name:'mioon_sequence_previs_edit',operation:'sequence.tool.previs',description:'按需加载的格式 5 预演动作：预演节点新建、预演场景保存（人偶/道具可带主体）。服务器预览 envelope 后按审批提交。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.previs'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
-  {name:'mioon_sequence_timeline_edit',operation:'sequence.tool.timeline',description:'按需加载的时间线动作：画幅切换、按场景切开、字幕增改删、台词增改删、轨道增改、素材入轨、分离声音、在剪辑里生成（生成每次费用确认）。已启用变速的格式 6 项目支持片段变速和定格。服务器预览 envelope 后按审批提交。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.timeline'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
+  {name:'mioon_sequence_timeline_edit',operation:'sequence.tool.timeline',description:'按需加载的时间线动作：画幅切换、按场景切开、字幕增改删、台词增改删、轨道增改、素材入轨、分离声音、在剪辑里生成（主轨占位/其他轨游离镜头，生成每次费用确认）。已启用变速的格式 6 项目支持片段变速和定格。服务器预览 envelope 后按审批提交。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.timeline'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
   {name:'mioon_sequence_clip_edit',operation:'sequence.tool.clip',description:'按需加载的格式 5 片段动作：变换/转场/增益/淡入淡出/颜色/音频角色/音量包络/名称、兼容素材替换、主轨片段复制成新镜头。主轨镜头替换需指定该镜头拥有或已采纳的版本。服务器预览 envelope 后按审批提交。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.clip'],risk:'local_reversible',receipt:'durable sequence receipt with impact counts',recovery:'read the sequence again; only retry the same request after an unknown result',undo:'Mio undo by actionId'},
   {name:'mioon_sequence_undo',operation:'sequence.tool.undo',description:'撤销当前 Mio 自己的一步格式 5 动作。只在本步仍是历史栈顶时生效；游标变化返回冲突，不会重复补偿。用户 Ctrl+Z 与 Mio 撤销共用逆补丁验证。',parameters:AGENT_TASK_TOOL_SCHEMAS['sequence.tool.undo'],risk:'local_reversible',receipt:'durable sequence receipt',recovery:'read sequence/history again',undo:'unavailable'});
   // FR-G: one format-5 clip's current sound becomes a new project audio asset.
@@ -967,7 +968,7 @@ export function createAgentTaskTools({store,services,policyStore=testProjectAppL
     if(!retained.success)fail('AGENT_TASK_STORAGE_UNAVAILABLE','变速步骤的原分配无法验证');
     allocation=retained.data;
    }
-   // Both speed and copy identities must survive preparation at approval.
+   // Both retiming and copy-as-new re-prepare at approval against the same step.
    const requestId=(speed||action.kind==='copy-as-new-shot')&&stepId?stepId:randomUUID();
    const plan=previewMioSequenceAction(store,projectId,requestId,action,{origin:'mio',locale,
     ...(speed?{speedStep:{actionId:requestId,allocation}}:{})});
@@ -1259,7 +1260,10 @@ function prepare({projectId,operation,input,beforeTargetRead,toolLoadMode='names
    const parsed=timelineProcessingResponseSchemas[processingOperation].safeParse(output);
    if(!parsed.success)fail('AGENT_TASK_INVALID_TOOL_RESULT','变速处理没有返回可信的任务摘要');
    const result=parsed.data;
-   if(('item' in result&&result.item.taskId!==input.taskId)||('taskId' in result&&result.taskId!==input.taskId))fail('AGENT_TASK_INVALID_TOOL_RESULT','变速处理结果不属于本次任务');
+   if('item' in result&&result.item.taskId!==input.taskId||
+      'taskId' in result&& !('mode' in result)&&result.taskId!==input.taskId||
+      'mode' in result&&!isPreviewMediaForClip(result,prepared.projectId,String(input.clipId)))
+    fail('AGENT_TASK_INVALID_TOOL_RESULT','变速处理结果不属于本次查询');
    return {result:projectResult(result),changes:[],recorded:false};
   }
   if(isMioEditorExportOperation(prepared.operation)&&(!format5||!isProjectStore(store)||store.projectId!==prepared.projectId))fail('AGENT_TASK_TOOL_FORBIDDEN',mioEditorExportLabel(prepared.operation)+' 导出只用于当前格式 5 项目');
