@@ -144,7 +144,7 @@ export function useSpeedProcessing(options: {
     if (!speedEnabled || !timeline?.clips?.length) return '';
     return timeline.clips
       .filter(clipNeedsSpeedProcessing)
-      .map(clip => `${clip.id}:${clip.timing?.profile === 'timeline-speed-v1' ? `${clip.timing.view.direction}:${clip.timing.interpolation}` : ''}`)
+      .map(clip => `${clip.id}:${clip.timing?.profile === 'timeline-speed-v1' ? `${clip.timing.basis.speed.kind}:${clip.timing.view.direction}:${clip.timing.interpolation}` : ''}`)
       .sort()
       .join('|');
   }, [speedEnabled, timeline?.clips]);

@@ -1,11 +1,11 @@
 import React from 'react';
 import {WorkbenchBadge, WorkbenchButton, WorkbenchProgress} from '@mioon/ui/components/workbench-controls';
 import type {WorkbenchTone} from '@mioon/ui/components/workbench-controls';
-import {CircleAlert, Rewind, RotateCcw, Sparkles, X} from '@mioon/ui/components/workbench-icons';
+import {CircleAlert, Film, Rewind, RotateCcw, Sparkles, X} from '@mioon/ui/components/workbench-icons';
 import type {SpeedProcessingItem} from '../../../../packages/contracts/src/timeline-speed.ts';
 import type {MessageArguments, MessageKey} from '../../../../packages/i18n/src/index.ts';
 import {useI18n} from '../i18n/I18nProvider.tsx';
-import {processingItemActive, speedProcessingReasonKey} from './speed-model.ts';
+import {processingItemActive, speedProcessingCanRetry, speedProcessingReasonKey} from './speed-model.ts';
 import {speedProcessingItemStatusText, speedProcessingItemTitle} from './speed-presentation.ts';
 
 type Translator = <K extends MessageKey>(key: K, ...args: MessageArguments<K>) => string;
@@ -67,6 +67,7 @@ export function SpeedProcessingTaskCard({item, label, status, busy, onRetry, onC
   const {t} = useI18n();
   const active = processingItemActive(item);
   const failed = item.status === 'failed';
+  const canRetry = speedProcessingCanRetry(item);
   const percent = item.status === 'running' && typeof item.progress === 'number'
     ? Math.max(0, Math.min(100, Math.round(item.progress)))
     : 0;
@@ -80,7 +81,7 @@ export function SpeedProcessingTaskCard({item, label, status, busy, onRetry, onC
     >
       <div className="job-title">
         <span className={`speed-task-icon ${failed ? 'is-failed' : ''}`} aria-hidden="true">
-          {failed ? <CircleAlert size={16} /> : item.kind === 'reverse' ? <Rewind size={16} /> : <Sparkles size={16} />}
+          {failed ? <CircleAlert size={16} /> : item.kind === 'reverse' ? <Rewind size={16} /> : item.kind === 'preview' ? <Film size={16} /> : <Sparkles size={16} />}
         </span>
         <strong title={label}>{label}</strong>
         <WorkbenchBadge tone={badgeTone(item.status)}>{status}</WorkbenchBadge>
@@ -92,7 +93,7 @@ export function SpeedProcessingTaskCard({item, label, status, busy, onRetry, onC
         </p>
       )}
       <div className="job-actions">
-        {failed && (
+        {canRetry && (
           <WorkbenchButton
             variant="secondary"
             size="compact"

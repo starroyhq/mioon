@@ -122,11 +122,56 @@ export function canFreezeClipAtPlayhead(
     && frame < clip!.startFrame + clip!.durationFrames;
 }
 
-/** Whether a clip's saved timing requires background processing (reverse or optical flow). */
+/** Whether a clip's saved timing may require background processing (reverse, optical flow, or curve preview proxy). */
 export function clipNeedsSpeedProcessing(clip: SpeedClipLike | null | undefined): boolean {
   const timing = clipTimingOf(clip);
   if (!timing || timing.profile !== 'timeline-speed-v1') return false;
-  return timing.view.direction === 'reverse' || timing.interpolation === 'optical';
+  return timing.view.direction === 'reverse'
+    || timing.interpolation === 'optical'
+    || timing.basis.speed.kind === 'curve';
+}
+
+export type PitchShiftLockReason = 'constant-range' | 'curve';
+
+export interface PitchShiftControlState {
+  readonly locked: boolean;
+  readonly checked: boolean;
+  readonly lockReason: PitchShiftLockReason | null;
+  readonly tooltipKey: 'speed.pitchShift.constantOnlyHint' | 'speed.pitchShift.curveOnlyHint' | null;
+}
+
+/** Exact rational check: keep-pitch is only available for constant speed in 2×–4×. */
+export function isConstantKeepPitchRate(rate: TimeMapSpeedRate): boolean {
+  return rate.numerator >= rate.denominator * 2 && rate.numerator <= rate.denominator * 4;
+}
+
+/** Resolves UI state of «声音变调» while keeping the user's stored `setting.pitchShift` untouched. */
+export function resolvePitchShiftControl(
+  mode: 'constant' | 'curve',
+  setting: SpeedSetting,
+): PitchShiftControlState {
+  if (mode === 'curve' || setting.speed.kind === 'curve') {
+    return {
+      locked: true,
+      checked: true,
+      lockReason: 'curve',
+      tooltipKey: 'speed.pitchShift.curveOnlyHint',
+    };
+  }
+  if (isConstantKeepPitchRate(setting.speed.rate)) {
+    return {
+      locked: false,
+      checked: setting.pitchShift,
+      lockReason: null,
+      tooltipKey: null,
+    };
+  }
+  return {
+    locked: true,
+    checked: true,
+    lockReason: 'constant-range',
+    tooltipKey: 'speed.pitchShift.constantOnlyHint',
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -740,9 +785,15 @@ export function speedProcessingReasonKey(reason: SpeedProcessingReason | undefin
     case 'DISK_FULL': return 'speed.processing.reason.DISK_FULL';
     case 'CACHE_LIMIT': return 'speed.processing.reason.CACHE_LIMIT';
     case 'UNSUPPORTED_FORMAT': return 'speed.processing.reason.UNSUPPORTED_FORMAT';
+    case 'INTERPOLATION_UNAVAILABLE': return 'speed.processing.reason.INTERPOLATION_UNAVAILABLE';
     case 'PROCESSING_FAILED':
     default: return 'speed.processing.reason.PROCESSING_FAILED';
   }
+}
+
+/** `INTERPOLATION_UNAVAILABLE` is a deterministic compile-time bound failure and offers no Retry. */
+export function speedProcessingCanRetry(item: SpeedProcessingItem): boolean {
+  return item.status === 'failed' && item.reason !== 'INTERPOLATION_UNAVAILABLE';
 }
 
 /** Picks the highest-priority processing item for a clip: running > queued > failed > ready. */

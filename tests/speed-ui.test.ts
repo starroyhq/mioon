@@ -36,6 +36,7 @@ import {
   formatSpeedRateInput,
   formatSpeedRateLabel,
   instantiatePresetForClip,
+  isConstantKeepPitchRate,
   isDefaultSpeedSetting,
   isFreezeClip,
   logNormToRate,
@@ -46,10 +47,12 @@ import {
   previewLocalSpeedSetting,
   rateToLogNorm,
   resolveClipSpeedGeometry,
+  resolvePitchShiftControl,
   sampleLogPchipCurve,
   settingFromClip,
   speedNeedsInterpolation,
   speedPreviewErrorKey,
+  speedProcessingCanRetry,
   speedProcessingReasonKey,
   timelineSpeedEnabled,
   validateCurvePointsLocal,
@@ -57,7 +60,9 @@ import {
 import {
   buildSpeedProcessingOverviewItems,
   buildTimelineClipSpeedViews,
+  speedProcessingActiveLabel,
   speedProcessingFailureSentence,
+  speedProcessingItemTitle,
 } from '../apps/web/src/speed-ui/speed-presentation.ts';
 import {
   SPEED_PROCESSING_POLL_INTERVAL_MS,
@@ -144,6 +149,8 @@ test('contract schemas validate speed timing, freeze timing, intents, and proces
     items: [
       {taskId: 't1', clipId: 'clip-1', kind: 'reverse', status: 'running', progress: 42},
       {taskId: 't2', clipId: 'clip-2', kind: 'optical', status: 'failed', reason: 'DISK_FULL'},
+      {taskId: 't3', clipId: 'clip-3', kind: 'optical', status: 'failed', reason: 'INTERPOLATION_UNAVAILABLE'},
+      {taskId: 't4', clipId: 'clip-4', kind: 'preview', status: 'running', progress: 65},
     ],
   };
   assert.equal(speedProcessingListResponseSchema.safeParse(processingList).success, true);
@@ -277,6 +284,70 @@ test('A2/F1: logarithmic slider mapping, reduced rational parsing, live duration
     pitchShift: false,
     interpolation: 'off',
   });
+
+  // 11-27: pitchShift is only toggleable in constant 2×–4×; outside 2×–4× and all curves
+  // display locked ON with distinct ⓘ hints while preserving the user's stored pitchShift.
+  assert.equal(isConstantKeepPitchRate({numerator: 2, denominator: 1}), true);
+  assert.equal(isConstantKeepPitchRate({numerator: 3, denominator: 1}), true);
+  assert.equal(isConstantKeepPitchRate({numerator: 4, denominator: 1}), true);
+  assert.equal(isConstantKeepPitchRate({numerator: 1, denominator: 1}), false);
+  assert.equal(isConstantKeepPitchRate({numerator: 1, denominator: 2}), false);
+  assert.equal(isConstantKeepPitchRate({numerator: 199, denominator: 100}), false);
+  assert.equal(isConstantKeepPitchRate({numerator: 401, denominator: 100}), false);
+  assert.equal(isConstantKeepPitchRate({numerator: 5, denominator: 1}), false);
+
+  const userOffAt2x: SpeedSetting = {
+    speed: {kind: 'constant', rate: {numerator: 2, denominator: 1}},
+    direction: 'forward',
+    pitchShift: false,
+    interpolation: 'off',
+  };
+  assert.deepEqual(resolvePitchShiftControl('constant', userOffAt2x), {
+    locked: false,
+    checked: false,
+    lockReason: null,
+    tooltipKey: null,
+  });
+
+  // Moving to 0.5× locks UI ON with constant hint, while stored pitchShift stays false
+  const movedToHalf: SpeedSetting = {...userOffAt2x, speed: {kind: 'constant', rate: {numerator: 1, denominator: 2}}};
+  assert.deepEqual(resolvePitchShiftControl('constant', movedToHalf), {
+    locked: true,
+    checked: true,
+    lockReason: 'constant-range',
+    tooltipKey: 'speed.pitchShift.constantOnlyHint',
+  });
+  assert.equal(translate('zh-Hans', 'speed.pitchShift.constantOnlyHint'), '这个倍速只能变调');
+  const submittedHalf = buildClipSpeedIntent('c1', movedToHalf);
+  assert.equal(submittedHalf.operation.kind === 'clip-speed' && submittedHalf.operation.setting.pitchShift, false);
+
+  // Even a curve whose points stay inside 2×–4× locks ON with curve hint
+  const curveIn2to4: SpeedSetting = {
+    speed: {
+      kind: 'curve',
+      interpolation: TIMELINE_TIME_MAP_INTERPOLATION,
+      presetId: 'custom',
+      points: [
+        {sourceFrame: 0, rate: {numerator: 2, denominator: 1}},
+        {sourceFrame: 210, rate: {numerator: 4, denominator: 1}},
+      ],
+    },
+    direction: 'forward',
+    pitchShift: false,
+    interpolation: 'off',
+  };
+  assert.deepEqual(resolvePitchShiftControl('curve', curveIn2to4), {
+    locked: true,
+    checked: true,
+    lockReason: 'curve',
+    tooltipKey: 'speed.pitchShift.curveOnlyHint',
+  });
+  assert.equal(translate('zh-Hans', 'speed.pitchShift.curveOnlyHint'), '曲线变速只能变调');
+
+  // Returning to 2×–4× constant restores user's original choice (both false and true)
+  const backTo3x: SpeedSetting = {...movedToHalf, speed: {kind: 'constant', rate: {numerator: 3, denominator: 1}}};
+  assert.equal(resolvePitchShiftControl('constant', backTo3x).checked, false);
+  assert.equal(resolvePitchShiftControl('constant', {...backTo3x, pitchShift: true}).checked, true);
 });
 
 test('A3/F2: all 8 curve presets match shared instantiateSpeedPreset and enforce curve point constraints', () => {
@@ -429,8 +500,56 @@ test('A7/F6: processing poller polls every 2s while active, stops once ready/fai
     id: 'c2', trackId: 'v1', startFrame: 120, durationFrames: 60, sourceInFrame: 0,
     timing: makeSpeedTiming({direction: 'forward', interpolation: 'off'}),
   };
+  const clipCurve = {
+    id: 'c3', trackId: 'v1', startFrame: 180, durationFrames: 120, sourceInFrame: 0,
+    timing: makeSpeedTiming({
+      curve: {
+        presetId: 'slowMiddle',
+        points: [
+          {sourceFrame: 0, rate: {numerator: 2, denominator: 1}},
+          {sourceFrame: 105, rate: {numerator: 1, denominator: 4}},
+          {sourceFrame: 210, rate: {numerator: 2, denominator: 1}},
+        ],
+      },
+      direction: 'forward',
+      interpolation: 'off',
+    }),
+  };
   assert.equal(clipNeedsSpeedProcessing(clipRev), true);
   assert.equal(clipNeedsSpeedProcessing(clipPlain), false);
+  assert.equal(clipNeedsSpeedProcessing(clipCurve), true);
+
+  // 11-27: INTERPOLATION_UNAVAILABLE hides Retry, UNSUPPORTED_FORMAT uses interpolation copy, preview kind renders cleanly
+  const unavailItem: SpeedProcessingItem = {
+    taskId: 't-unavail', clipId: 'c3', kind: 'optical', status: 'failed', reason: 'INTERPOLATION_UNAVAILABLE',
+  };
+  const unsupportedItem: SpeedProcessingItem = {
+    taskId: 't-fmt', clipId: 'c3', kind: 'optical', status: 'failed', reason: 'UNSUPPORTED_FORMAT',
+  };
+  const previewItem: SpeedProcessingItem = {
+    taskId: 't-prev', clipId: 'c3', kind: 'preview', status: 'running', progress: 65,
+  };
+  assert.equal(speedProcessingCanRetry(unavailItem), false);
+  assert.equal(speedProcessingCanRetry(unsupportedItem), true);
+  assert.equal(speedProcessingFailureSentence(unavailItem, tZh), '这段变速没法补帧');
+  assert.equal(speedProcessingFailureSentence(unsupportedItem, tZh), '这个素材的格式没法补帧');
+  assert.equal(speedProcessingActiveLabel(previewItem, tZh), '预览处理中');
+  assert.equal(speedProcessingItemTitle(previewItem, '03 霓虹街头', tZh), '预览处理 · 03 霓虹街头');
+
+  const overview = buildSpeedProcessingOverviewItems({
+    enabled: true,
+    items: [unavailItem, unsupportedItem, previewItem],
+    clipNameFor: () => '03 霓虹街头',
+    t: tZh,
+    onCancel: () => {},
+    onRetry: () => {},
+  });
+  assert.equal(overview.find(item => item.id === 'speed:t-unavail')?.onRetry, undefined);
+  assert.equal(overview.find(item => item.id === 'speed:t-unavail')?.detail, '这段变速没法补帧');
+  assert.equal(typeof overview.find(item => item.id === 'speed:t-fmt')?.onRetry, 'function');
+  assert.equal(overview.find(item => item.id === 'speed:t-fmt')?.detail, '这个素材的格式没法补帧');
+  assert.equal(overview.find(item => item.id === 'speed:t-prev')?.label, '预览处理 · 03 霓虹街头');
+  assert.equal(overview.find(item => item.id === 'speed:t-prev')?.progress, 65);
 
   let nextId = 1;
   const timers = new Map<number, {fn: () => void; ms: number}>();
@@ -500,6 +619,7 @@ test('A4/A8/F8: all preview failure codes, processing reasons, and catalog keys 
     'DISK_FULL',
     'CACHE_LIMIT',
     'UNSUPPORTED_FORMAT',
+    'INTERPOLATION_UNAVAILABLE',
     'PROCESSING_FAILED',
   ];
 
@@ -512,11 +632,12 @@ test('A4/A8/F8: all preview failure codes, processing reasons, and catalog keys 
       const text = translate(locale, speedProcessingReasonKey(reason) as never);
       assert.ok(text.trim().length > 0, `${locale}/${reason}`);
     }
-    const failSentence = speedProcessingFailureSentence(
-      {taskId: 't1', clipId: 'c1', kind: 'optical', status: 'failed', reason: 'DISK_FULL'},
-      ((key: string, params?: Record<string, string | number>) => translate(locale, key as never, params as never)) as never,
-    );
-    assert.ok(failSentence.trim().length > 0, `${locale}/failureSentence`);
+    for (const kind of ['reverse', 'optical', 'preview'] as const) {
+      const tLoc = ((key: string, params?: Record<string, string | number>) => translate(locale, key as never, params as never)) as never;
+      assert.ok(speedProcessingActiveLabel({taskId: 't1', clipId: 'c1', kind, status: 'running', progress: 50}, tLoc).trim().length > 0);
+      assert.ok(speedProcessingItemTitle({taskId: 't1', clipId: 'c1', kind, status: 'running', progress: 50}, 'Shot 1', tLoc).trim().length > 0);
+      assert.ok(speedProcessingFailureSentence({taskId: 't1', clipId: 'c1', kind, status: 'failed', reason: 'DISK_FULL'}, tLoc).trim().length > 0);
+    }
   }
 
   for (const [key, entry] of Object.entries(timelineSpeedMessages)) {

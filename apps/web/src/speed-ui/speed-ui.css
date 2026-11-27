@@ -68,6 +68,37 @@
   white-space: nowrap;
 }
 
+.speed-row-label-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.speed-row-label-group > .speed-row-label {
+  min-width: 0;
+}
+
+.speed-info-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--wb-muted);
+  cursor: help;
+  flex: none;
+}
+
+.speed-info-trigger:hover,
+.speed-info-trigger:focus-visible {
+  color: var(--wb-text);
+}
+
 .speed-row-control {
   flex: 1;
   min-width: 0;

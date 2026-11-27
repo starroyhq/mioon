@@ -33,9 +33,10 @@ export interface SequenceEditSpeedIntent {
 }
 
 export type SpeedProcessingReason =
-  'SOURCE_UNAVAILABLE' | 'DISK_FULL' | 'CACHE_LIMIT' | 'UNSUPPORTED_FORMAT' | 'PROCESSING_FAILED';
+  'SOURCE_UNAVAILABLE' | 'DISK_FULL' | 'CACHE_LIMIT' | 'UNSUPPORTED_FORMAT' | 'PROCESSING_FAILED'
+  | 'INTERPOLATION_UNAVAILABLE';  // 11-27 补：这段变速超出补帧的相位误差上界，帧混合和光流都做不了
 export interface SpeedProcessingItem {
-  taskId: string; clipId: string; kind: 'reverse' | 'optical';
+  taskId: string; clipId: string; kind: 'reverse' | 'optical' | 'preview';  // 'preview'：11-27 补，预览用的低清代理（specs/speed-preview.md）
   status: 'queued' | 'running' | 'failed' | 'ready';
   progress?: number;                 // 0–100，running 时给
   reason?: SpeedProcessingReason;    // failed 时给
@@ -167,12 +168,13 @@ export const speedProcessingReasonSchema: z.ZodType<SpeedProcessingReason> = z.e
   'CACHE_LIMIT',
   'UNSUPPORTED_FORMAT',
   'PROCESSING_FAILED',
+  'INTERPOLATION_UNAVAILABLE',
 ]);
 
 export const speedProcessingItemSchema: z.ZodType<SpeedProcessingItem> = z.object({
   taskId: z.string().min(1),
   clipId: z.string().min(1),
-  kind: z.enum(['reverse', 'optical']),
+  kind: z.enum(['reverse', 'optical', 'preview']),
   status: z.enum(['queued', 'running', 'failed', 'ready']),
   progress: z.number().finite().min(0).max(100).optional(),
   reason: speedProcessingReasonSchema.optional(),

@@ -11,6 +11,7 @@ import {
   formatSpeedRateLabel,
   processingItemActive,
   selectClipProcessingItem,
+  speedProcessingCanRetry,
   speedProcessingReasonKey,
   timelineSpeedEnabled,
 } from './speed-model.ts';
@@ -103,15 +104,26 @@ export function buildTimelineClipSpeedViews(
   return map;
 }
 
+export function speedProcessingActiveLabel(
+  item: SpeedProcessingItem,
+  t: Translator,
+): string {
+  if (item.kind === 'reverse') return t('speed.processing.reverseActive');
+  if (item.kind === 'preview') return t('speed.processing.previewActive');
+  return t('speed.processing.opticalActive');
+}
+
 export function speedProcessingItemTitle(
   item: SpeedProcessingItem,
   clipName: string,
   t: Translator,
 ): string {
-  return t(
-    item.kind === 'reverse' ? 'speed.processing.reverseTitle' : 'speed.processing.opticalTitle',
-    {name: clipName},
-  );
+  const key = item.kind === 'reverse'
+    ? 'speed.processing.reverseTitle'
+    : item.kind === 'preview'
+      ? 'speed.processing.previewTitle'
+      : 'speed.processing.opticalTitle';
+  return t(key, {name: clipName});
 }
 
 export function speedProcessingItemStatusText(item: SpeedProcessingItem, t: Translator): string {
@@ -126,10 +138,15 @@ export function speedProcessingItemStatusText(item: SpeedProcessingItem, t: Tran
 
 export function speedProcessingFailureSentence(item: SpeedProcessingItem, t: Translator): string {
   const reasonText = t(speedProcessingReasonKey(item.reason) as never);
-  return t(
-    item.kind === 'reverse' ? 'speed.processing.reverseFailed' : 'speed.processing.opticalFailed',
-    {reason: reasonText},
-  );
+  if (item.reason === 'INTERPOLATION_UNAVAILABLE' || item.reason === 'UNSUPPORTED_FORMAT') {
+    return reasonText;
+  }
+  const key = item.kind === 'reverse'
+    ? 'speed.processing.reverseFailed'
+    : item.kind === 'preview'
+      ? 'speed.processing.previewFailed'
+      : 'speed.processing.opticalFailed';
+  return t(key, {reason: reasonText});
 }
 
 /** Builds overview items for `TaskPopover` (active and failed items only). */
@@ -148,6 +165,7 @@ export function buildSpeedProcessingOverviewItems(options: {
     const label = speedProcessingItemTitle(item, options.clipNameFor(item.clipId), options.t);
     const active = processingItemActive(item);
     const failed = item.status === 'failed';
+    const canRetry = speedProcessingCanRetry(item);
     const percent = item.status === 'running' && typeof item.progress === 'number'
       ? Math.max(0, Math.min(100, Math.round(item.progress)))
       : item.status === 'queued' ? 0 : undefined;
@@ -163,7 +181,7 @@ export function buildSpeedProcessingOverviewItems(options: {
         onCancel: () => options.onCancel(item.taskId),
         cancelLabel: options.t('speed.processing.cancel'),
       } : {}),
-      ...(failed ? {
+      ...(canRetry ? {
         onRetry: () => options.onRetry(item.taskId),
         retryLabel: options.t('speed.processing.retry'),
       } : {}),

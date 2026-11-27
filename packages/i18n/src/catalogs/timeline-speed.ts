@@ -53,6 +53,18 @@ export const timelineSpeedMessages = {
     en: 'Shift pitch',
     ja: 'ピッチ変更',
   },
+  'speed.pitchShift.constantOnlyHint': {
+    'zh-Hans': '这个倍速只能变调',
+    'zh-Hant': '這個倍速只能變調',
+    en: 'Pitch shifts at this speed',
+    ja: 'この倍速ではピッチが変わります',
+  },
+  'speed.pitchShift.curveOnlyHint': {
+    'zh-Hans': '曲线变速只能变调',
+    'zh-Hant': '曲線變速只能變調',
+    en: 'Curve speed always shifts pitch',
+    ja: 'カーブ速度ではピッチが変わります',
+  },
   'speed.reverse.label': {
     'zh-Hans': '倒放',
     'zh-Hant': '倒放',
@@ -251,6 +263,12 @@ export const timelineSpeedMessages = {
     en: 'Processing optical flow',
     ja: 'オプティカルフローを処理中',
   },
+  'speed.processing.previewActive': {
+    'zh-Hans': '预览处理中',
+    'zh-Hant': '預覽處理中',
+    en: 'Preparing preview',
+    ja: 'プレビューを処理中',
+  },
   'speed.processing.reverseTitle': {
     'zh-Hans': '倒放处理 · {name}',
     'zh-Hant': '倒放處理 · {name}',
@@ -263,6 +281,12 @@ export const timelineSpeedMessages = {
     en: 'Optical flow · {name}',
     ja: 'オプティカルフロー · {name}',
   },
+  'speed.processing.previewTitle': {
+    'zh-Hans': '预览处理 · {name}',
+    'zh-Hant': '預覽處理 · {name}',
+    en: 'Preview · {name}',
+    ja: 'プレビュー処理 · {name}',
+  },
   'speed.processing.reverseFailed': {
     'zh-Hans': '倒放处理失败：{reason}',
     'zh-Hant': '倒放處理失敗：{reason}',
@@ -274,6 +298,12 @@ export const timelineSpeedMessages = {
     'zh-Hant': '光流補幀失敗：{reason}',
     en: 'Optical flow failed: {reason}',
     ja: 'オプティカルフローに失敗：{reason}',
+  },
+  'speed.processing.previewFailed': {
+    'zh-Hans': '预览处理失败：{reason}',
+    'zh-Hant': '預覽處理失敗：{reason}',
+    en: 'Preview failed: {reason}',
+    ja: 'プレビュー処理に失敗：{reason}',
   },
   'speed.processing.statusQueued': {
     'zh-Hans': '排队中',
@@ -330,10 +360,16 @@ export const timelineSpeedMessages = {
     ja: 'キャッシュ上限に達しました',
   },
   'speed.processing.reason.UNSUPPORTED_FORMAT': {
-    'zh-Hans': '当前素材格式不支持此处理',
-    'zh-Hant': '目前素材格式不支援此處理',
-    en: 'Unsupported media format',
-    ja: 'この素材形式には対応していません',
+    'zh-Hans': '这个素材的格式没法补帧',
+    'zh-Hant': '這個素材的格式無法補幀',
+    en: 'This media format cannot use frame interpolation',
+    ja: 'この素材形式はフレーム補間できません',
+  },
+  'speed.processing.reason.INTERPOLATION_UNAVAILABLE': {
+    'zh-Hans': '这段变速没法补帧',
+    'zh-Hant': '這段變速無法補幀',
+    en: 'Frame interpolation is unavailable for this speed change',
+    ja: 'この速度変更ではフレーム補間できません',
   },
   'speed.processing.reason.PROCESSING_FAILED': {
     'zh-Hans': '处理未完成',

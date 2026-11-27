@@ -16,11 +16,11 @@ import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {Button} from '@mioon/ui/components/button';
 import {Input} from '@mioon/ui/components/input';
 import {Switch} from '@mioon/ui/components/switch';
-import {CircleAlert, RotateCcw} from '@mioon/ui/components/workbench-icons';
+import {CircleAlert, Info, RotateCcw} from '@mioon/ui/components/workbench-icons';
 import type {TimeMapCurvePoint, TimeMapCurvePreset} from '../../../../packages/contracts/src/timeline-time-map.ts';
 import type {SpeedInterpolation, SpeedProcessingItem, SpeedSetting} from '../../../../packages/contracts/src/timeline-speed.ts';
 import InspectorGroup from '../InspectorGroup.tsx';
-import {WorkbenchSelect} from '../WorkspaceControls.tsx';
+import {WorkbenchSelect, WorkbenchTooltip} from '../WorkspaceControls.tsx';
 import {useI18n} from '../i18n/I18nProvider.tsx';
 import {useUiPreferences} from '../UiPreferencesProvider.tsx';
 import {displayTimelineFrame} from '../timeline-removal.ts';
@@ -47,13 +47,15 @@ import {
   rateToLogNorm,
   rateToNumber,
   resolveClipSpeedGeometry,
+  resolvePitchShiftControl,
   sampleLogPchipCurve,
   settingFromClip,
   speedNeedsInterpolation,
   speedPreviewErrorKey,
+  speedProcessingCanRetry,
 } from './speed-model.ts';
 import type {CurveEditError, SpeedClipLike} from './speed-model.ts';
-import {speedProcessingFailureSentence} from './speed-presentation.ts';
+import {speedProcessingActiveLabel, speedProcessingFailureSentence} from './speed-presentation.ts';
 import './speed-ui.css';
 
 export interface ClipSpeedSectionProps {
@@ -268,8 +270,13 @@ export default function ClipSpeedSection({
     void commit(next);
   }
 
+  const pitchControl = useMemo(
+    () => resolvePitchShiftControl(mode, draft),
+    [mode, draft],
+  );
+
   function handlePitchShiftChange(checked: boolean): void {
-    if (disabled) return;
+    if (disabled || pitchControl.locked) return;
     const next: SpeedSetting = {...draftRef.current, pitchShift: checked};
     setDraft(next);
     void commit(next);
@@ -712,15 +719,31 @@ export default function ClipSpeedSection({
           </div>
         </div>
 
-        <div className="speed-row speed-switch-row">
-          <label className="speed-row-label" htmlFor="clip-speed-pitch-shift">
-            {t('speed.pitchShift.label')}
-          </label>
+        <div className="speed-row speed-switch-row" data-testid="speed-pitch-shift-row">
+          <span className="speed-row-label-group">
+            <label className="speed-row-label" htmlFor="clip-speed-pitch-shift">
+              {t('speed.pitchShift.label')}
+            </label>
+            {pitchControl.locked && pitchControl.tooltipKey && (
+              <WorkbenchTooltip content={t(pitchControl.tooltipKey as never)}>
+                <button
+                  type="button"
+                  className="speed-info-trigger"
+                  data-testid="speed-pitch-shift-info"
+                  data-lock-reason={pitchControl.lockReason ?? undefined}
+                  aria-label={t(pitchControl.tooltipKey as never)}
+                  title={t(pitchControl.tooltipKey as never)}
+                >
+                  <Info size={13} aria-hidden="true" />
+                </button>
+              </WorkbenchTooltip>
+            )}
+          </span>
           <Switch
             id="clip-speed-pitch-shift"
             data-testid="speed-pitch-shift"
-            checked={draft.pitchShift}
-            disabled={disabled}
+            checked={pitchControl.checked}
+            disabled={disabled || pitchControl.locked}
             onCheckedChange={checked => handlePitchShiftChange(checked === true)}
           />
         </div>
@@ -760,7 +783,7 @@ export default function ClipSpeedSection({
               <span className="speed-inspector-processing-label">
                 {processing.status === 'queued'
                   ? t('speed.processing.clipQueued')
-                  : t(processing.kind === 'reverse' ? 'speed.processing.reverseActive' : 'speed.processing.opticalActive')}
+                  : speedProcessingActiveLabel(processing, t)}
               </span>
               {processing.status === 'running' && (
                 <span className="speed-inspector-processing-percent">{processingPercent}%</span>
@@ -778,18 +801,20 @@ export default function ClipSpeedSection({
               <CircleAlert size={14} aria-hidden="true" />
               <span>{speedProcessingFailureSentence(processing, t)}</span>
             </span>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="speed-inspector-retry"
-              data-testid="speed-inspector-retry"
-              disabled={disabled || processingBusy}
-              onClick={() => onRetryProcessing(processing.taskId)}
-            >
-              <RotateCcw size={12} />
-              {t('speed.processing.retry')}
-            </Button>
+            {speedProcessingCanRetry(processing) && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="speed-inspector-retry"
+                data-testid="speed-inspector-retry"
+                disabled={disabled || processingBusy}
+                onClick={() => onRetryProcessing(processing.taskId)}
+              >
+                <RotateCcw size={12} />
+                {t('speed.processing.retry')}
+              </Button>
+            )}
           </div>
         )}
       </div>
