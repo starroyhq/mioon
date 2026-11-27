@@ -808,6 +808,68 @@ export function initialTimeMap(root: CompiledTimeMapRoot, direction: 'forward' |
     direction, outputWindow: {fromFrame: 0, toFrame: state.durationFrames}});
 }
 
+/** Reopen a persisted view after checking it against its compiled root. */
+export function restoreTimeMap(root: CompiledTimeMapRoot, view: Omit<PlanState, 'root'>): TimeMapResult<CompiledTimeMap> {
+  const state = rootState(root);
+  const {loTime, hiTime, outputWindow: {fromFrame, toFrame}} = view;
+  const limit = state.durationFrames;
+  if (![loTime.offsetOutputFrames, hiTime.offsetOutputFrames].every(value => Number.isSafeInteger(value) && Math.abs(value) <= limit)
+      || !Number.isSafeInteger(fromFrame) || !Number.isSafeInteger(toFrame)
+      || fromFrame < 0 || fromFrame >= toFrame || toFrame > limit) {
+    return fail('INVALID_WINDOW', 'view and output window must use bounded integer offsets');
+  }
+  const lo = boundaryTimeValue(loTime), hi = boundaryTimeValue(hiTime);
+  if (timeValueLess(state, lo, clockTime(0)) || timeValueLess(state, {kind: 'rootEnd', offset: 0}, hi)
+      || !timeValueLess(state, timeShift(lo, toFrame - 1), hi)) {
+    return fail('INVALID_WINDOW', 'view or output window leaves its motion interval');
+  }
+  return done(makePlan(root, view));
+}
+
+/** The edit domain includes the full half-open output window, including motion
+ * after the last sampled frame start. Endpoints already in the basis stay exact. */
+export function timeMapSourceRangeForEdit(plan: CompiledTimeMap): TimeMapResult<TimeMapSourceRange> {
+  const state = rootState(plan.root);
+  const interval = planClockInterval(state, planState(plan));
+  function boundary(time: RootTimeValue, original: TimeMapSourceBoundary): TimeMapResult<TimeMapSourceBoundary> {
+    if ((time.kind === 'clock' && time.frames === 0) || (time.kind === 'rootEnd' && time.offset === 0)) {
+      return done(original);
+    }
+    const position = invertAtTime(state, time, CURVE_REFINEMENT_TOLERANCES.length - 1);
+    if (!position.ok) return position;
+    if (position.value.kind === 'exact') {
+      const {numerator, denominator} = position.value;
+      return done({kind: 'rational', numerator, denominator});
+    }
+    const projected = projectSourceBoundaryToQ64(position.value);
+    return projected.ok ? done(projected.value.boundary) : projected;
+  }
+  const start = boundary(interval.lo, plan.root.sourceRange.start);
+  if (!start.ok) return start;
+  const end = boundary(interval.hi, plan.root.sourceRange.end);
+  return end.ok ? done({start: start.value, end: end.value}) : end;
+}
+
+/** PCHIP is shape-preserving, so only the visible ends and interior control
+ * points can determine the minimum rate. */
+export function timeMapHasSlowMotion(plan: CompiledTimeMap): TimeMapResult<boolean> {
+  const state = rootState(plan.root);
+  if (state.rate) return done(ratCmp(state.rate, ratInt(1n)) < 0);
+  const curve = state.curve;
+  if (!curve) return done(false);
+  const interval = planClockInterval(state, planState(plan));
+  const start = invertAtTime(state, interval.lo, 0);
+  if (!start.ok) return start;
+  const end = invertAtTime(state, interval.hi, 0);
+  if (!end.ok) return end;
+  const toFrame = (position: ContinuousSourcePosition) => position.kind === 'numeric'
+    ? position.value : Number(position.numerator) / Number(position.denominator);
+  const lo = toFrame(start.value), hi = toFrame(end.value);
+  return done(curveRate(curve, lo) < 1 || curveRate(curve, hi) < 1 ||
+    state.basis.speed.kind === 'curve' && state.basis.speed.points.some(point =>
+      point.sourceFrame > lo && point.sourceFrame < hi && point.rate.numerator < point.rate.denominator));
+}
+
 /** Flips the traversal direction over the same visible clock interval. The
  * output length and the tail rule stay put; nothing is re-rounded. */
 export function reverseTimeMap(plan: CompiledTimeMap): CompiledTimeMap {
@@ -1063,6 +1125,9 @@ function marchCurveFrames(state: RootState, direction: 'forward' | 'reverse'): T
 
 function invertAtTime(state: RootState, value: RootTimeValue, level: number): TimeMapResult<ContinuousSourcePosition> {
   if (state.kind === 'freeze') return done({kind: 'exact', numerator: String(state.freezeFrame!), denominator: '1'});
+  const endpoint = value.kind === 'clock' && value.frames === 0 ? state.sourceStart
+    : value.kind === 'rootEnd' && value.offset === 0 ? state.sourceEnd : null;
+  if (endpoint) return done({kind: 'exact', numerator: String(endpoint.n), denominator: String(endpoint.d)});
   const time = timeNumber(state, value);
   const timeError = timeUncertainty(state, value);
   if (state.lengthExact !== null && state.rate !== null) {
@@ -1102,11 +1167,6 @@ function planTimeValue(state: PlanState, outputOffset: number): RootTimeValue {
   const global = state.outputWindow.fromFrame + outputOffset;
   return timeShift(boundaryTimeValue(state.direction === 'forward' ? state.loTime : state.hiTime), state.direction === 'forward' ? global : -global);
 }
-function planExtremeTimes(state: RootState, plan: PlanState): {readonly earlier: RootTimeValue; readonly later: RootTimeValue} {
-  const first = planTimeValue(plan, 0), last = planTimeValue(plan, plan.outputWindow.toFrame - plan.outputWindow.fromFrame - 1);
-  return timeNumber(state, first) <= timeNumber(state, last) ? {earlier: first, later: last} : {earlier: last, later: first};
-}
-
 // ---------------------------------------------------------------------------
 // Public describe/compile surface for plans.
 // ---------------------------------------------------------------------------
@@ -1152,33 +1212,47 @@ export function timeMapPlanFrames(plan: CompiledTimeMap): TimeMapResult<Int32Arr
   const frames = new Int32Array(plan.durationFrames);
   const first = planTimeValue(planInfo, 0);
   const needed: 'forward' | 'reverse' = first.kind === 'clock' ? 'forward' : 'reverse';
-  const vector = rootFrames(state, needed);
-  if (!vector.ok) return vector;
+  // A flipped sub-window can traverse the other direction on this grid.
+  // Only the grid matching the traversal uses the cached floor/ceil vector.
+  const vector = needed === plan.direction ? rootFrames(state, needed) : null;
+  if (vector && !vector.ok) return vector;
   for (let index = 0; index < frames.length; index++) {
     const time = planTimeValue(planInfo, index);
     const vectorIndex = time.kind === 'clock' ? time.frames : -time.offset;
-    if (time.kind !== first.kind || !Number.isSafeInteger(vectorIndex) || vectorIndex < 0 || vectorIndex >= vector.value.length) {
+    if (time.kind !== first.kind || !Number.isSafeInteger(vectorIndex)) {
       return fail('INVALID_WINDOW', 'view window leaves the compiled frame vector');
     }
-    frames[index] = vector.value[vectorIndex]!;
+    if (vector && vectorIndex >= 0 && vectorIndex < vector.value.length) {
+      frames[index] = vector.value[vectorIndex]!;
+    } else {
+      const forward = plan.direction === 'forward';
+      const sample = resolvePositionInteger(state, time, forward ? 'floor' : 'ceil');
+      if (!sample.ok) return sample;
+      frames[index] = clampFrame(state, forward ? sample.value : sample.value - 1);
+    }
   }
   return done(frames);
 }
-/** Continuous visible source interval (earlier→later clock times) and the strict
- * integer envelope `[floor(lo), ceil(hi))` used for decode/capacity checks. */
+/** The first and last displayed source positions and the decode sample window.
+ * Persisted clip capacity uses the full motion interval, including the time
+ * after the last displayed frame start. */
 export function timeMapVisibleSourceRange(plan: CompiledTimeMap): TimeMapResult<TimeMapVisibleSourceRange> {
   const state = rootState(plan.root), planInfo = planState(plan);
-  const extremes = planExtremeTimes(state, planInfo);
-  const forward = planInfo.direction === 'forward';
-  const startBoundary = resolvePositionInteger(state, extremes.earlier, forward ? 'floor' : 'ceil');
+  if (state.freezeFrame !== null) {
+    const position = {kind: 'exact' as const, numerator: String(state.freezeFrame), denominator: '1'};
+    return done({lo: position, hi: position, sourceWindow: {startFrame: state.freezeFrame, endFrame: state.freezeFrame + 1}});
+  }
+  const first = planTimeValue(planInfo, 0), last = planTimeValue(planInfo, plan.durationFrames - 1);
+  const {lo, hi} = timeValueLess(state, last, first) ? {lo: last, hi: first} : {lo: first, hi: last};
+  const forward = plan.direction === 'forward';
+  const startBoundary = resolvePositionInteger(state, lo, forward ? 'floor' : 'ceil');
   if (!startBoundary.ok) return startBoundary;
-  const endBoundary = resolvePositionInteger(state, extremes.later, forward ? 'floor' : 'ceil');
+  const endBoundary = resolvePositionInteger(state, hi, forward ? 'floor' : 'ceil');
   if (!endBoundary.ok) return endBoundary;
-  const low = invertAtTime(state, extremes.earlier, 0);
+  const low = invertAtTime(state, lo, 0);
   if (!low.ok) return low;
-  const high = invertAtTime(state, extremes.later, 0);
+  const high = invertAtTime(state, hi, 0);
   if (!high.ok) return high;
-  // Forward samples floor(position); reverse samples ceil(position)-1.
   const startFrame = Math.max(state.frameRange.start, forward ? startBoundary.value : startBoundary.value - 1);
   const endFrame = Math.min(state.frameRange.end + 1, forward ? endBoundary.value + 1 : endBoundary.value);
   if (endFrame <= startFrame) return fail('INVALID_WINDOW', 'visible source envelope is empty');
@@ -1220,6 +1294,97 @@ export function timeMapSourceAtOutputFrame(plan: CompiledTimeMap, outputFrame: n
   return done({outputFrame, source: continuous, sourceFrame: frame,
     nextSourceFrame: clampFrame(state, frame + nextOffset), phase, tail: false});
 }
+
+/** Read the continuous clock without rebuilding the off-mode frame vector for
+ * every sample. Timestamps are relative to the unsliced view origin so a trim
+ * can shift them by whole output frames after quantization. */
+export function timeMapInterpolationClock(plan: CompiledTimeMap): {
+  sample(outputFrame: number): TimeMapResult<{readonly source: ContinuousSourcePosition; readonly slow: boolean}>;
+  outputAtSource(sourceFrame: number): TimeMapResult<number>;
+} {
+  const view = planState(plan), state = rootState(plan.root);
+  const forward = plan.direction === 'forward';
+  const anchor = timeNumber(state, boundaryTimeValue(forward ? view.loTime : view.hiTime));
+  const start = numberFromRat(state.sourceStart), end = numberFromRat(state.sourceEnd);
+  const framesPerIntegral = numberFromRat(state.framesPerIntegral);
+  const cap = TIMELINE_TIME_MAP_LIMITS.maxRate;
+  const maximumRate = cap.numerator / cap.denominator / framesPerIntegral;
+  const curve = state.curve;
+  function curveClock(source: number): TimeMapResult<{value: number; errorBound: number}> {
+    if (source === start) return done({value: 0, errorBound: 0});
+    if (source === end) return done({value: state.lengthNumber, errorBound: state.lengthError});
+    const segment = curveSegment(curve!, source);
+    const cell = integrateCurveCell(curve!, segment, curve!.xs[segment]!, source,
+      CURVE_REFINEMENT_TOLERANCES.at(-1)!, LOCAL_CELL_BUDGET);
+    if (!cell) return fail('NUMERIC_BUDGET_EXCEEDED', 'interpolation clock exceeded the integration budget');
+    const prefix = curve!.prefix[segment]!;
+    const value = (prefix + cell.value - state.integralOrigin) * framesPerIntegral;
+    const errorBound = (curve!.prefixError[segment]! + cell.errorBound + state.integralOriginError +
+      12 * EPSILON * (Math.abs(prefix) + Math.abs(cell.value) + Math.abs(state.integralOrigin) + 1)) * framesPerIntegral;
+    return done({value, errorBound});
+  }
+  function invertForInterpolation(time: RootTimeValue): TimeMapResult<ContinuousSourcePosition> {
+    if (!curve || time.kind === 'clock' && time.frames === 0 || time.kind === 'rootEnd' && time.offset === 0) {
+      return invertAtTime(state, time, CURVE_REFINEMENT_TOLERANCES.length - 1);
+    }
+    const target = timeNumber(state, time), error = timeUncertainty(state, time);
+    let lo = start, hi = end;
+    let source = clampNumber(start + (end - start) * target / state.lengthNumber, start, end);
+    // Keep Newton inside a monotone bracket. A steep curve can otherwise
+    // overshoot the source extent even though its target lies inside it.
+    for (let step = 0; step < 64; step++) {
+      const estimate = curveClock(source);
+      if (!estimate.ok) return estimate;
+      const residual = estimate.value.value - target;
+      const uncertainty = estimate.value.errorBound + error;
+      const rounding = 8 * EPSILON * (Math.abs(source) + 1);
+      if (Math.abs(residual) <= uncertainty || hi - lo <= rounding) {
+        // PCHIP cannot exceed its admitted rate knots.
+        return done({kind: 'numeric', value: source,
+          errorBound: Math.min(hi - lo, (Math.abs(residual) + uncertainty) * maximumRate) + rounding});
+      }
+      if (residual > 0) hi = source;
+      else lo = source;
+      const next = source - residual * curveRate(curve, source) / framesPerIntegral;
+      source = next > lo && next < hi ? next : lo + (hi - lo) / 2;
+    }
+    return fail('NUMERIC_BUDGET_EXCEEDED', 'interpolation clock inverse did not converge');
+  }
+  const sample = (outputFrame: number): TimeMapResult<{readonly source: ContinuousSourcePosition; readonly slow: boolean}> => {
+    if (!Number.isSafeInteger(outputFrame) || outputFrame < 0 || outputFrame >= plan.durationFrames) {
+      return fail('INVALID_WINDOW', 'output frame outside the interpolation window');
+    }
+    const position = invertForInterpolation(planTimeValue(view, outputFrame));
+    if (!position.ok) return position;
+    const source = position.value;
+    if (!curve) return done({source, slow: state.kind === 'constant' && ratCmp(state.rate!, ratInt(1n)) < 0});
+    const center = source.kind === 'exact' ? Number(source.numerator) / Number(source.denominator) : source.value;
+    const error = source.kind === 'numeric' ? source.errorBound : 0;
+    const lo = clampNumber(center - error, start, end), hi = clampNumber(center + error, start, end);
+    // A shape-preserving segment cannot exceed the extrema at its ends.
+    // Where the numerical interval straddles 1x, the original sample is safe.
+    const slow = curveLogRate(curve, lo) < 0 && curveLogRate(curve, hi) < 0 &&
+      !curve.xs.some((point, index) => point > lo && point < hi && curve.ys[index]! >= 0);
+    return done({source, slow});
+  };
+  const outputAtSource = (sourceFrame: number): TimeMapResult<number> => {
+    if (!Number.isFinite(sourceFrame)) return fail('INVALID_REQUEST', 'interpolation source position must be finite');
+    if (state.kind === 'freeze') return fail('UNSUPPORTED_PROFILE', 'a freeze has no forward interpolation clock');
+    if (!curve) {
+      const absolute = (sourceFrame - start) * framesPerIntegral / numberFromRat(state.rate!);
+      return done(forward ? absolute - anchor : anchor - absolute);
+    }
+    const u = clampNumber(sourceFrame, start, end);
+    const estimate = curveClock(u);
+    if (!estimate.ok) return estimate;
+    let absolute = estimate.value.value;
+    // A physical frame can straddle a fractional root endpoint. Its timestamp
+    // extends at the endpoint rate while the visible output stays in the root.
+    if (u !== sourceFrame) absolute += (sourceFrame - u) * framesPerIntegral / curveRate(curve, u);
+    return done(forward ? absolute - anchor : anchor - absolute);
+  };
+  return {sample, outputAtSource};
+}
 /** Output frames whose displayed source frame equals `sourceFrame`. */
 export function timeMapOutputAtSourceFrame(plan: CompiledTimeMap, sourceFrame: number): TimeMapResult<TimeMapOutputAtSource> {
   if (!Number.isSafeInteger(sourceFrame)) return fail('INVALID_REQUEST', 'source frame must be a safe integer');
@@ -1252,7 +1417,7 @@ export function timeMapOutputAtSourceFrame(plan: CompiledTimeMap, sourceFrame: n
 // ---------------------------------------------------------------------------
 
 export interface TimeMapOutputPosition {readonly numerator: string; readonly denominator: string}
-function tailResult(plan: CompiledTimeMap, state: RootState, options: {tailInverse: 'earliest' | 'latest'}): TimeMapResult<{readonly position: ContinuousSourcePosition; readonly frame: number; readonly tail: boolean}> {
+function tailResult(plan: CompiledTimeMap, _state: RootState, options: {tailInverse: 'earliest' | 'latest'}): TimeMapResult<{readonly position: ContinuousSourcePosition; readonly frame: number; readonly tail: boolean}> {
   const visible = timeMapVisibleSourceRange(plan);
   if (!visible.ok) return visible;
   const latest = options.tailInverse === 'latest';
@@ -1496,11 +1661,18 @@ export function timeMapBasisFromCurrentClip(clip: CurrentTimelineClipLike, timel
 }
 /** Projects the compiled source envelope onto the current clip fields. */
 export function projectTimeMapToCurrentClipFields(clip: CurrentTimelineClipLike, plan: CompiledTimeMap): TimeMapResult<ClipFrameProjection> {
-  const range = timeMapVisibleSourceRange(plan);
-  if (!range.ok) return range;
-  const start = range.value.sourceWindow.startFrame;
-  const span = range.value.sourceWindow.endFrame - start;
-  return done({startFrame: clip.startFrame, durationFrames: plan.durationFrames, sourceInFrame: start, sourceSpanFrames: span});
+  const state = rootState(plan.root);
+  const output = {startFrame: clip.startFrame, durationFrames: plan.durationFrames};
+  if (state.freezeFrame !== null) return done({...output, sourceInFrame: state.freezeFrame, sourceSpanFrames: 1});
+  const interval = planClockInterval(state, planState(plan));
+  const start = resolvePositionInteger(state, interval.lo, 'floor');
+  if (!start.ok) return start;
+  const end = resolvePositionInteger(state, interval.hi, 'ceil');
+  if (!end.ok) return end;
+  const sourceInFrame = Math.max(state.frameRange.start, start.value);
+  const sourceSpanFrames = Math.min(state.frameRange.end + 1, end.value) - sourceInFrame;
+  if (sourceSpanFrames < 1) return fail('INVALID_WINDOW', 'visible source envelope is empty');
+  return done({...output, sourceInFrame, sourceSpanFrames});
 }
 /** Verifies that the current integer fields equal the compiled projection. */
 export function verifyCurrentClipTiming(clip: CurrentTimelineClipLike, plan: CompiledTimeMap): TimeMapResult<{readonly projection: ClipFrameProjection; readonly matches: boolean}> {

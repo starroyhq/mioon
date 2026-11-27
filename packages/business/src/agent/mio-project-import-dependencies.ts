@@ -27,12 +27,13 @@ import {subjectVariantSnapshotSchema, isSubjectVariantMutationResponse} from '..
 import {wanVideoInputSchema} from '../../../contracts/src/wan-video.ts';
 import {agentTaskChangeSchema} from '../../../contracts/src/agent-tasks-v2.ts';
 import {MIO_PROJECT_FILE_IMPORT_OPERATION} from '../../../contracts/src/mio-project-import.ts';
+import {processingInputWithClipSchema} from '../../../contracts/src/timeline-processing-storage.ts';
 import {FORMAT5_LIMITS, format5DialogueSchema, format5EdgeSchema, format5SequenceRootSchema, format5SubjectBindingSchema,
   format5SubjectCardSchema, format5SyncBaselineSchema, getFormat5ClipIssue, getFormat5CueIssue, getFormat5TimelineHeaderIssue,
   getFormat5TrackIssue, type Format5TimelineHeader} from '../../../contracts/src/project-format5.ts';
 import {sequenceEditHistoryEntrySchema, sequenceEditReceiptSchema} from '../../../contracts/src/sequence-edit.ts';
-import {CROSS_FILE_RELATIONS, FORMAT4_CROSS_FILE_RELATIONS} from '../project-file/cross-file/relations.ts';
-import {FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_HISTORY_SCHEMA_VERSION} from '../project-file/schema/databases.ts';
+import {CROSS_FILE_RELATIONS, FORMAT4_CROSS_FILE_RELATIONS, FORMAT6_CROSS_FILE_RELATIONS} from '../project-file/cross-file/relations.ts';
+import {FORMAT4_HISTORY_SCHEMA_VERSION, FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_HISTORY_SCHEMA_VERSION, FORMAT6_HISTORY_SCHEMA_VERSION} from '../project-file/schema/databases.ts';
 import {CANVAS_HISTORY_TABLES} from '../project-file/schema/tables.ts';
 import type {ProjectStore} from '../project-file/store.ts';
 import {assertProjectStore} from '../store-runtime.ts';
@@ -282,7 +283,8 @@ export function readMioProjectImportDependenciesInside(store: ProjectStore, asse
     frame: {width: number; height: number; fps: number} = header, tracks = header.tracks): void {
     if (!object(value)) deny('invalid');
     const track = tracks.find(item => item.id === value.trackId);
-    if (!track || getFormat5ClipIssue(value, {...frame, trackKind: track.kind, main: track.id === header.mainTrack.trackId})) deny('invalid');
+    if (!track || getFormat5ClipIssue(value, {...frame, trackKind: track.kind, main: track.id === header.mainTrack.trackId,
+      formatVersion: timelineRecordFormatOf(db)})) deny('invalid');
     tree(value, source);
   }
   function sequenceCell(table: string, row: Value, value: unknown, source: string, header = nativeHeader): void {
@@ -402,13 +404,29 @@ export function readMioProjectImportDependenciesInside(store: ProjectStore, asse
     if (!target || target.projectId !== store.projectId) deny('invalid');
     const tables: {schema: 'main' | 'project' | 'cache'; table: string}[] = [];
     const historyVersion = db.prepare('SELECT version FROM main.schema_version').get()?.version;
-    nativeSequence = historyVersion === FORMAT5_HISTORY_SCHEMA_VERSION;
+    const processingHistory = historyVersion === FORMAT6_HISTORY_SCHEMA_VERSION;
+    if (processingHistory) {
+      // An active attempt may still read the frozen asset after its clip is
+      // removed. Terminal results are derived, and retries require a current
+      // demand. Retry receipts themselves hold task and request IDs only.
+      const source = 'main.timeline_processing_tasks.input';
+      const pending = db.prepare(`SELECT kind,CASE WHEN length(CAST(input AS BLOB))<=65536 THEN input END AS input
+        FROM main.timeline_processing_tasks WHERE projectId=? AND state IN ('queued','running') LIMIT ?`);
+      for (const row of pending.iterate(store.projectId, limits.rows + 1)) {
+        countRow();
+        const input = processingInputWithClipSchema.safeParse(decode(row.input, source, 65536));
+        if (!input.success || input.data.frozen.kind !== row.kind) deny('invalid');
+        if (input.data.frozen.assetId === assetId) referenced(source);
+      }
+    }
+    nativeSequence = historyVersion === FORMAT5_HISTORY_SCHEMA_VERSION || processingHistory;
     const hasCanvasHistory = historyVersion === FORMAT4_HISTORY_SCHEMA_VERSION || nativeSequence;
     const inspected = nativeSequence ? {project: {...consumerCells.project, ...sequenceProjectCells},
       main: {...consumerCells.main, ...sequenceHistoryCells}, cache: consumerCells.cache} : consumerCells;
     for (const schema of ['project', 'main', 'cache'] as const) {
       const knownMetadata = nativeSequence && schema !== 'cache' ? sequenceMetadata[schema] : [];
       const expected = new Set<string>([...ignored[schema], ...knownMetadata, ...Object.keys(inspected[schema])]);
+      if (schema === 'main' && processingHistory) expected.add('timeline_processing_tasks').add('timeline_processing_retries');
       if (schema === 'main' && hasCanvasHistory) {
         for (const table of CANVAS_HISTORY_TABLES) expected.add(table);
         // Canvas entries change position, order and archive fields only. They
@@ -458,7 +476,8 @@ export function readMioProjectImportDependenciesInside(store: ProjectStore, asse
       if (schema !== 'project' || fk.to !== 'id' || typeof fk.from !== 'string' || fk.seq !== 0) deny('unsupported');
       if (db.prepare(`SELECT 1 FROM ${schema}.${quote(table)} WHERE ${quote(fk.from)} IS ? LIMIT 1`).get(assetId)) referenced(`${schema}.${table}.${fk.from}`);
     }
-    const relations = hasCanvasHistory ? FORMAT4_CROSS_FILE_RELATIONS : CROSS_FILE_RELATIONS;
+    const relations = processingHistory ? FORMAT6_CROSS_FILE_RELATIONS
+      : hasCanvasHistory ? FORMAT4_CROSS_FILE_RELATIONS : CROSS_FILE_RELATIONS;
     for (const relation of relations) {
       if (relation.parent.table !== 'assets') continue;
       const column = relation.child.columns[0];

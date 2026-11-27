@@ -9,7 +9,7 @@ import type {ProjectWorkInspection} from './background-coordinator.ts';
 import type {AppLibrary} from '../../../../packages/business/src/app-db/index.ts';
 import {createProjectServiceApplication} from '../../../../packages/business/src/project-service-application.ts';
 import {hasBlockingMioRun, inspectClosedProjectForTrash} from '../../../../packages/business/src/project-file/closed-copy.ts';
-import type {Format4Options} from '../../../../packages/business/src/project-file/index.ts';
+import type {ProjectReadFormatOptions} from '../../../../packages/business/src/project-file/index.ts';
 import {canonicalJson} from '../../../../packages/business/src/project-versions/document.ts';
 import {projectLocation} from './directories.ts';
 import type {AppDirectories} from './directories.ts';
@@ -45,7 +45,7 @@ export function createProjectTrash({manager, library, directories, signal, asser
   readonly assertProjectFile: (file: string) => void;
   readonly inspectProjectWork: (projectId: string) => ProjectWorkInspection;
   readonly port?: ProjectTrashPort;
-  readonly format4?: Format4Options;
+  readonly format4?: ProjectReadFormatOptions;
   readonly onBoundary?: (boundary: ProjectTrashBoundary, input: ProjectDeleteInput) => void | Promise<void>;
 }): ProjectTrashActions {
   const assertAllowed = createProjectServiceApplication(library, signal).assertMutationAllowed!;

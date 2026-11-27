@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { isSequenceTimelineFormat } from '../packages/contracts/src/timeline-replacement.ts';
 import { defaultVideoModels, resolveVideoEndpoint, videoBindingCapabilities } from '../packages/contracts/src/video-providers.ts';
 import type { VideoExecutionBinding } from '../packages/contracts/src/video-providers.ts';
 import { generationSelection, generationParameters, generationVideoInput, generationInputIssueDescriptor, generationReferenceIdentity, generationReferences, generationMediaReferences, checkGenerationMediaReferences, videoConnectionProviders, wanGenerationCapabilities } from '../apps/web/src/generation-settings.ts';
@@ -49,7 +50,7 @@ test('actual App freezes all Wan input, sends it once and rejects review changes
   const source = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   for (const change of ['none', 'prompt', 'order', 'parameters', 'asset','reference revision']) {
     const state = { review: null as Record<string, unknown> | null, sent: [] as unknown[] };
-    const scope = { generationSelection, generationParameters, generationVideoInput, generationReferences, generationMediaReferences, checkGenerationMediaReferences, generationReferenceIdentity, generationProviderIdentity: (provider: GenerationProvider) => provider.connectionId || provider.id, generationProviderForModel: (provider: GenerationProvider) => provider, findGenerationProvider: () => selected.provider,
+    const scope = { isSequenceTimelineFormat, generationSelection, generationParameters, generationVideoInput, generationReferences, generationMediaReferences, checkGenerationMediaReferences, generationReferenceIdentity, generationProviderIdentity: (provider: GenerationProvider) => provider.connectionId || provider.id, generationProviderForModel: (provider: GenerationProvider) => provider, findGenerationProvider: () => selected.provider,
       providers: [p], dataRef: { current: { shots: [shot], assets: structuredClone(assets), jobs: [] } }, generationOptionsRef: { current: { [shot.id]: structuredClone(options) } }, realConfirmRef: { current: null }, currentProject:{current:projectId}, rpc:async(_operation:string,input:{assetIds:string[]})=>({items:input.assetIds.map(assetId=>({assetId,referenceRevision:1,status:'online',reason:'same-stats',outside:false,readable:true,fingerprintToken:'a'.repeat(64)})),nextCursor:null}), generationReviewScope: { current: {} }, context: () => ({projectId}), isCurrent: () => true,
       setRealConfirm: (value: Record<string, unknown>) => { state.review = value; }, readableError:(error:unknown)=>String(error),notify() {}, msg: () => '', submitGeneration: (value: unknown) => state.sent.push(value) };
     const funcs = source.slice(source.indexOf('  async function reviewGeneration('), source.indexOf('  async function createProject('));

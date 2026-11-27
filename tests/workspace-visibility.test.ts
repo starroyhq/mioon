@@ -11,6 +11,7 @@ import { activeJob, assetUrl, versionUrl, mediaUrl } from '../apps/web/src/api.t
 import { LOCAL_SHOT_TEXT_LIMITS } from '@mioon/contracts/local-shot-text';
 import * as exportSettings from '../apps/web/src/export-settings-state.ts';
 import * as sourceRanges from '../apps/web/src/source-range-state.ts';
+import * as speedRender from '../packages/contracts/src/timeline-speed-render.ts';
 import * as previewPlayback from '../apps/web/src/preview-playback.ts';
 import {DEFAULT_UI_PREFERENCES} from '../packages/contracts/src/ui-preferences.ts';
 import {imageEditSourceIssueDescriptor} from '../apps/web/src/image-generation.ts';
@@ -93,6 +94,7 @@ function createHarness(file: string, exportName = 'default') {
     './PreviewRenderProgress.tsx': { default: 'PreviewRenderProgress', __esModule: true },
     './AspectFrameControls.tsx': { AspectFrameFeedback: 'AspectFrameFeedback', AspectFrameMenu: 'AspectFrameMenu', AspectFrameSuggestion: 'AspectFrameSuggestion' },
     './preview-playback.ts': previewPlayback,
+    '../../../packages/contracts/src/timeline-speed-render.ts': speedRender,
     './UiPreferencesProvider.tsx': {useUiPreferences:()=>({preferences:DEFAULT_UI_PREFERENCES})},
     './image-generation.ts': {imageEditSourceIssueDescriptor},
     './source-range-state.ts': sourceRanges,
@@ -224,6 +226,22 @@ for (const kind of ['video', 'audio'] as const) {
     h.unmount(); assert.equal(element.loads, 1); assert.equal(element.src, null);
   });
 }
+
+test('retimed clip preview never binds the original video or an old timeline render', () => {
+  const h = createHarness('Preview.tsx');
+  const timing = {profile: 'timeline-freeze-v1', sourceFrame: 0, sourceVersionId: null, sourceSha256: 'a'.repeat(64)};
+  const clip = {id: 'clip-one', sourceInFrame: 0, startFrame: 0, durationFrames: 60, timing};
+  const timeline = {fps: 30, revision: 2, durationFrames: 60, clips: [clip]};
+  const job = {id: 'render-one', projectId: renderProjectId, assetId: firstRenderAssetId, status: 'succeeded',
+    url: '/render', timelineRevision: 1};
+  for (const kind of ['source', 'timeline']) {
+    h.render(previewProps({kind, clip, timeline, job}));
+    assert.equal(h.mediaNode(), undefined);
+    assert.ok(h.nodes().some(node => node.props['data-error-code'] === 'SPEED_RENDER_NOT_READY'));
+  }
+  h.render(previewProps({kind: 'source', clip: null, timeline, job}));
+  assert.ok(h.mediaNode(), 'standalone source playback has its own explicit source coordinates');
+});
 
 for (const kind of ['source', 'timeline'] as const) {
   test(`${kind} Preview cannot publish late playback or native-seek events while hidden`, () => {

@@ -2,7 +2,7 @@ import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
-import {randomUUID} from 'node:crypto';
+import {createHash, randomUUID} from 'node:crypto';
 import {mkdtempSync, readFileSync, realpathSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -16,6 +16,7 @@ import {sequencePreviewFailureResponseSchema} from '../packages/contracts/src/se
 import {sequenceHistoryViewResponseSchema} from '../packages/contracts/src/sequence-editing.ts';
 import {FORMAT5_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {Format5EditSession, format5UserUndoBlocked} from '../apps/web/src/edit-ui/session.ts';
+import {sequenceEditInputDigest} from '../packages/business/src/format5-editor-history.ts';
 
 const run = promisify(execFile);
 const TOKEN = 'synthetic-cli-format5-actions-token';
@@ -423,4 +424,147 @@ test('replace-source pins a main-track shot to a matching version of that shot',
   assert.deepEqual(replacedClip, {...originalClip, assetId: BOARD_IDS.assetV2, versionId: BOARD_IDS.versionA2,
     jobId: BOARD_IDS.jobV2, sequenceSource: {...originalClip.sequenceSource, versionMode: 'locked'}});
   assert.deepEqual(after.shots, before.shots, 'a clip-only version replacement keeps the board selection');
+});
+
+test('CLI and MCP preview, commit, replay and undo both format-6 speed actions', {timeout: 90_000}, async t => {
+  const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-cli-speed-'));
+  const oldFlag = process.env.MIOON_FORMAT6_DEV;
+  process.env.MIOON_FORMAT6_DEV = '1';
+  let server!: Awaited<ReturnType<typeof startServer>>;
+  t.after(async () => {
+    try { await server?.close(); }
+    finally {
+      if (oldFlag === undefined) delete process.env.MIOON_FORMAT6_DEV;
+      else process.env.MIOON_FORMAT6_DEV = oldFlag;
+      rmSync(root, {recursive: true, force: true});
+    }
+  });
+  server = await startServer({dataDir: path.join(root, 'app'), port: 0, token: TOKEN,
+    localDraftChannel: 'development', projectFormatForTest: undefined});
+  const mediaEnv = testEnv(), env = {...mediaEnv, MIOON_BASE_URL: server.url, MIOON_TOKEN: TOKEN};
+  const {id: projectId} = await cli(env, 'rpc', 'project.create', '--input', JSON.stringify({name: 'Synthetic speed edits'}));
+  const rpc = async (operation: string, input: Row): Promise<string> => {
+    const response = await fetch(server.url + projectRpcPath(projectId), {method: 'POST',
+      headers: {'content-type': 'application/json', authorization: `Bearer ${TOKEN}`},
+      body: JSON.stringify({operation, input: {projectId, ...input}})});
+    return response.text();
+  };
+  const read = async (): Promise<Row> => data(await rpc('project.get', {}));
+  const file = path.join(root, 'motion.mp4');
+  await run(mediaEnv.MIOON_FFMPEG_PATH || 'ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin',
+    '-f', 'lavfi', '-i', 'color=c=red:size=64x64:rate=30', '-frames:v', '90',
+    '-an', '-c:v', 'libx264', '-threads', '1', '-pix_fmt', 'yuv420p', file], {env: mediaEnv, timeout: 15_000});
+  const media = readFileSync(file);
+  const sourceSha256 = createHash('sha256').update(media).digest('hex');
+  const {id: assetId} = await cli(env, 'asset', 'import', '--input', JSON.stringify({projectId, name: 'motion.mp4',
+    mimeType: 'video/mp4', dataBase64: media.toString('base64')}));
+  const setup = async (group: string, action: Row) => commit(env, projectId,
+    await preview(env, ['sequence', group, 'edit'], {projectId, ...action}));
+  assert.equal((await setup('board', {kind: 'board-root-create', name: 'Film', position: {x: 0, y: 0}})).status, 'applied');
+  assert.equal((await setup('timeline', {kind: 'insert-asset', assetId, trackId: null, startFrame: 0})).status, 'applied');
+  assert.equal((await setup('board', {kind: 'board-shot-append', name: 'Placeholder'})).status, 'applied');
+  const initial = (await read()).timeline;
+  const clipId = initial.clips.find((clip: Row) => clip.assetId === assetId)?.id;
+  const placeholderId = initial.clips.find((clip: Row) => clip.sourceState === 'placeholder')?.id;
+  assert.ok(clipId && placeholderId);
+  assert.equal(initial.capabilities.speed, true);
+
+  const cliCall = (name: string, input: Row) => cli(env, ...name.split('_'), '--input', JSON.stringify(input));
+  const cliReject = async (name: string, input: Row, code: string) => {
+    await assert.rejects(cliProcess(env, ...name.split('_'), '--input', JSON.stringify(input)), error => {
+      assert.ok(error instanceof Error && 'stdout' in error && typeof error.stdout === 'string');
+      assert.equal(JSON.parse(error.stdout).error.code, code);
+      return true;
+    });
+  };
+  const mcp = await connectMcp(t, env);
+  const mcpTimeline = (await mcp.listTools()).tools.find(tool => tool.name === 'sequence_timeline_edit');
+  assert.ok(mcpTimeline);
+  assert.match(JSON.stringify(mcpTimeline.inputSchema), /"const":"clip-speed"/u);
+  assert.match(JSON.stringify(mcpTimeline.inputSchema), /"const":"freeze-frame"/u);
+  const mcpCall = (name: string, input: Row) => mcpAction(mcp, name, input);
+  const mcpReject = async (name: string, input: Row, code: string) => {
+    const result = await mcp.callTool({name, arguments: input}, undefined, {timeout: 15_000});
+    assert.equal((result.structuredContent as {error?: {code: string}})?.error?.code, code);
+  };
+  const speed = {kind: 'clip-speed', clipId, setting: {speed: {kind: 'constant', rate: {numerator: 2, denominator: 1}},
+    direction: 'forward', pitchShift: false, interpolation: 'off'}};
+  const freeze = {kind: 'freeze-frame', clipId, atFrame: 31, durationFrames: 17};
+  const previewInput = {requestId: `http-speed-${randomUUID()}`, speedIntent: {side: 'timeline', operation: speed}};
+  assert.equal(JSON.parse(await rpc('sequence.preview', {...previewInput, origin: 'mio'})).error.code, 'SEQUENCE_EDIT_CONTRACT_INVALID');
+  const httpPlan = data(await rpc('sequence.preview', previewInput));
+  assert.equal(httpPlan.envelope.origin, 'user');
+  assert.deepEqual(httpPlan.envelope.speedIntent, previewInput.speedIntent);
+  const forged = {...httpPlan.envelope, origin: 'mio'};
+  for (const operation of ['sequence.commit', 'sequence.action.commit']) {
+    const result = JSON.parse(await rpc(operation, {envelope: forged, expectedPlanDigest: sequenceEditInputDigest(forged)}));
+    assert.equal(result.error.code, 'SEQUENCE_EDIT_CONTRACT_INVALID');
+  }
+  assert.deepEqual((await read()).timeline.clips, initial.clips);
+  const httpReceipt = data(await rpc('sequence.commit', {envelope: httpPlan.envelope, expectedPlanDigest: httpPlan.planDigest}));
+  assert.equal(httpReceipt.status, 'applied');
+  assert.equal(data(await rpc('sequence.undo', {requestId: `undo-http-speed-${randomUUID()}`, actionId: httpReceipt.actionId,
+    expected: {position: httpReceipt.history.position, revision: httpReceipt.history.revision}})).status, 'applied');
+  assert.deepEqual((await read()).timeline.clips, initial.clips);
+  for (const [send, reject] of [[cliCall, cliReject], [mcpCall, mcpReject]] as const) {
+    for (const [action, durationFrames] of [[speed, 45], [freeze, 17]] as const) {
+      const before = (await read()).timeline.clips;
+      await reject('sequence_timeline_edit', {projectId, ...action, clipId: placeholderId}, 'SPEED_SOURCE_NOT_READY');
+      const plan = await send('sequence_timeline_edit', {projectId, ...action});
+      const stale = await send('sequence_timeline_edit', {projectId, ...action});
+      assert.equal(plan.envelope.origin, 'user');
+      assert.equal(plan.summary.speed.durationFrames, durationFrames);
+      assert.deepEqual((await read()).timeline.clips, before);
+
+      const commitInput = (previewed: Row) => ({projectId, envelope: previewed.envelope, expectedPlanDigest: previewed.planDigest});
+      const input = commitInput(plan);
+      const receipt = await send('sequence_action_commit', input);
+      assert.equal(receipt.status, 'applied');
+      const changed = (await read()).timeline.clips;
+      const timed = changed.find((clip: Row) => clip.durationFrames === durationFrames && clip.timing);
+      assert.ok(timed);
+      if (action.kind === 'freeze-frame') assert.equal(timed.timing.sourceSha256, sourceSha256);
+      assert.deepEqual(await send('sequence_action_commit', input), receipt);
+      await reject('sequence_action_commit', commitInput(stale), 'SEQUENCE_EDIT_REVISION_CONFLICT');
+      assert.deepEqual((await read()).timeline.clips, changed);
+
+      const history = await send('sequence_history_get', {projectId});
+      assert.equal(history.undo.actionId, receipt.actionId);
+      const undone = await send('sequence_undo', {projectId, requestId: `undo-speed-${randomUUID()}`,
+        actionId: receipt.actionId, expected: {position: history.position, revision: history.revision}});
+      assert.equal(undone.status, 'applied');
+      assert.deepEqual((await read()).timeline.clips, before);
+    }
+  }
+
+  const sampled = await cli(env, 'asset', 'import', '--file', file, '--request-id', randomUUID(),
+    '--confirm-outside', '--input', JSON.stringify({projectId, name: 'sampled.mp4'}));
+  assert.equal(sampled.hashState, 'sampled');
+  assert.equal(sampled.sha256, null);
+  const tail = (await read()).timeline.durationFrames;
+  assert.equal((await setup('timeline', {kind: 'insert-asset', assetId: sampled.id, trackId: null, startFrame: tail})).status, 'applied');
+  const beforeFreeze = (await read()).timeline;
+  const sampledClip = beforeFreeze.clips.find((clip: Row) => clip.assetId === sampled.id);
+  assert.ok(sampledClip);
+  const sampledPreview = {requestId: `freeze-source-${randomUUID()}`, speedIntent: {side: 'timeline',
+    operation: {kind: 'freeze-frame', clipId: sampledClip.id, atFrame: sampledClip.startFrame + 5, durationFrames: 17}}};
+  const unavailable = data(await rpc('sequence.preview', sampledPreview));
+  assert.equal(unavailable.code, 'SPEED_SOURCE_NOT_READY');
+  const stillSampled = await read();
+  assert.equal(stillSampled.assets.find((item: Row) => item.id === sampled.id).sha256, null);
+  assert.deepEqual(stillSampled.timeline, beforeFreeze);
+
+  const prepared = await cliCall('asset_media_prepare', {projectId, assets: [
+    {assetId: sampled.id, referenceRevision: sampled.referenceRevision},
+  ], purpose: 'timeline'});
+  assert.equal(prepared.assets[0].sha256, sourceSha256);
+  assert.equal(prepared.assets[0].referenceRevision, sampled.referenceRevision);
+  const sampledPlan = data(await rpc('sequence.preview', sampledPreview));
+  assert.ok(sampledPlan.envelope);
+  assert.deepEqual((await read()).timeline, beforeFreeze);
+  const sampledReceipt = data(await rpc('sequence.commit', {envelope: sampledPlan.envelope, expectedPlanDigest: sampledPlan.planDigest}));
+  assert.equal(sampledReceipt.status, 'applied');
+  const locked = (await read()).timeline.clips.find((clip: Row) => clip.assetId === sampled.id && clip.timing);
+  assert.deepEqual(locked?.timing, {profile: 'timeline-freeze-v1', sourceFrame: 5,
+    sourceVersionId: null, sourceSha256});
 });

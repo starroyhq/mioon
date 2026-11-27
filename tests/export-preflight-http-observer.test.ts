@@ -91,7 +91,7 @@ for (const operation of ['timeline.export.preflight', 'timeline.export.capabilit
   assert.equal(await (await fetch(f.url + '/health')).text(), 'healthy');
 });
 
-for (const operation of ['timeline.export.preflight', 'timeline.export.capabilities']) test(`already disconnected ${operation} enters with revoked observer and cleans up on rejection`, async () => {
+for (const operation of ['timeline.export.preflight', 'timeline.export.capabilities', 'timeline.processing.wait']) test(`already disconnected ${operation} enters with revoked observer and cleans up on rejection`, async () => {
   const req = new EventEmitter(), res = new EventEmitter() as ObserverResponse; res.destroyed = true;
   await assert.rejects((callObservedRpc as ObservedFixtureCall)(req, res, {call: async (_, __, {signal}) => {
     assert.equal(signal!.aborted, true); throw Error('synthetic abort');
@@ -99,7 +99,7 @@ for (const operation of ['timeline.export.preflight', 'timeline.export.capabilit
   assert.equal(req.listenerCount('aborted'), 0); assert.equal(res.listenerCount('close'), 0);
 });
 
-for (const operation of ['timeline.export.preflight', 'timeline.export.capabilities']) test(`finished response and later close cannot revoke settled ${operation} or retain listeners`, async () => {
+for (const operation of ['timeline.export.preflight', 'timeline.export.capabilities', 'timeline.processing.wait']) test(`finished response and later close cannot revoke settled ${operation} or retain listeners`, async () => {
   const req = new EventEmitter(), res = new EventEmitter() as ObserverResponse; let signal: AbortSignal | undefined;
   const result = await (callObservedRpc as ObservedFixtureCall)(req, res, {call: async (_, __, options) => {
     signal = (options)!.signal; res.writableFinished = true; res.emit('close'); return {ready: true};
@@ -111,8 +111,8 @@ for (const operation of ['timeline.export.preflight', 'timeline.export.capabilit
 });
 
 
-test('only six explicit advisory operations observe disconnect; private capability files do not become business cancellation', async () => {
-  const observed = new Set(['timeline.export.preflight', 'timeline.export.capabilities', 'timeline.export.samplePeak', 'timeline.export.loudness', 'timeline.loudness.prepare', 'timeline.clip.loudness']);
+test('only the explicit advisory operations observe disconnect; private capability files do not become business cancellation', async () => {
+  const observed = new Set(['timeline.export.preflight', 'timeline.export.capabilities', 'timeline.export.samplePeak', 'timeline.export.loudness', 'timeline.loudness.prepare', 'timeline.clip.loudness', 'timeline.processing.wait']);
   assert.equal(operationEffect('timeline.export.capabilities').fileWrite, true, 'the real temporary-file effect must remain disclosed');
   for (const operation of Object.keys(schemas)) {
     const req = new EventEmitter(), res = new EventEmitter() as ObserverResponse; let received: AbortSignal | undefined;
@@ -127,7 +127,7 @@ test('observer policy rejects every other file writer and future business/networ
   const importLine = "import {operationEffect} from '@mioon/contracts';";
   assert.equal(source.split(importLine).length, 2, 'one exact metadata dependency, actual observer function remains intact');
   const cases = [
-    ...['timeline.export.preflight', 'timeline.export.samplePeak', 'timeline.export.loudness', 'timeline.loudness.prepare', 'timeline.clip.loudness'].map(operation => ({operation, patch:{fileWrite:true}})),
+    ...['timeline.export.preflight', 'timeline.export.samplePeak', 'timeline.export.loudness', 'timeline.loudness.prepare', 'timeline.clip.loudness', 'timeline.processing.wait'].map(operation => ({operation, patch:{fileWrite:true}})),
     ...[{readOnly:false}, {databaseWrite:true}, {externalIO:true}, {paidGeneration:true}, {destructive:true}, {openWorld:true}]
       .map(patch => ({operation:'timeline.export.capabilities', patch})),
   ];

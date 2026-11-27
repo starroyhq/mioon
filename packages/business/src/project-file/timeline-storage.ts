@@ -3,7 +3,7 @@ import {TIMELINE_RESPONSE_BYTES} from '../../../contracts/src/timeline-replaceme
 import {AppError} from '../../../contracts/src/app-error.ts';
 import type {ContentStamp} from '../../../contracts/src/project-file.ts';
 import {readProjectContentStamp} from './content-stamp.ts';
-import {FORMAT5_PROJECT_SCHEMA_VERSION} from './schema/databases.ts';
+import {isSequenceProjectFormat} from './schema/databases.ts';
 import {readFormat5TimelineRecord, readFormat5TimelineState} from './format5-timeline.ts';
 
 type Schema = 'main' | 'project';
@@ -69,7 +69,7 @@ function parseLegacy(row: Row): unknown {
  * and 4 return the stored record bytes; format 5 assembles the native rows. */
 export function readTimelineStorage(db: DatabaseSync, projectId: string, options: TimelineReadOptions = {}): TimelineStorageSnapshot | null {
   const schema = options.schema ?? timelineStorageSchema(db);
-  if (timelineStorageFormat(db, schema) === FORMAT5_PROJECT_SCHEMA_VERSION) {
+  if (isSequenceProjectFormat(timelineStorageFormat(db, schema))) {
     const record = readFormat5TimelineRecord(db, schema);
     if (!record || record.projectId !== projectId) return null;
     return {format5: true, id: record.id, projectId, raw: JSON.stringify(record), timeline: record, stamp: readProjectContentStamp(db, schema)};
@@ -84,7 +84,7 @@ export function readTimelineStorage(db: DatabaseSync, projectId: string, options
  * the clip array. Format 5 skips the native rows entirely. */
 export function readTimelineHeaderStorage(db: DatabaseSync, projectId: string, options: TimelineReadOptions = {}): TimelineHeaderSnapshot | null {
   const schema = options.schema ?? timelineStorageSchema(db);
-  if (timelineStorageFormat(db, schema) === FORMAT5_PROJECT_SCHEMA_VERSION) {
+  if (isSequenceProjectFormat(timelineStorageFormat(db, schema))) {
     const state = readFormat5TimelineState(db, schema);
     if (!state.header || state.header.projectId !== projectId) return null;
     let header: unknown;

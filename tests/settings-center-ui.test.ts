@@ -1,6 +1,7 @@
 import type {RootModule,RootControlledModules} from './helpers/strict-root-ui-types.ts';
 import type {RootHook} from './helpers/strict-root-ui-types.ts';
 import type {RootTree, RootNode} from './helpers/strict-root-ui-types.ts';
+import {isSequenceTimelineFormat} from '../packages/contracts/src/timeline-replacement.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -533,7 +534,7 @@ test('actual App Ctrl+B and undo handlers work before settings opens and after c
   const timeline = {id: 'timeline', revision: 1, clips: [{id: 'clip', name: 'Clip', startFrame: 10, durationFrames: 50}]};
   const history = {projectId: 'project', timelineId: timeline.id, revision: timeline.revision, cursor: 1, length: 2,
     canUndo: true, canRedo: true, undoEntry: {id: 'undo'}, redoEntry: {id: 'redo'}};
-  const env = { nativeMenuBridge: null as object | null, viewRef: { current: { activeMode: 'editing' } }, document: modalDocument([settings, confirmation]),
+  const env = { isSequenceTimelineFormat, nativeMenuBridge: null as object | null, viewRef: { current: { activeMode: 'editing' } }, document: modalDocument([settings, confirmation]),
     hasOpenWorkbenchModal, timelineSplitActionForKey, timelineHistoryActionForKey, historyState: { canUndo: true, canRedo: true },
     playbackClock, effectivePlayhead: 30, timelineSplitState, data: {project: {id: 'project'}, timelineHistory: history}, timeline,
     busy: {}, timelinePending: false, clipDirty: false, subtitleDirty: false, online: true, auth: true, loading: false,

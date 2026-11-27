@@ -41,7 +41,7 @@ import {
   writeSequenceEditFailure,
 } from './format5-editor-history.ts';
 import type {SequenceEditHistoryState, SequenceEditReceiptDraft} from './format5-editor-history.ts';
-import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
+import {isSequenceProjectFormat} from './project-file/schema/databases.ts';
 import {readProjectContentStamp} from './project-file/content-stamp.ts';
 import {readFormat5JsonRows} from './project-file/format5-content.ts';
 import {bumpFormat5ContentStampInside, readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
@@ -68,7 +68,7 @@ function invalidContent(): never {
   throw new AppError('PROJECT_INVALID', '项目内容与格式 5 不符。', 422, {database: 'project', reason: 'metadata'});
 }
 export function isFormat5Project(store: ProjectStore): boolean {
-  return Number(store.db.prepare('PRAGMA project.user_version').get()?.user_version) === FORMAT5_PROJECT_SCHEMA_VERSION;
+  return isSequenceProjectFormat(Number(store.db.prepare('PRAGMA project.user_version').get()?.user_version));
 }
 const LEGACY_WRITE_MESSAGES = Object.freeze({
   edge: '格式 5 的顺序连线请通过画板顺序操作修改。',
@@ -1349,51 +1349,57 @@ function entryAffected(entry: SequenceEditHistoryEntry): number {
 export function applySequenceEditHistory(store: ProjectStore, direction: 'undo' | 'redo',
   request: SequenceEditHistoryRequest, authorize: () => void = () => {}): SequenceEditReceipt {
   assertFormat5(store);
+  return store.tx(() => applySequenceEditHistoryInside(store, direction, request, authorize));
+}
+
+/** Apply the same inverse patch inside the caller's durable control transaction. */
+export function applySequenceEditHistoryInside(store: ProjectStore, direction: 'undo' | 'redo',
+  request: SequenceEditHistoryRequest, authorize: () => void = () => {}): SequenceEditReceipt {
+  if (!store.db.isTransaction) throw new Error('Sequence history requires an open transaction');
+  assertFormat5(store);
   const command: SequenceEditHistoryCommand = {...request, direction};
   const inputDigest = historyCommandDigest(command);
-  return store.tx(() => {
-    authorize();
-    const replay = findSequenceEditReceipt(store, request.requestId);
-    if (replay) {
-      if (replay.inputDigest !== inputDigest) {
-        fail('SEQUENCE_EDIT_REQUEST_REUSED', '这个请求 ID 已用于不同的画板操作。', [], {requestId: request.requestId});
-      }
-      return replay.receipt;
+  authorize();
+  const replay = findSequenceEditReceipt(store, request.requestId);
+  if (replay) {
+    if (replay.inputDigest !== inputDigest) {
+      fail('SEQUENCE_EDIT_REQUEST_REUSED', '这个请求 ID 已用于不同的画板操作。', [], {requestId: request.requestId});
     }
-    const prepared = prepareSequenceEditHistory(store);
-    if (request.expected.position !== prepared.state.position || request.expected.revision !== prepared.state.revision) {
-      fail('SEQUENCE_EDIT_HISTORY_CONFLICT', '撤销历史的位置已经变化，请重新读取。', [], {state: prepared.state});
-    }
-    const floor = sequenceEditHistoryFloor(store);
-    if (direction === 'undo' && (floor === null || prepared.state.position < floor)) {
-      fail('SEQUENCE_EDIT_HISTORY_CONFLICT', '已经到最早可撤销的一步。', [], {reason: 'EARLIEST', floor});
-    }
-    const targetPosition = direction === 'undo' ? prepared.state.position : prepared.state.position + 1;
-    const entry = readSequenceEditHistoryEntry(store, request.actionId);
-    if (!entry || entry.position !== targetPosition) fail('SEQUENCE_EDIT_HISTORY_CONFLICT', '这一步已经不能撤回。', [request.actionId]);
-    const requestedOrigin = request.origin ?? 'user';
-    if (entry.origin !== requestedOrigin) {
-      fail('SEQUENCE_EDIT_HISTORY_CONFLICT', '这一步属于另一条撤销栈，不能在这里撤回。', [request.actionId],
-        {reason: 'ORIGIN', origin: entry.origin, requestedOrigin});
-    }
-    const source = direction === 'undo' ? entry.afterPatch : entry.beforePatch;
-    const apply = direction === 'undo' ? entry.beforePatch : entry.afterPatch;
-    if (!boardDeltaMatches(store, source.board) || !timelineDeltaMatches(store, source.timeline)) {
-      fail('SEQUENCE_EDIT_HISTORY_CONFLICT', '这一步之后画板或主轨已经变化，不能直接撤回。', [request.actionId]);
-    }
-    applyBoardDelta(store, apply.board, 'restore');
-    const timelineResult = applySequenceEditTimelineDelta(store, apply.timeline);
-    const baselineResult = applySequenceEditBaselineDelta(store, apply.timeline.baseline);
-    const draft: SequenceEditReceiptDraft = {
-      version: 1, requestId: request.requestId, inputDigest, projectId: store.projectId,
-      actionId: request.actionId, operation: `${direction}:${entry.operation}`,
-      originSide: entry.operation.startsWith('timeline.') ? 'timeline' : 'board', status: 'applied',
-      affected: {nodes: 0, edges: 0, mainTrackClips: 0, otherTrackItems: 0, subtitleCues: 0},
-      contentRevision: contentStamp(store).contentSequence,
-      timelineRevision: timelineResult.timelineRevision, syncRevision: baselineResult.syncRevision,
-    };
-    return moveSequenceEditHistoryCursor(store, command, draft);
-  });
+    return replay.receipt;
+  }
+  const prepared = prepareSequenceEditHistory(store);
+  if (request.expected.position !== prepared.state.position || request.expected.revision !== prepared.state.revision) {
+    fail('SEQUENCE_EDIT_HISTORY_CONFLICT', '撤销历史的位置已经变化，请重新读取。', [], {state: prepared.state});
+  }
+  const floor = sequenceEditHistoryFloor(store);
+  if (direction === 'undo' && (floor === null || prepared.state.position < floor)) {
+    fail('SEQUENCE_EDIT_HISTORY_CONFLICT', '已经到最早可撤销的一步。', [], {reason: 'EARLIEST', floor});
+  }
+  const targetPosition = direction === 'undo' ? prepared.state.position : prepared.state.position + 1;
+  const entry = readSequenceEditHistoryEntry(store, request.actionId);
+  if (!entry || entry.position !== targetPosition) fail('SEQUENCE_EDIT_HISTORY_CONFLICT', '这一步已经不能撤回。', [request.actionId]);
+  const requestedOrigin = request.origin ?? 'user';
+  if (entry.origin !== requestedOrigin) {
+    fail('SEQUENCE_EDIT_HISTORY_CONFLICT', '这一步属于另一条撤销栈，不能在这里撤回。', [request.actionId],
+      {reason: 'ORIGIN', origin: entry.origin, requestedOrigin});
+  }
+  const source = direction === 'undo' ? entry.afterPatch : entry.beforePatch;
+  const apply = direction === 'undo' ? entry.beforePatch : entry.afterPatch;
+  if (!boardDeltaMatches(store, source.board) || !timelineDeltaMatches(store, source.timeline)) {
+    fail('SEQUENCE_EDIT_HISTORY_CONFLICT', '这一步之后画板或主轨已经变化，不能直接撤回。', [request.actionId]);
+  }
+  applyBoardDelta(store, apply.board, 'restore');
+  const timelineResult = applySequenceEditTimelineDelta(store, apply.timeline);
+  const baselineResult = applySequenceEditBaselineDelta(store, apply.timeline.baseline);
+  const draft: SequenceEditReceiptDraft = {
+    version: 1, requestId: request.requestId, inputDigest, projectId: store.projectId,
+    actionId: request.actionId, operation: `${direction}:${entry.operation}`,
+    originSide: entry.operation.startsWith('timeline.') ? 'timeline' : 'board', status: 'applied',
+    affected: {nodes: 0, edges: 0, mainTrackClips: 0, otherTrackItems: 0, subtitleCues: 0},
+    contentRevision: contentStamp(store).contentSequence,
+    timelineRevision: timelineResult.timelineRevision, syncRevision: baselineResult.syncRevision,
+  };
+  return moveSequenceEditHistoryCursor(store, command, draft);
 }
 
 // ---------------------------------------------------------------------------

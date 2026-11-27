@@ -28,6 +28,7 @@ import {zodToJsonSchema} from 'zod-to-json-schema';
 import applicationPackage from '../../../package.json' with {type: 'json'};
 import type {OperationName} from '@mioon/contracts';
 import {schemas as coreSchemas, descriptions as coreDescriptions, parse, operationEffect, effectAnnotations, LOCAL_MUTATION_OPERATIONS, isLocalMutationResponse, isExportPreflightResponse, isTimelineFormatReadResponse, TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, SUBJECT_MUTATION_OPERATIONS, isSubjectMutationResponse, hasRequestNotAppliedProof} from '@mioon/contracts';
+import {isTimelineProcessingOperation, timelineProcessingResponseSchemas, TIMELINE_PROCESSING_WAIT_DEFAULT_MS} from '@mioon/contracts';
 import {resolveConnection, connectionSource, ConnectionError, type ConnectionSource, type LocalConnection} from './connection.ts';
 import {IMAGE_MUTATION_OPERATIONS,isImageMutationResponse,isImageTaskResponse,isImageGroupResponse,isImageRequestResponse,isImageProfilesResponse,isImageListResponse} from '@mioon/contracts';
 import {canonicalImageInput,isComfyObserveResponse,isComfyRemoteResponse} from '@mioon/contracts';
@@ -182,6 +183,7 @@ const keyedMutationOperations = new Set<string>([
   'project.backup.restore',
   'project.version.save',
   'project.version.restore',
+  'timeline.processing.retry',
   ...canvasEditingWrites,
 ]);
 interface RpcBody {operation: string; input: Record<string, unknown>}
@@ -413,8 +415,22 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
     let resource: string;
     try { resource = isAssetMediaOperation(operation) ? projectRpcPath(String(parsed.projectId)) : rpcPathFor(operation, parsed, projectId); }
     catch { throw new ClientError('VALIDATION_ERROR', 'This operation is addressed by its project: give the lowercase UUID projectId of the project that owns the record.'); }
-    const envelope = (await request(resource, {...(operation === 'timeline.export.preflight' ? {timeoutMs: preflightTimeoutMs} : operation === 'timeline.export.samplePeak' ? {timeoutMs: samplePeakTimeoutMs} : operation === 'timeline.export.loudness' ? {timeoutMs: loudnessTimeoutMs} : operation === 'timeline.clip.loudness' ? {timeoutMs: clipLoudnessTimeoutMs} : operation === 'timeline.loudness.prepare' ? {timeoutMs: mixLoudnessTimeoutMs} : operation === 'timeline.loudness.apply' ? {timeoutMs: loudnessApplyTimeoutMs} : {}), ...transportOptions, body})) as {data?: unknown};
+    // Leave the backend time to return its own timedOut result before the
+    // transport deadline. Explicit client deadlines still take precedence.
+    const processingWaitDeadline = operation === 'timeline.processing.wait' && !Object.hasOwn(clientOptions, 'requestTimeoutMs')
+      ? {timeoutMs: (typeof parsed.timeoutMs === 'number' ? parsed.timeoutMs : TIMELINE_PROCESSING_WAIT_DEFAULT_MS) + 5_000}
+      : {};
+    const envelope = (await request(resource, {...(operation === 'timeline.export.preflight' ? {timeoutMs: preflightTimeoutMs} : operation === 'timeline.export.samplePeak' ? {timeoutMs: samplePeakTimeoutMs} : operation === 'timeline.export.loudness' ? {timeoutMs: loudnessTimeoutMs} : operation === 'timeline.clip.loudness' ? {timeoutMs: clipLoudnessTimeoutMs} : operation === 'timeline.loudness.prepare' ? {timeoutMs: mixLoudnessTimeoutMs} : operation === 'timeline.loudness.apply' ? {timeoutMs: loudnessApplyTimeoutMs} : {}), ...processingWaitDeadline, ...transportOptions, body})) as {data?: unknown};
     const result = envelope.data;
+    if (isTimelineProcessingOperation(operation)) {
+      const decoded = timelineProcessingResponseSchemas[operation].safeParse(result);
+      if (!decoded.success ||
+          'item' in decoded.data && decoded.data.item.taskId !== parsed.taskId ||
+          'taskId' in decoded.data && decoded.data.taskId !== parsed.taskId) {
+        throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid timeline processing response.', {details: uncertainRequestDetails(body)});
+      }
+      return decoded.data as T;
+    }
     if (isCanvasEditingOperation(operation)) {
       const decoded = canvasEditingResponses[operation].safeParse(result);
       if (!decoded.success || 'projectId' in decoded.data && decoded.data.projectId !== parsed.projectId) {

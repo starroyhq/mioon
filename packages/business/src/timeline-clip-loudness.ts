@@ -1,3 +1,4 @@
+import {assertTimelineSpeedRenderable, isTimelineSpeedRenderError} from '../../contracts/src/timeline-speed-render.ts';
 import {hasSampledTimelineReferences, prepareTimelineReferenceHashes} from './timeline-reference-prepare.ts';
 import {mediaLocatorFields, validAssetLocator} from './asset-reference-record.ts';
 import type {MediaLocator} from './asset-reference-record.ts';
@@ -139,7 +140,7 @@ export function createTimelineClipLoudnessServices(store: TimelineClipLoudnessSt
   function current(input: TimelineClipLoudnessInput): Current {
     assertOwner();
     let raw: unknown;
-    try {raw = runtime.readSavedTimeline(input.projectId);} catch {return unavailable();}
+    try {raw = runtime.readSavedTimeline(input.projectId);} catch (error) {if (isTimelineSpeedRenderError(error)) throw error; return unavailable();}
     assertOwner();
     if (!plainData(raw, 4 * 1024 * 1024) || !object(raw) || !object(raw.timeline) || !Array.isArray(raw.assets) || raw.assets.length > 100) unavailable();
     const saved = raw.timeline;
@@ -148,6 +149,7 @@ export function createTimelineClipLoudnessServices(store: TimelineClipLoudnessSt
         !Array.isArray(saved.tracks) || saved.tracks.length > 12 || !Array.isArray(saved.clips) || saved.clips.length > 100) unavailable();
     if (saved.id !== input.timelineId) unavailable();
     if (saved.revision !== input.expectedRevision) throw fault('TIMELINE_CLIP_LOUDNESS_REVISION_CONFLICT');
+    assertTimelineSpeedRenderable(saved);
     const tracks = saved.tracks.map((track: unknown) => {
       if (!object(track) || typeof track.id !== 'string' || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/iu.test(track.id) ||
           typeof track.orderIndex !== 'number' || !Number.isSafeInteger(track.orderIndex) || track.orderIndex < 0 || track.orderIndex > 11) return unavailable();

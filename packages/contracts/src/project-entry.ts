@@ -41,7 +41,7 @@ export const projectEntriesResponseSchema = z.object({
   version: z.literal(1),
   ...projectEntryIdentitySchema.shape,
   /** Omitted by earlier servers. This describes creation, independent of the registered files. */
-  newProjectFormatVersion: z.union([z.literal(3), z.literal(4), z.literal(5)]).optional(),
+  newProjectFormatVersion: z.union([z.literal(3), z.literal(4), z.literal(5), z.literal(6)]).optional(),
   registered: z.array(projectEntrySchema).max(PROJECT_ENTRY_LIMITS.maxEntries),
 }).strict().refine(value => new Set(value.registered.map(entry => entry.project.projectId)).size === value.registered.length,
   'Each registered project appears once.');
