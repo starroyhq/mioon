@@ -75,6 +75,7 @@ test('every shared operation has a complete explicit frozen effect descriptor; u
 
   for (const operation of ['project.backup.list', 'project.backup.inspect', 'project.backup.status', 'project.version.list', 'project.version.preview']) readOnly.add(operation);
   for (const operation of ['timeline.processing.list', 'timeline.processing.inspect', 'timeline.processing.wait', 'timeline.processing.cache.get']) readOnly.add(operation);
+  for (const operation of ['export.fcpxml.preview', 'export.fcpxml.get']) readOnly.add(operation);
   for (const [operation, effect] of Object.entries(operationEffects)) {
     assert.equal(Object.isFrozen(effect), true);
     assert.equal(effect.notes!.length > 20, true);
@@ -127,6 +128,11 @@ test('every shared operation has a complete explicit frozen effect descriptor; u
   }
   assert.equal(operationEffects['export.cancel'].fileWrite, true, 'cancellation cleans only its owned part and unpublished output');
   assert.equal(operationEffects['export.cancel'].localProcess, true, 'cancellation terminates only its owned media process');
+  for (const operation of ['export.fcpxml.start', 'export.fcpxml.cancel'] as const) {
+    const effect = operationEffects[operation];
+    assert.equal(effect.databaseWrite && effect.fileWrite && effect.idempotent, true, operation);
+    assert.equal(effect.localProcess || effect.externalIO || effect.paidGeneration, false, operation);
+  }
   for (const operation of ['timeline.track.add', 'timeline.clip.add', 'timeline.seed'])
     assert.equal(operationEffects[(operation as keyof typeof operationEffects)].destructive, true, 'new edits can discard redo history');
   for (const name of ['doctor', 'capabilities', 'schema']) {

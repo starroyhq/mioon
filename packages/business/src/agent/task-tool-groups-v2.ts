@@ -4,6 +4,7 @@ import {MIO_PROJECT_MEDIA_LIST_OPERATION,MIO_PROJECT_MEDIA_LIST_TOOL} from '../.
 import {MIO_PROJECT_FILE_IMPORT_OPERATION,MIO_PROJECT_FILE_IMPORT_TOOL} from '../../../contracts/src/mio-project-import.ts';
 import {mioCanvasOperations,mioCanvasOperationForTool,mioCanvasToolName} from '../../../contracts/src/mio-canvas.ts';
 import {timelineProcessingSchemas} from '../../../contracts/src/timeline-processing.ts';
+import {MIO_FCP_EXPORT_OPERATIONS} from './task-fcpxml-export-v2.ts';
 
 export const AGENT_TASK_TOOLS_LOAD_NAME='mioon_tools_load';
 export const AGENT_TASK_TOOLS_LOAD_OPERATION='tools.load';
@@ -121,6 +122,7 @@ const groupedTools=AGENT_TASK_TOOL_GROUP_IDS.flatMap(group=>AGENT_TASK_TOOL_GROU
 export type AgentTaskToolCatalogProfile='native'|'legacy'|'format4'|'format5'|'format6';
 const format4GroupedTools=[...groupedTools,...mioCanvasCopyOperations.map(operation=>({group:'canvas' as const,operation,name:`mioon_${operation.replaceAll('.','_')}`})),...mioCanvasOperations.map(operation=>({group:'canvas' as const,operation,name:mioCanvasToolName(operation)}))];
 const format5GroupedTools=[...groupedTools.filter(tool=>FORMAT5_UNAVAILABLE_OPERATIONS[tool.operation]===undefined),
+ ...MIO_FCP_EXPORT_OPERATIONS.map(operation=>({group:'exports' as const,operation,name:toolName(operation)})),
  {group:'core' as const,operation:'sequence.inspect',name:'mioon_sequence_inspect'},
  {group:'core' as const,operation:'sequence.board.get',name:'mioon_sequence_board_get'},
  {group:'core' as const,operation:'sequence.generation-inputs.get',name:'mioon_sequence_generation_inputs_get'},

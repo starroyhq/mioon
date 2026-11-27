@@ -27,6 +27,7 @@ import {z} from 'zod';
 import {zodToJsonSchema} from 'zod-to-json-schema';
 import applicationPackage from '../../../package.json' with {type: 'json'};
 import type {OperationName} from '@mioon/contracts';
+import {fcpExportSchemas,type FcpExportOperation} from '../../contracts/src/fcp-export.ts';
 import {schemas as coreSchemas, descriptions as coreDescriptions, parse, operationEffect, effectAnnotations, LOCAL_MUTATION_OPERATIONS, isLocalMutationResponse, isExportPreflightResponse, isTimelineFormatReadResponse, TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, SUBJECT_MUTATION_OPERATIONS, isSubjectMutationResponse, hasRequestNotAppliedProof} from '@mioon/contracts';
 import {isTimelineProcessingOperation, timelineProcessingResponseSchemas, TIMELINE_PROCESSING_WAIT_DEFAULT_MS} from '@mioon/contracts';
 import {resolveConnection, connectionSource, ConnectionError, type ConnectionSource, type LocalConnection} from './connection.ts';
@@ -180,6 +181,7 @@ function checkSignal(signal: AbortSignal | undefined): void { if (signal?.aborte
 const keyedMutationOperations = new Set<string>([
   ...LOCAL_MUTATION_OPERATIONS, ...TIMELINE_MUTATION_OPERATIONS, ...REFERENCE_MUTATION_OPERATIONS, ...IMAGE_MUTATION_OPERATIONS, ...FRAME_MUTATION_OPERATIONS, ...SCENE_MUTATION_OPERATIONS, ...PREVIS_MUTATION_OPERATIONS,
   'generation.submit', 'job.retry', 'export.create', 'image.task.observeRemote', 'image.review.prepare', 'lut.import',
+  'export.fcpxml.start',
   'project.backup.restore',
   'project.version.save',
   'project.version.restore',
@@ -460,6 +462,8 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid subject-generation retry acknowledgement.', {details: {...uncertainRequestDetails(body), submissionMayHaveSucceeded: true}});
     if ((LOCAL_MUTATION_OPERATIONS as readonly string[]).includes(operation) && !isLocalMutationResponse(operation, parsed, result))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid mutation acknowledgement.', {details: {...uncertainRequestDetails(body), submissionMayHaveSucceeded: true}});
+    if (Object.hasOwn(fcpExportSchemas, operation) && !fcpExportSchemas[operation as FcpExportOperation].output.safeParse(result).success)
+      throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid Final Cut Pro export response.', {details: uncertainRequestDetails(body)});
     if ((TIMELINE_MUTATION_OPERATIONS as readonly string[]).includes(operation) && !isTimelineMutationResponse(operation, parsed, result))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid timeline acknowledgement.', {details: {...uncertainRequestDetails(body), submissionMayHaveSucceeded: true}});
     if ((REFERENCE_MUTATION_OPERATIONS as readonly string[]).includes(operation) && !isReferenceMutationResponse(operation, parsed, result))

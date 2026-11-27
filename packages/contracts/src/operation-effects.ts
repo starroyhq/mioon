@@ -35,6 +35,10 @@ const render = {...localAdd,idempotent:true,fileWrite:true,localProcess:true};
 export const operationEffects = Object.freeze({
   ...projectBackupEffects,...projectVersionEffects,
   'export.cancel':define({...localEdit,idempotent:true,fileWrite:true,localProcess:true,notes:'Cancels one local export and terminates only its owned media operation; source files and acceptance receipt remain.'}),
+  'export.fcpxml.preview':define({...read,notes:'Reads a format-5 timeline and approved media to plan an FCPXML export. Does not write files or records.'}),
+  'export.fcpxml.start':define({...localAdd,idempotent:true,fileWrite:true,notes:'Accepts one stable request for a background FCPXML bundle export. Copies approved media without decoding or contacting providers. Chosen paths require a native capability.'}),
+  'export.fcpxml.get':define({...read,notes:'Reads the state and public progress of a single owned FCPXML export.'}),
+  'export.fcpxml.cancel':define({...localEdit,idempotent:true,fileWrite:true,notes:'Cancels a single owned FCPXML export and removes only its unfinished artifacts.'}),
   'clip.audio.export':define({...localEdit,idempotent:true,fileWrite:true,localProcess:true,notes:'Durably accepts one format-5 clip-sound extraction before bounded local FFmpeg work. Required stable requestId replays the immutable original record without starting again. Copies AAC or transcodes with the fixed export audio profile, then publishes one new audio asset with portable source provenance. Source asset and clip are not modified; no network, model or paid generation.'}),
   'clip.audio.export.get':define({...read,notes:'Reads one owned clip-audio background task record and its bounded local activity descriptor. Never starts, cancels, retries or decodes.'}),
   'timeline.processing.list':define({...read,notes:'Reads the current project’s bounded timeline processing task summaries.'}),
