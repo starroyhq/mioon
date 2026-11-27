@@ -240,7 +240,8 @@ test('format-6 project clocks bind preflight, frozen approval and actual ranged 
     assert.equal(capability.delivery?.effective.fps,fps);
     const preflight=exportPreflightResponseSchema.parse(await services.call('timeline.export.preflight',input));
     assert.equal(preflight.status,'ready',JSON.stringify(preflight));
-    assert.ok(isExportPreflightResponse(preflight,input));
+    assert.equal(isExportPreflightResponse(preflight,input),fps===30);
+    assert.ok(isExportPreflightResponse(preflight,input,{projectFps:fps}));
     assert.equal(preflight.summary?.fps,fps);
     assert.ok(preflight.snapshotHash);
     const request={...input,requestId:`format6-fps-export-${fps}`,purpose:'export',preflightSnapshotHash:preflight.snapshotHash};

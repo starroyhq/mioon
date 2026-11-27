@@ -7,6 +7,7 @@ export interface UseExportPreflightOptions {
   projectId: unknown;
   timelineId: unknown;
   revision: unknown;
+  projectFps?: unknown;
   exportSettings: unknown;
   settingsVersion: unknown;
   deliveryName: unknown;
@@ -22,9 +23,9 @@ export interface UseExportPreflightOptions {
 }
 export interface UseExportPreflightResult {state: ExportPreflightState|null; controller: ExportPreflightController}
 
-export function useExportPreflight({ scope, projectId, timelineId, revision, exportSettings, settingsVersion, deliveryName, deliveryNameVersion, exportRange, rangeVersion, connected, visible, read, readCapabilities, getContext, onUnauthorized }: UseExportPreflightOptions): UseExportPreflightResult {
+export function useExportPreflight({ scope, projectId, timelineId, revision, projectFps, exportSettings, settingsVersion, deliveryName, deliveryNameVersion, exportRange, rangeVersion, connected, visible, read, readCapabilities, getContext, onUnauthorized }: UseExportPreflightOptions): UseExportPreflightResult {
   const callbacks = useRef<UseExportPreflightOptions|null>(null);
-  callbacks.current = { scope, projectId, timelineId, revision, exportSettings, settingsVersion, deliveryName, deliveryNameVersion, exportRange, rangeVersion, connected, visible, read, readCapabilities, getContext, onUnauthorized };
+  callbacks.current = { scope, projectId, timelineId, revision, projectFps, exportSettings, settingsVersion, deliveryName, deliveryNameVersion, exportRange, rangeVersion, connected, visible, read, readCapabilities, getContext, onUnauthorized };
   const [state, setState] = useState<ExportPreflightState|null>(null), controller = useRef<ExportPreflightController|null>(null);
   if (!controller.current) controller.current = createExportPreflightController({
     read: (input: Record<string, unknown>,options: ExportPreflightInvocation & {signal?: AbortSignal}) => callbacks.current!.read(input, options),
@@ -33,8 +34,8 @@ export function useExportPreflight({ scope, projectId, timelineId, revision, exp
     onUnauthorized: () => callbacks.current?.onUnauthorized?.(),
   });
   useLayoutEffect(() => {
-    controller.current!.setContext({ scope, projectId, timelineId, revision, exportSettings, settingsVersion, deliveryName, deliveryNameVersion, exportRange, rangeVersion, connected });
-  }, [scope, projectId, timelineId, revision, exportSettings, settingsVersion, deliveryName, deliveryNameVersion, exportRange, rangeVersion, connected]);
+    controller.current!.setContext({ scope, projectId, timelineId, revision, projectFps, exportSettings, settingsVersion, deliveryName, deliveryNameVersion, exportRange, rangeVersion, connected });
+  }, [scope, projectId, timelineId, revision, projectFps, exportSettings, settingsVersion, deliveryName, deliveryNameVersion, exportRange, rangeVersion, connected]);
   useLayoutEffect(() => { controller.current!.setVisible(visible); }, [visible]);
   useLayoutEffect(() => () => controller.current?.dispose(), []);
   // Mount, visibility, mode changes and reconnect never start a check or export.

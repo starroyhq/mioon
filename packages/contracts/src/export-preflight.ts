@@ -4,7 +4,7 @@ import {timelineExportRangeSchema,isTimelineExportRangeInput,isTimelineExportRan
 import {timelineDeliveryNameSchema,isTimelineDeliveryNameInput,isTimelineDeliveryNameSnapshot} from './timeline-delivery.ts';
 import {timelineExportSettingsSchema,timelineExportDeliverySchema,isTimelineExportDelivery} from './timeline-export-profile.ts';
 import {z} from 'zod';
-import {timelineFpsSchema} from './timeline-fps.ts';
+import {timelineFpsSchema, type TimelineFps} from './timeline-fps.ts';
 import {TIMELINE_OUTPUT_MAX_EDGE,timelineOutputPreset} from './timeline-output-geometry.ts';
 import {TIMELINE_SUBTITLE_PROFILE_IDS} from './timeline-subtitle-profile.ts';
 
@@ -99,10 +99,13 @@ export const exportPreflightResponseSchema = z.object({
 // Bind acknowledgements to their intended project/revision when caller input is
 // available. A report is a point-in-time check, never a durable replay receipt.
 export type ExportPreflightResponse = z.infer<typeof exportPreflightResponseSchema>;
-export function isExportPreflightResponse(value: unknown, input?: unknown): boolean {
-  if (!exportPreflightResponseSchema.safeParse(value).success) return false;
+export function isExportPreflightResponse(value: unknown, input?: unknown, {projectFps = 30}: {projectFps?: TimelineFps} = {}): boolean {
+  const parsed = exportPreflightResponseSchema.safeParse(value);
+  if (!parsed.success) return false;
+  const response = parsed.data;
+  if (response.summary && response.summary.fps !== projectFps) return false;
   if (!input) return true;
-  const request = input as Rec, response = value as ExportPreflightResponse;
+  const request = input as Rec;
   if (!(isTimelineDeliveryNameInput(input) && isTimelineExportRangeInput(input) && response.projectId === request.projectId && response.expectedRevision === request.expectedRevision)) return false;
-  return !response.summary || (isTimelineDeliveryNameSnapshot(response.summary,{input}) && isTimelineExportRangeSnapshot({...response.summary,timeline:response.summary},{input,allowProjectFps:true}) && (request.exportSettings!==undefined)===Object.hasOwn(response.summary,'delivery') && (request.exportSettings===undefined||isTimelineExportDelivery(response.summary.delivery,response.summary,request.exportSettings)));
+  return !response.summary || (isTimelineDeliveryNameSnapshot(response.summary,{input}) && isTimelineExportRangeSnapshot({...response.summary,timeline:response.summary},{input,allowProjectFps:projectFps!==30}) && (request.exportSettings!==undefined)===Object.hasOwn(response.summary,'delivery') && (request.exportSettings===undefined||isTimelineExportDelivery(response.summary.delivery,response.summary,request.exportSettings)));
 }

@@ -243,10 +243,16 @@ export async function readAgentTaskChecks(store:Store,snapshot:AgentTaskSnapshot
   else if(!preflight||!integer(timeline?.revision)||timeline.revision<1)add('timeline','timeline_preflight',timelineTarget,timelineProof,reason('pending','PREFLIGHT_UNAVAILABLE'));
   else{
    const input={projectId,expectedRevision:timeline.revision};let report:ReturnType<typeof exportPreflightResponseSchema.safeParse>|undefined;
-   try{report=exportPreflightResponseSchema.safeParse(await preflight(input,{signal}));}catch(error){signal?.throwIfAborted();if(!knownObservationFailure(error))throw error;/* Known local media refusal leaves the read available. */}
+   try{
+    report=exportPreflightResponseSchema.safeParse(await preflight(input,{signal}));
+    const fps=report.success?report.data.summary?.fps:undefined;
+    if(fps!==undefined&&fps!==30)allowsFrozenProjectFps(store.db,fps);
+   }catch(error){signal?.throwIfAborted();if(!knownObservationFailure(error))throw error;report=undefined;}
    signal?.throwIfAborted();
    const latest=row(store,'timelines',projectId,projectId);
-   if(!report?.success||report.data.projectId!==projectId||report.data.expectedRevision!==input.expectedRevision)add('timeline','timeline_preflight',timelineTarget,timelineProof,reason('pending','PREFLIGHT_UNAVAILABLE'));
+   if(!report?.success||report.data.projectId!==projectId||report.data.expectedRevision!==input.expectedRevision||
+    report.data.summary&&report.data.summary.fps!==(timeline.fps??30))
+    add('timeline','timeline_preflight',timelineTarget,timelineProof,reason('pending','PREFLIGHT_UNAVAILABLE'));
    else if(report.data.status==='stale'||!isDeepStrictEqual(latest,timeline)||report.data.timelineId!==timeline.id||report.data.timelineRevision!==input.expectedRevision)add('timeline','timeline_preflight',timelineTarget,timelineProof,reason('pending','PREFLIGHT_STALE'));
    else{
     const value=report.data,blockingCount=value.issues.filter(issue=>issue.severity==='error').length,params={blockingCount,issueCodes:value.issues.map(issue=>issue.code)};

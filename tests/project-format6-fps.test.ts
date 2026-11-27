@@ -207,6 +207,11 @@ test('CLI and MCP can confirm and reread a format-6 export while project metadat
     const input = {projectId, requestId: randomUUID(), expectedRevision: before.timelineRevision, purpose: 'export',
       preflightSnapshotHash: preflight.snapshotHash, exportRange, exportSettings};
     const env = transportEnv(server.url);
+    const preflightInput = {projectId, expectedRevision: before.timelineRevision, exportRange, exportSettings};
+    const cliPreflight = await runCli(env, ['timeline', 'export', 'preflight'], preflightInput);
+    assert.equal(cliPreflight.ok, true);
+    assert.equal(cliPreflight.data.summary.fps, fps);
+    assert.equal(cliPreflight.data.snapshotHash, preflight.snapshotHash);
     const ack = await runCli(env, ['timeline', 'render'], input);
     assert.equal(ack.ok, true);
     assert.equal(ack.data.snapshot.timeline.fps, fps);
@@ -219,6 +224,10 @@ test('CLI and MCP can confirm and reread a format-6 export while project metadat
     assert.equal(format.timelineRevision, before.timelineRevision);
 
     await mcp.connect(new StdioClientTransport({command: process.execPath, args: ['apps/mcp/src/index.ts'], env, stderr: 'pipe'}));
+    const preflightTool = await mcp.callTool({name: 'timeline_export_preflight', arguments: preflightInput});
+    const preflightResult = preflightTool.structuredContent as {ok?: unknown; data?: {snapshotHash?: unknown}} | undefined;
+    assert.equal(preflightResult?.ok, true, JSON.stringify(preflightResult));
+    assert.equal(preflightResult?.data?.snapshotHash, preflight.snapshotHash);
     const replayTool = await mcp.callTool({name: 'timeline_render', arguments: input});
     const replayResult = replayTool.structuredContent as {ok?: unknown; data?: unknown} | undefined;
     assert.equal(replayResult?.ok, true, JSON.stringify(replayResult));

@@ -3177,6 +3177,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   function exportCheckContext(): Record<string, unknown> & {scope: string} {
     return { scope: `${currentProject.current}:${projectEpoch.current}`, projectId: projectSessionReady() && dataRef.current!.project?.id === currentProject.current ? currentProject.current : null,
       timelineId: dataRef.current!.timeline?.id, revision: dataRef.current!.timeline?.revision, connected: workbenchReady && online && auth === true && !loading,
+      projectFps: dataRef.current.projectFormatVersion === 6 ? dataRef.current.timeline?.fps : undefined,
       exportSettings: exportSettings.controller!.getSettings(`${currentProject.current}:${projectEpoch.current}`), settingsVersion: exportSettings.controller!.getVersion(`${currentProject.current}:${projectEpoch.current}`),
       exportRange: exportRange.controller!.getRange(`${currentProject.current}:${projectEpoch.current}`), rangeVersion: exportRange.controller!.getVersion(`${currentProject.current}:${projectEpoch.current}`),
       deliveryName: deliveryName.controller!.getName(`${currentProject.current}:${projectEpoch.current}`), deliveryNameVersion: deliveryName.controller!.getVersion(`${currentProject.current}:${projectEpoch.current}`) };

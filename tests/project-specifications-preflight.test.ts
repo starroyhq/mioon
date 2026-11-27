@@ -26,3 +26,14 @@ test('export preflight accepts exactly the supported frozen dimension pairs at 3
   checks:{totalAssets:0,checkedAssets:0,bytesHashed:0,fullDecode:false},issues:[{code:'TIMELINE_MISSING',severity:'error',message:'Missing saved timeline.'}]});
  assert.ok(isExportPreflightResponse(absent));
 });
+
+test('an explicitly supplied project clock must match the preflight summary',()=>{
+ for(const fps of [24,25,60] as const){
+  const value=report();
+  value.summary.fps=fps;
+  const input={projectId:value.projectId,expectedRevision:3};
+  assert.equal(isExportPreflightResponse(value,input),false);
+  assert.equal(isExportPreflightResponse(value,input,{projectFps:fps}),true);
+  assert.equal(isExportPreflightResponse(value,input,{projectFps:30}),false);
+ }
+});

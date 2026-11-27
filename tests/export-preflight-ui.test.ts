@@ -71,6 +71,16 @@ test('explicit check reads only saved project/revision; report is not an export 
   assert.equal('applied' in state, false); assert.equal('requestId' in f.calls[0].input, false);
 });
 
+test('preflight binds only a summary matching the current project clock', async () => {
+  const f = fixture(), base = report();
+  const at25 = report({summary: {...base.summary as Record<string, unknown>, fps: 25}});
+  assert.equal((await f.ready(at25)).phase, 'error');
+  f.controller.setContext(context({projectFps: 25}));
+  assert.equal((await f.ready(at25)).phase, 'ready');
+  assert.equal((await f.ready(base)).phase, 'error');
+  assert.equal(f.state().binding, null);
+});
+
 test('newer check invalidates old report immediately and fences late success, error and old confirmation', async () => {
   const f = fixture(), old = (await f.ready()).binding;
   const first = f.controller.check(), firstRead = f.reads.at(-1)!, firstSignal = f.calls.at(-1)!.options.signal;

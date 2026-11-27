@@ -505,8 +505,19 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid source colour inspection.', {details:{operation}});
     if (operation === 'timeline.format.get' && !isTimelineFormatReadResponse(result, parsed))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid timeline format record.');
-    if (operation === 'timeline.export.preflight' && !isExportPreflightResponse(result, parsed))
-      throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid export preflight report.');
+    if (operation === 'timeline.export.preflight') {
+      const report = result as {summary?: {fps?: unknown}; timelineId?: unknown} | null | undefined;
+      const fps = report?.summary?.fps;
+      const projectFps = isTimelineFps(fps) ? fps : 30;
+      if (!isExportPreflightResponse(result, parsed, {projectFps}))
+        throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid export preflight report.');
+      if (projectFps !== 30) {
+        // Clock and timeline identity are fixed for this native project.
+        const saved = await rpc<{fps: unknown; timelineId: unknown}>('timeline.format.get', {projectId: parsed.projectId}, options);
+        if (saved.fps !== projectFps || saved.timelineId !== report?.timelineId)
+          throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The export preflight report does not match the saved timeline clock.');
+      }
+    }
     if(operation==='lut.look.inspect'&&!isLookPackInspectResponse(result,parsed))
       throw new ClientError('BACKEND_PROTOCOL_ERROR','The backend returned an invalid Look Pack inspection.',{details:{operation}});
     if (['lut.import','lut.list','lut.inspect'].includes(operation) && !isLutRpcResponse(operation,parsed,result))
