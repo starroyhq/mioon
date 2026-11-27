@@ -13,6 +13,7 @@ import {
   reverseTimeMap,
   timeMapBasisFromCurrentClip,
   timeMapOutputAtSourceFrame,
+  timeMapPlanFrames,
   timeMapRootInfo,
   timeMapSourceAtOutputFrame,
   timeMapTailInverse,
@@ -450,11 +451,12 @@ export interface ClipThumbnailSample {
   readonly slotIndex: number;
   readonly outputOffsetFrames: number;
   readonly sourceFrame: number;
-  readonly sourceSeconds: number;
+  readonly seekSeconds: number;
 }
 
 /** Computes evenly spaced output thumbnail slots across a timeline clip and maps
- * each slot to its exact source frame via the shared time-map. */
+ * each slot to its exact source frame via the shared time map. The browser seeks
+ * inside that frame so timestamp truncation cannot select the previous frame. */
 export function computeClipThumbnailSamples(
   clip: SpeedClipLike,
   fps: number,
@@ -468,25 +470,27 @@ export function computeClipThumbnailSamples(
       slotIndex: 0,
       outputOffsetFrames: 0,
       sourceFrame: sf,
-      sourceSeconds: sf / safeFps,
+      seekSeconds: (sf + 0.5) / safeFps,
     }];
   }
   const duration = Math.max(1, Math.trunc(clip.durationFrames));
   const tileWidth = 96;
   const count = clamp(Math.round(Math.max(1, clipWidthPx) / tileWidth), 1, 6);
   const compiled = compileClipTimeMapForPreview(clip, safeFps);
-  const plan = compiled.ok ? compiled.value : null;
+  if (!compiled.ok) return [];
+  const frames = timeMapPlanFrames(compiled.value);
+  if (!frames.ok || frames.value.length !== duration) return [];
   const samples: ClipThumbnailSample[] = [];
   for (let i = 0; i < count; i++) {
     const outputOffsetFrames = count === 1
       ? 0
       : clamp(Math.floor(((i + 0.5) * duration) / count), 0, duration - 1);
-    const sampled = sampleClipSourceAtTimelineFrame(clip, safeFps, clip.startFrame + outputOffsetFrames, plan);
+    const sourceFrame = frames.value[outputOffsetFrames]!;
     samples.push({
       slotIndex: i,
       outputOffsetFrames,
-      sourceFrame: sampled.sourceFrame,
-      sourceSeconds: sampled.sourceSeconds,
+      sourceFrame,
+      seekSeconds: (sourceFrame + 0.5) / safeFps,
     });
   }
   return samples;
