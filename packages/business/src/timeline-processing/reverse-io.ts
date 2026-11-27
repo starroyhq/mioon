@@ -10,10 +10,15 @@ import {checkMediaEffect} from '../media-runtime.ts';
 import {interruptedMediaError, mediaInterrupted, onMediaInterruption, spawnMedia, terminateMediaProcess} from '../media-processes.ts';
 import {checkDirectoryIdentity, checkedDirectory, inspectFile, removeOwnedFile, sameNode, streamFile} from '../managed-file-io.ts';
 
+export interface ReverseProxyWriter {
+  begin(): {started(pid: number): void; exited(): void};
+}
+
 export interface ReverseProxyMediaOptions {
   readonly signal: AbortSignal;
   readonly ownerSignal?: AbortSignal;
   readonly beforeEffect: () => void;
+  readonly writer?: ReverseProxyWriter;
 }
 
 interface ReverseMediaError extends Error {code: string; terminationUnconfirmed?: boolean}
@@ -39,6 +44,7 @@ interface ReverseToolIO {
   readonly stdout?: (chunk: Buffer) => Promise<void> | void;
   readonly outputFd?: number;
   readonly stdoutLimit?: number;
+  readonly stdoutOverflow?: () => Error;
   readonly stderrLine?: (line: string) => void;
   readonly timeoutMs?: number;
   readonly onFailure?: (error: unknown) => void;
@@ -51,12 +57,26 @@ async function pump(stream: Readable, onChunk: (chunk: Buffer) => Promise<void> 
 /** Direct owned FFmpeg pipes. A chunk is handled before the next pull, and
  * only the exact child is interrupted. The shared deadline confirms its close. */
 export async function runReverseTool(tool: ReverseMediaTool, args: string[], options: ReverseProxyMediaOptions, io: ReverseToolIO = {}): Promise<void> {
-  const {signal, ownerSignal, beforeEffect} = options;
+  const {signal, ownerSignal, beforeEffect, writer} = options;
   const fence = () => checkMediaEffect(beforeEffect, signal);
   fence();
-  const child = spawnMedia(mediaExecutable(tool), args, {stdio: [
-    io.stdin ? 'pipe' : 'ignore', io.outputFd ?? (io.stdout ? 'pipe' : 'ignore'), 'pipe',
-  ]}, {kind: tool, signal, ownerSignal});
+  const executable = mediaExecutable(tool);
+  const ticket = io.outputFd === undefined ? undefined : writer?.begin();
+  let ticketExited = false;
+  const writerExited = (): void => {
+    if (ticketExited) return;
+    ticketExited = true;
+    ticket?.exited();
+  };
+  let child: ReturnType<typeof spawnMedia>;
+  try {
+    child = spawnMedia(executable, args, {stdio: [
+      io.stdin ? 'pipe' : 'ignore', io.outputFd ?? (io.stdout ? 'pipe' : 'ignore'), 'pipe',
+    ]}, {kind: tool, signal, ownerSignal});
+  } catch (error) {
+    writerExited();
+    throw error;
+  }
   let failure: unknown;
   let stderrText = '', stderrBytes = 0, stdoutBytes = 0, outOfSpace = false;
   let stopping: Promise<never> | undefined;
@@ -82,13 +102,17 @@ export async function runReverseTool(tool: ReverseMediaTool, args: string[], opt
   };
   const terminal = new Promise<void>((resolve, reject) => {
     child.once('close', (code, sig) => {
+      try {writerExited();} catch (error) {reject(error); return;}
       if (failure) {reject(failure); return;}
       if (signal.aborted || mediaInterrupted(child)) {reject(interruptedMediaError()); return;}
       if (outOfSpace) {reject(reverseError('DISK_FULL')); return;}
       if (code !== 0 || sig !== null) {reject(reverseError('PROCESSING_FAILED')); return;}
       resolve();
     });
-    child.once('error', () => stop(reverseError('PROCESSING_FAILED')));
+    child.once('error', () => {
+      try {if (child.pid === undefined) writerExited();} catch (error) {stop(error); return;}
+      stop(reverseError('PROCESSING_FAILED'));
+    });
   });
   // EPIPE is reported by write/end as well, but Node's pipe still emits error.
   child.stdin?.on('error', () => {});
@@ -113,11 +137,14 @@ export async function runReverseTool(tool: ReverseMediaTool, args: string[], opt
   const stdout = child.stdout ? pump(child.stdout, async chunk => {
     fence();
     stdoutBytes += chunk.length;
-    if (stdoutBytes > (io.stdoutLimit ?? 0)) throw reverseError('PROCESSING_FAILED');
+    if (stdoutBytes > (io.stdoutLimit ?? 0)) throw io.stdoutOverflow?.() ?? reverseError('PROCESSING_FAILED');
     await io.stdout?.(chunk);
   }) : undefined;
   const stdin = child.stdin && io.stdin ? Promise.resolve().then(() => io.stdin!(child.stdin!)) : undefined;
   try {
+    if (child.pid !== undefined) {
+      try {ticket?.started(child.pid);} catch (error) {stop(error);}
+    }
     await Promise.race([Promise.all([terminal, stderr, stdout, stdin]), stopped]);
     fence();
   } catch (error) {

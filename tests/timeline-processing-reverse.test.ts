@@ -1,14 +1,17 @@
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile} from 'node:fs/promises';
+import {mkdir, mkdtemp, open, readFile, readdir, realpath, rm, stat, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import {compileTimeMap, initialTimeMap, timeMapSourceWindowForOutput, TIMELINE_TIME_MAP_BASIS_PROFILE} from '../packages/contracts/src/timeline-time-map.ts';
+import {compileTimeMap, initialTimeMap, restoreTimeMap, timeMapSourceWindowForOutput, TIMELINE_TIME_MAP_BASIS_PROFILE} from '../packages/contracts/src/timeline-time-map.ts';
+import type {ClipTiming} from '../packages/contracts/src/timeline-speed.ts';
 import {run, runStreaming} from '../packages/business/src/media-runtime.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
-import {prepareReverseProxy, renderReverseProxy, REVERSE_PROXY_PROFILE} from '../packages/business/src/timeline-processing/reverse.ts';
+import {prepareReverseProxy, renderReverseProxy, reverseAudioCoverage, REVERSE_PROXY_COVERAGE_VERSION, REVERSE_PROXY_PROFILE} from '../packages/business/src/timeline-processing/reverse.ts';
 import type {ReverseProxyInput} from '../packages/business/src/timeline-processing/reverse.ts';
+import {reverseProxyDiskBudget} from '../packages/business/src/timeline-processing/reverse-profile.ts';
+import {reverseError, runReverseTool} from '../packages/business/src/timeline-processing/reverse-io.ts';
 
 const rate = 48_000;
 const fps = {fpsNumerator: 30, fpsDenominator: 1};
@@ -44,7 +47,7 @@ async function workspace(t: test.TestContext) {
   return {root, staging};
 }
 
-async function fixture(t: test.TestContext, variable = false) {
+async function fixture(t: test.TestContext, variable = false, pictureStartSeconds = 0) {
   const {root, staging} = await workspace(t);
   const movie = path.join(root, 'synthetic.mp4');
   const pcm = path.join(root, 'source.f32le');
@@ -54,9 +57,11 @@ async function fixture(t: test.TestContext, variable = false) {
     audio.writeFloatLE((-frame - 1) / (8 * rate), frame * 8 + 4);
   }
   await writeFile(pcm, audio, {mode: 0o600});
-  await runMedia(['-f', 'lavfi', '-i', "nullsrc=s=48x32:r=30:d=5,format=yuv420p,geq=lum='mod(X+N*3,220)+16':cb='mod(N*7,200)+24':cr='mod(Y+N*11,200)+24'",
+  await runMedia([...(pictureStartSeconds ? ['-copyts', '-itsoffset', String(pictureStartSeconds)] : []),
+    '-f', 'lavfi', '-i', "nullsrc=s=48x32:r=30:d=5,format=yuv420p,geq=lum='mod(X+N*3,220)+16':cb='mod(N*7,200)+24':cr='mod(Y+N*11,200)+24'",
     '-f', 'f32le', '-ar', String(rate), '-ac', '2', '-i', pcm, '-map', '0:v:0', '-map', '1:a:0',
     ...(variable ? ['-vf', "select='not(eq(mod(n,5),4))'", '-fps_mode', 'vfr'] : []),
+    ...(pictureStartSeconds && !variable ? ['-fps_mode', 'passthrough'] : []),
     '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', variable ? '17' : '0', '-g', '30', '-bf', variable ? '2' : '0', '-threads:v', '1',
     '-video_track_timescale', '30000', '-c:a', 'pcm_f32le', '-f', 'mov', movie]);
   return {staging, movie, audio};
@@ -139,7 +144,107 @@ test('four-slice FFV1 preserves the 16-bit alpha plane and colour interpretation
   assert.equal(sha(reversed), sha(reverseRecords(native, frameBytes, 0, 90)));
 });
 
-test('audio-only reverse keeps an exact 44.1 kHz window and channel order', {timeout: 60_000}, async t => {
+test('reverse 2× preserve-pitch proxy keeps the additional 48 kHz history with unchanged video ordinals', {timeout: 90_000}, async t => {
+  const {staging, movie, audio} = await fixture(t);
+  const timing: ClipTiming = {profile: 'timeline-speed-v1',
+    basis: {profile: TIMELINE_TIME_MAP_BASIS_PROFILE, sourceFps: fps, outputFps: fps,
+      sourceRange: {start: coordinate(7), end: coordinate(71)}, speed: {kind: 'constant', rate: {numerator: 2, denominator: 1}}},
+    view: {direction: 'reverse', loTime: {anchor: 'start', offsetOutputFrames: 0}, hiTime: {anchor: 'end', offsetOutputFrames: 0}},
+    outputWindow: {fromFrame: 0, toFrame: 32}, pitchShift: false, interpolation: 'off'};
+  const root = compileTimeMap(timing.basis);
+  assert.ok(root.ok);
+  const plan = restoreTimeMap(root.value, {...timing.view, outputWindow: timing.outputWindow});
+  assert.ok(plan.ok);
+  const window = timeMapSourceWindowForOutput(plan.value);
+  assert.ok(window.ok);
+  assert.deepEqual([window.value.startFrame, window.value.endFrame], [8, 71]);
+  const coverage = reverseAudioCoverage(plan.value, timing);
+  assert.deepEqual(coverage, {fromSample: 11_200, toSample: 113_600});
+  assert.deepEqual(reverseAudioCoverage(plan.value, {...timing, pitchShift: true}), coverage);
+  const input: ReverseProxyInput = {sourcePath: movie, sourceSha256: sha(await readFile(movie)), sourceWindow: window.value,
+    sourceFps: fps, mapHash: root.value.mapHash, media: 'video', audioWindow: coverage};
+  const options = authority();
+  const prepared = await prepareReverseProxy(input, options);
+  const result = await renderReverseProxy(input, prepared, {...options, stagingDirectory: staging});
+  assert.equal(result.frameCount, 63);
+  assert.equal(result.sampleCount, 102_400);
+  const pcm = await outputBytes(path.join(staging, 'proxy.mkv'), ['-map', '0:a:0', '-vn', ...rawAudio], result.sampleCount * 8);
+  assert.deepEqual(pcm, reverseRecords(audio, 8, 11_200, 113_600));
+  assert.deepEqual(pcm.subarray(0, 8), audio.subarray(113_599 * 8, 113_600 * 8));
+  assert.deepEqual(pcm.subarray(-8), audio.subarray(11_200 * 8, 11_201 * 8));
+  const clock = JSON.parse(await readFile(path.join(staging, 'clock.json'), 'utf8'));
+  assert.deepEqual(clock.sourceWindow, window.value);
+  assert.equal(clock.profile.coverageVersion, REVERSE_PROXY_COVERAGE_VERSION);
+  assert.deepEqual(clock.audio.sourceCoverage, coverage);
+  assert.deepEqual(clock.audio.sourceZero, {streamIndex: 0, pts: '0', timeBase: {numerator: 1, denominator: 30_000}});
+  const index = (await readFile(path.join(staging, 'frames.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line));
+  assert.deepEqual(index.map(row => row.sourceOrdinal), Array.from({length: 63}, (_, ordinal) => 70 - ordinal));
+});
+
+test('reverse audio coverage rounds fractional tempo tails and bounds cubic history to the source', () => {
+  const rational = (numerator: number, denominator: number) => ({kind: 'rational' as const, numerator: String(numerator), denominator: String(denominator)});
+  const timing: Extract<ClipTiming, {profile: 'timeline-speed-v1'}> = {profile: 'timeline-speed-v1',
+    basis: {profile: TIMELINE_TIME_MAP_BASIS_PROFILE, sourceFps: fps, outputFps: fps,
+      sourceRange: {start: rational(22, 3), end: rational(499, 7)}, speed: {kind: 'constant', rate: {numerator: 2, denominator: 1}}},
+    view: {direction: 'reverse', loTime: {anchor: 'start', offsetOutputFrames: 0}, hiTime: {anchor: 'end', offsetOutputFrames: 0}},
+    outputWindow: {fromFrame: 3, toFrame: 25}, pitchShift: false, interpolation: 'off'};
+  const root = compileTimeMap(timing.basis);
+  assert.ok(root.ok);
+  const plan = restoreTimeMap(root.value, {...timing.view, outputWindow: timing.outputWindow});
+  assert.ok(plan.ok);
+  assert.deepEqual(reverseAudioCoverage(plan.value, timing), {fromSample: 11_734, toSample: 114_058});
+  const shifted = reverseAudioCoverage(plan.value, {...timing, pitchShift: true});
+  assert.deepEqual(shifted, {fromSample: 34_054, toSample: 104_460});
+
+  const odd = {...timing, basis: {...timing.basis, sourceRange: {start: coordinate(7), end: coordinate(72)}},
+    outputWindow: {fromFrame: 0, toFrame: 33}};
+  const oddRoot = compileTimeMap(odd.basis);
+  assert.ok(oddRoot.ok);
+  const oddPlan = restoreTimeMap(oddRoot.value, {...odd.view, outputWindow: odd.outputWindow});
+  assert.ok(oddPlan.ok);
+  assert.equal(reverseAudioCoverage(oddPlan.value, odd), undefined);
+});
+
+test('an approved transition picture window extends proxy ordinals without changing the visible demand or PCM', {timeout: 90_000}, async t => {
+  const {staging, movie, audio} = await fixture(t);
+  const visible = clip(12, 70), picture = clip(8, 74);
+  const input: ReverseProxyInput = {sourcePath: movie, sourceSha256: sha(await readFile(movie)), ...visible,
+    media: 'video', pictureWindow: picture.sourceWindow};
+  const options = authority();
+  await assert.rejects(prepareReverseProxy({...input, pictureWindow: clip(13, 70).sourceWindow}, options), {code: 'UNSUPPORTED_FORMAT'});
+  const prepared = await prepareReverseProxy(input, options);
+  const result = await renderReverseProxy(input, prepared, {...options, stagingDirectory: staging});
+  assert.equal(result.frameCount, 66);
+  assert.equal(result.sampleCount, (70 - 12) * 1600);
+  const clock = JSON.parse(await readFile(path.join(staging, 'clock.json'), 'utf8'));
+  assert.deepEqual(clock.sourceWindow, visible.sourceWindow);
+  assert.deepEqual(clock.video.sourceCoverage, {startFrame: 8, endFrame: 74});
+  assert.equal(clock.video.firstSourceOrdinal, 8);
+  assert.equal(clock.video.endSourcePts, '74000');
+  assert.deepEqual(clock.audio.sourceCoverage, {fromSample: 12 * 1600, toSample: 70 * 1600});
+  const index = (await readFile(path.join(staging, 'frames.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line));
+  assert.deepEqual(index.map(row => row.sourceOrdinal), Array.from({length: 66}, (_, ordinal) => 73 - ordinal));
+  const pcm = await outputBytes(path.join(staging, 'proxy.mkv'), ['-map', '0:a:0', '-vn', ...rawAudio], result.sampleCount * 8);
+  assert.deepEqual(pcm, reverseRecords(audio, 8, 12 * 1600, 70 * 1600));
+});
+
+test('the source clock starts at the first decoded picture when audio begins earlier', {timeout: 90_000}, async t => {
+  const {staging, movie, audio} = await fixture(t, false, 0.1);
+  const input: ReverseProxyInput = {sourcePath: movie, sourceSha256: sha(await readFile(movie)), ...clip(0, 4), media: 'video'};
+  const options = authority();
+  const prepared = await prepareReverseProxy(input, options);
+  const result = await renderReverseProxy(input, prepared, {...options, stagingDirectory: staging});
+  assert.equal(result.frameCount, 4);
+  assert.equal(result.sampleCount, 6_400);
+  const clock = JSON.parse(await readFile(path.join(staging, 'clock.json'), 'utf8'));
+  assert.equal(clock.originUs, 0);
+  assert.equal(clock.video.sourceZeroPts, '3000');
+  assert.deepEqual(clock.audio.sourceZero, {streamIndex: 0, pts: '3000', timeBase: {numerator: 1, denominator: 30_000}});
+  const pcm = await outputBytes(path.join(staging, 'proxy.mkv'), ['-map', '0:a:0', '-vn', ...rawAudio], result.sampleCount * 8);
+  assert.deepEqual(pcm, reverseRecords(audio, 8, 4_800, 11_200));
+});
+
+test('audio-only reverse aligns added 48 kHz history to native 44.1 kHz without changing channel order', {timeout: 60_000}, async t => {
   const {root, staging} = await workspace(t);
   const pcm = path.join(root, 'source.f32le'), movie = path.join(root, 'audio.wav');
   const sampleRate = 44_100, samplesPerFrame = sampleRate / 30;
@@ -150,16 +255,21 @@ test('audio-only reverse keeps an exact 44.1 kHz window and channel order', {tim
   }
   await writeFile(pcm, samples);
   await runMedia(['-f', 'f32le', '-ar', String(sampleRate), '-ac', '2', '-i', pcm, '-c:a', 'pcm_f32le', movie]);
-  const input: ReverseProxyInput = {sourcePath: movie, sourceSha256: sha(await readFile(movie)), ...clip(7, 81), media: 'audio'};
+  const input: ReverseProxyInput = {sourcePath: movie, sourceSha256: sha(await readFile(movie)), ...clip(7, 81), media: 'audio',
+    audioWindow: {fromSample: 7 * 1600 - 1, toSample: 81 * 1600 + 1}};
   const opts = authority();
   const prepared = await prepareReverseProxy(input, opts);
   const receipt = await renderReverseProxy(input, prepared, {...opts, stagingDirectory: staging});
   assert.equal(receipt.frameCount, 0);
-  assert.equal(receipt.sampleCount, (81 - 7) * samplesPerFrame);
+  const nativeStart = 7 * samplesPerFrame - 147, nativeEnd = 81 * samplesPerFrame + 147;
+  assert.equal(receipt.sampleCount, nativeEnd - nativeStart);
   assert.deepEqual((await readdir(staging)).sort(), ['clock.json', 'proxy.mkv']);
-  const expected = reverseRecords(samples, 8, 7 * samplesPerFrame, 81 * samplesPerFrame);
+  const expected = reverseRecords(samples, 8, nativeStart, nativeEnd);
   const output = await outputBytes(path.join(staging, 'proxy.mkv'), ['-map', '0:a:0', '-vn', ...rawAudio], expected.length);
   assert.equal(sha(output), sha(expected));
+  const clock = JSON.parse(await readFile(path.join(staging, 'clock.json'), 'utf8'));
+  assert.equal(clock.sourceSampleStart, nativeStart);
+  assert.deepEqual(clock.audio.sourceCoverage, {fromSample: 7 * 1600 - 160, toSample: 81 * 1600 + 160});
 });
 
 test('the lossless encoder refuses a source whose packet allocation cannot fit the process budget', {timeout: 60_000}, async t => {
@@ -170,6 +280,50 @@ test('the lossless encoder refuses a source whose packet allocation cannot fit t
   const input: ReverseProxyInput = {sourcePath: movie, sourceSha256: sha(await readFile(movie)), ...clip(0, 1), media: 'video'};
   await assert.rejects(prepareReverseProxy(input, authority()), {code: 'UNSUPPORTED_FORMAT'});
   assert.deepEqual(await readdir(staging), []);
+});
+
+test('the 120-second portrait FFV1 reservation uses bounded scratch and grows with encoded bytes', () => {
+  const frameBytes = 1080 * 1920 * 3 / 2, frameCount = 3600;
+  const audioBytes = 120 * 48_000 * 2 * 4;
+  const budgets = reverseProxyDiskBudget('matroska', frameCount * frameBytes, audioBytes, 60 * frameBytes, frameCount);
+  assert.equal(budgets.scratchBytes, 233_230_336);
+  assert.equal(budgets.reservationBytes, 300_339_200);
+  assert.equal(budgets.outputBytesLimit, 8 * 1024 ** 3);
+  assert.ok(budgets.scratchBytes + budgets.outputBytesLimit <= 10 * 1024 ** 3);
+  assert.throws(() => reverseProxyDiskBudget('raw', frameCount * frameBytes, audioBytes, 60 * frameBytes, frameCount),
+    {code: 'CACHE_LIMIT'});
+});
+
+test('a media stdout chunk outside the encoder quota cannot write to staging', {timeout: 30_000}, async () => {
+  let written = 0;
+  await assert.rejects(runReverseTool('ffmpeg', ['-v', 'error', '-nostdin', '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo',
+    '-t', '0.05', '-c:a', 'pcm_f32le', '-f', 'f32le', 'pipe:1'], authority(),
+  {stdoutLimit: 8, stdoutOverflow: () => reverseError('CACHE_LIMIT'), stdout(chunk) {written += chunk.length;}}),
+  {code: 'CACHE_LIMIT'});
+  assert.equal(written, 0);
+});
+
+test('direct media output keeps stage writer ownership until its child is closed', {timeout: 30_000}, async t => {
+  const {staging} = await workspace(t);
+  const output = await open(path.join(staging, 'writer-test.wav'), 'wx+', 0o600);
+  const events: string[] = [];
+  let childPid: number | undefined;
+  const off = onMediaProcess(event => {
+    if (event.type === 'exited' && event.pid === childPid) events.push('child closed');
+  });
+  try {
+    await runReverseTool('ffmpeg', ['-v', 'error', '-nostdin', '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo',
+      '-t', '0.025', '-f', 'wav', 'fd:'], {...authority(), writer: {begin() {
+        events.push('pending');
+        return {started(pid) {childPid = pid; events.push('pid recorded');}, exited() {events.push('marker cleared');}};
+      }}}, {outputFd: output.fd});
+    assert.ok((await output.stat()).size > 44);
+  } finally {
+    off();
+    await output.close();
+  }
+  assert.ok(childPid && childPid > 0);
+  assert.deepEqual(events, ['pending', 'pid recorded', 'child closed', 'marker cleared']);
 });
 
 test('reverse attempt retains the frozen input and reaps owned children after cancellation', {timeout: 60_000}, async t => {

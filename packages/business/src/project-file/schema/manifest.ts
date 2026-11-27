@@ -935,6 +935,6 @@ export const FORMAT6_HISTORY_MANIFEST_ADDITIONS: SchemaManifest = Object.freeze(
     {type: "index", name: "sqlite_autoindex_timeline_processing_tasks_2", tbl_name: "timeline_processing_tasks", sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
     {type: "index", name: "timeline_processing_tasks_state", tbl_name: "timeline_processing_tasks", sha256: "30e6fc54318fa4ef169917f46fc94cde36b240c4329185918116fcd1e2682504"},
     {type: "table", name: "timeline_processing_retries", tbl_name: "timeline_processing_retries", sha256: "48a3073e895d73305bfe89f2f1ceaba93d61af2fa7ad041351ea6aff46b8d595"},
-    {type: "table", name: "timeline_processing_tasks", tbl_name: "timeline_processing_tasks", sha256: "ab1deb40a08cc5e643fb2c22d1eb406604c60863411594b0c02fc2004d127300"},
+    {type: "table", name: "timeline_processing_tasks", tbl_name: "timeline_processing_tasks", sha256: "b970c9d308464d8166e066bc2cb6dec586ce1a2a6755bf69e8c7d94c4556199d"},
   ]),
 });
