@@ -229,7 +229,7 @@ test('Premiere selects the exact native frame at every output frame of mixed-rat
         assert.ok(initial.timing?.profile === 'timeline-speed-v1');
         const full = compileClipTimeMap(initial, {fps});
         assert.ok(full.ok);
-        const trimmed = 'window' in setting ? trimTimeMap(full.value, ...setting.window) : full;
+        const trimmed = 'window' in setting ? trimTimeMap(full.value, setting.window[0], setting.window[1]) : full;
         assert.ok(trimmed.ok);
         const fields = projectTimeMapToCurrentClipFields(initial, trimmed.value);
         assert.ok(fields.ok);
@@ -268,7 +268,7 @@ test('Premiere selects the exact native frame at every output frame of mixed-rat
         assert.ok(sample.ok && sample.value.source.kind === 'exact');
         const numerator = BigInt(sample.value.source.numerator) * BigInt(nativeFps);
         const denominator = BigInt(sample.value.source.denominator) * BigInt(fps);
-        const expected = (plan.value.direction === 'reverse' && numerator > 0n ? numerator - 1n : numerator) / denominator;
+        const expected: bigint = (plan.value.direction === 'reverse' && numerator > 0n ? numerator - 1n : numerator) / denominator;
         assert.equal(xmlFrame, expected, `${nativeFps} fps ${item.name} frame ${index}`);
       }
     }
