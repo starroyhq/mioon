@@ -22,7 +22,8 @@ import {isProjectStore} from '../project-file/store.ts';
 import {isProjectExportObservation} from '../project-export-observation.ts';
 import {lstatSync} from 'node:fs';
 import {sameManagedFile} from '../managed-media.ts';
-import {discloseFcpExportTask} from '../fcpxml-export-task.ts';
+import {discloseEditorExportTask} from '../fcpxml-export-task.ts';
+import {isMioEditorExportStart,mioEditorExportKind} from './task-editor-export-v2.ts';
 
 type Value=Record<string,unknown>;
 type Target=AgentTaskCheck['target'];
@@ -37,6 +38,7 @@ const operations:Readonly<Record<string,{kind:TaskKind;group:AgentTaskCheckGroup
  mioon_export_create:{kind:'export',group:'export_render',type:'export_status'},mioon_timeline_render:{kind:'export',group:'export_render',type:'export_status'},
  mioon_clip_audio_export:{kind:'export',group:'export_render',type:'export_status'},
  mioon_export_fcpxml_start:{kind:'export',group:'export_render',type:'export_status'},
+ mioon_export_premiere_start:{kind:'export',group:'export_render',type:'export_status'},
  mioon_generation_submit:{kind:'job',group:'generation',type:'generation_status'},mioon_image_generate:{kind:'image',group:'generation',type:'generation_status'},
  mioon_frame_extract:{kind:'frame',group:'decomposition_frames',type:'frame_status'},mioon_scene_detect:{kind:'scene',group:'decomposition_frames',type:'decomposition_status'},
  mioon_scene_shots_create:{kind:'scene',group:'decomposition_frames',type:'decomposition_status'},
@@ -148,9 +150,10 @@ export async function readAgentTaskChecks(store:Store,snapshot:AgentTaskSnapshot
    else value=createSceneHistoryReaders(store).task(projectId,origin.id).dto as unknown as Value;
   }catch(error){if(!knownObservationFailure(error))throw error;/* Invalid local lineage is a failed observation. */}
   if(value?.requestId!==origin.requestId)value=undefined;
-  if(origin.operation==='export.fcpxml.start'){
-   let task:ReturnType<typeof discloseFcpExportTask>=null;
-   try{task=discloseFcpExportTask(value,{id:origin.id,projectId});}catch(error){if(!knownObservationFailure(error))throw error;}
+  if(isMioEditorExportStart(origin.operation)){
+   let task:ReturnType<typeof discloseEditorExportTask>=null;
+   try{task=discloseEditorExportTask(value,{id:origin.id,projectId},mioEditorExportKind(origin.operation));}
+   catch(error){if(!knownObservationFailure(error))throw error;}
    const name=safeName(task?.title),target:Target={kind,id:origin.id,...(name?{name}:{})};
    const result=task?.status==='done'?{status:'passed' as const}:stateResult(task?.status);
    const progress=task?.progress,total=progress?.totalBytes||progress?.totalFiles;
@@ -282,9 +285,9 @@ export async function readAgentTaskChecks(store:Store,snapshot:AgentTaskSnapshot
    timeline:{target:timelineTarget,basis:timelineProof,values,...(valid?{clipCount:(timeline.clips as unknown[]).length,subtitleCount:subtitles}:!exists?{clipCount:0,subtitleCount:0}:{})},
    project:{target:projectTarget,basis:basis(projectTarget),...(integer(shotCount)?{shotCount}:{})},
    run:{target:runTarget,basis:basis(runTarget)},checks:groups.flatMap(group=>group.items),steps:snapshot.steps,
-   // Export-parameter goals measure a rendered asset. FCPXML contributes its
-   // own status check but publishes an editable bundle, not a rendered asset.
-   exports:snapshot.steps.filter(step=>step.kind==='tool'&&step.toolCall&&step.toolCall.name!=='mioon_export_fcpxml_start'&&operations[step.toolCall.name]?.kind==='export').map(step=>{
+   // Export-parameter goals measure a rendered asset. Editable exports are
+   // observed through their own status checks.
+   exports:snapshot.steps.filter(step=>step.kind==='tool'&&step.toolCall&&step.toolCall.name!=='mioon_export_fcpxml_start'&&step.toolCall.name!=='mioon_export_premiere_start'&&operations[step.toolCall.name]?.kind==='export').map(step=>{
     const origin=origins.find(item=>item.kind==='export'&&item.step.id===step.id);
     return {stepId:step.id,checks:groups[0]!.items.filter(item=>origin?item.target.kind==='export'&&item.target.id===origin.id:item.target.kind==='step'&&item.target.id===step.id),...(goalExportValues.has(step.id)?{values:goalExportValues.get(step.id)}:{})};
    }),
