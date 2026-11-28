@@ -123,7 +123,7 @@ test('rejected shared actions map to one reason and expose affected ids', () => 
 test('format-5 clip selection passes a loudness provider backed by a real context', () => {
   const app = readFileSync(path.join(root, 'apps/web/src/App.tsx'), 'utf8');
   assert.ok(app.includes('loudnessContext={clipLoudnessContext as never}'));
-  assert.doesNotMatch(app, /if \(dataRef\.current\?\.projectFormatVersion === 5\) return undefined;/u);
+  assert.doesNotMatch(app, /if \((?:dataRef\.current\?\.projectFormatVersion === 5|isSequenceTimelineFormat\(dataRef\.current\?\.projectFormatVersion\))\) return undefined;/u);
   // The provider still has to build the saved identity rather than returning a
   // bare execution scope, so the observation card never dereferences undefined.
   assert.match(app, /savedClipLoudnessFields\(saved, dataRef\.current!\.assets, editing\.selectedClipId\)/u);

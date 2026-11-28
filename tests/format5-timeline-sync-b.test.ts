@@ -5,6 +5,11 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createProjectStore} from '../packages/business/src/project-file/store.ts';
 import type {ProjectStore} from '../packages/business/src/project-file/store.ts';
+import {FORMAT5_PROJECT_SCHEMA_VERSION, FORMAT6_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import type {SequenceProjectFormat} from '../packages/business/src/project-file/schema/databases.ts';
+import {readFormat5TimelineRecord} from '../packages/business/src/project-file/format5-timeline.ts';
+import {compileClipTimeMap} from '../packages/contracts/src/timeline-clip-timing.ts';
+import {timeMapPlanFrames} from '../packages/contracts/src/timeline-time-map.ts';
 import {
   applySequenceEditTimelineDelta, moveSequenceSyncHistory, previewSequenceSync, readSequenceSyncProjection, runSequenceSync,
 } from '../packages/business/src/format5-sequence-sync.ts';
@@ -12,7 +17,7 @@ import {createFormat5SequenceEditService} from '../packages/business/src/format5
 import type {SequenceSyncCommand} from '../packages/contracts/src/sequence-sync.ts';
 import {sequenceSyncIntent} from '../packages/contracts/src/sequence-sync.ts';
 import type {
-  SequenceEditCommitResult, SequenceEditEnvelope, SequenceEditHistoryCommand, SequenceEditTransactionFailure,
+  SequenceEditCommitResult, SequenceEditEnvelope, SequenceEditHistoryCommand, SequenceEditReceipt, SequenceEditTransactionFailure,
 } from '../packages/contracts/src/sequence-edit.ts';
 
 const at = '2026-01-01T00:00:00.000Z';
@@ -27,9 +32,10 @@ const timelineId = id(50);
 const sha = (letter: string): string => letter.repeat(64);
 type Result = SequenceEditCommitResult;
 
-function fixture(t: test.TestContext): ProjectStore {
+function fixture(t: test.TestContext, format: SequenceProjectFormat = FORMAT5_PROJECT_SCHEMA_VERSION): ProjectStore {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-tsb-'));
-  const store = createProjectStore({projectId: id(1), projectFile: path.join(root, 'project.mioon'), targetFormat: 5,
+  const store = createProjectStore({projectId: id(1), projectFile: path.join(root, 'project.mioon'), targetFormat: format,
+    ...(format === FORMAT6_PROJECT_SCHEMA_VERSION ? {allowFormat6: true} : {}),
     locate: () => ({localDir: path.join(root, 'records'), cacheDir: path.join(root, 'cache'), tempDir: path.join(root, 'temp')})});
   t.after(() => {store.close(); rmSync(root, {recursive: true, force: true});});
   const projectId = store.projectId;
@@ -130,6 +136,31 @@ function undo(store: ProjectStore, result: Result): Result {
   return moved as Result;
 }
 
+function applySpeed(store: ProjectStore): void {
+  const service = createFormat5SequenceEditService(store);
+  const reviewed = service.preview({projectId: store.projectId, requestId: 'tsb-apply-speed', speedIntent: {
+    side: 'timeline', operation: {kind: 'clip-speed', clipId: clipA, setting: {
+      speed: {kind: 'constant', rate: {numerator: 3, denominator: 2}},
+      direction: 'forward', pitchShift: false, interpolation: 'off',
+    }},
+  }});
+  assert.ok('envelope' in reviewed, JSON.stringify(reviewed));
+  const result = service.commit({projectId: store.projectId, envelope: reviewed.envelope, expectedPlanDigest: reviewed.planDigest}) as SequenceEditReceipt;
+  assert.equal(result.status, 'applied');
+}
+
+function timedClip(store: ProjectStore, clipId: string) {
+  const timeline = readFormat5TimelineRecord(store.db, 'project');
+  assert.ok(timeline);
+  const clip = timeline.clips.find(item => item.id === clipId);
+  assert.ok(clip && clip.timing?.profile === 'timeline-speed-v1');
+  const plan = compileClipTimeMap(clip, timeline);
+  assert.ok(plan.ok, JSON.stringify(plan));
+  const samples = timeMapPlanFrames(plan.value);
+  assert.ok(samples.ok, JSON.stringify(samples));
+  return {clip, timing: clip.timing, samples: [...samples.value]};
+}
+
 test('split keeps the left id, allocates the right id and rewires the chain', t => {
   const store = fixture(t);
   const before = state(store);
@@ -149,6 +180,35 @@ test('split keeps the left id, allocates the right id and rewires the chain', t 
   const undone = undo(store, result);
   assert.equal(undone.receipt.status, 'applied');
   assert.deepEqual(state(store).clips.map(clip => clip.id).sort(), before.clips.map(clip => clip.id).sort());
+});
+
+test('format 6 splits at a fractional source position and undo/redo preserves the same samples and clip IDs', t => {
+  const store = fixture(t, FORMAT6_PROJECT_SCHEMA_VERSION);
+  applySpeed(store);
+  const whole = timedClip(store, clipA);
+  const rightId = id(90), offsetFrames = 1;
+  const {result} = apply(store, {kind: 'clip-split', clipId: clipA, offsetFrames, rightClipId: rightId});
+  const left = timedClip(store, clipA), right = timedClip(store, rightId);
+  assert.equal(left.clip.durationFrames, offsetFrames);
+  assert.equal(right.clip.startFrame, offsetFrames);
+  assert.equal(right.clip.sourceInFrame, 1);
+  assert.deepEqual(left.timing.basis, whole.timing.basis);
+  assert.deepEqual(right.timing.basis, whole.timing.basis);
+  assert.deepEqual(left.timing.outputWindow, {fromFrame: 0, toFrame: offsetFrames});
+  assert.deepEqual(right.timing.outputWindow, {fromFrame: offsetFrames, toFrame: whole.clip.durationFrames});
+  assert.deepEqual([...left.samples, ...right.samples], whole.samples);
+  assert.deepEqual(right.samples.slice(0, 3), [1, 3, 4]);
+
+  const undone = undo(store, result);
+  assert.deepEqual(timedClip(store, clipA).samples, whole.samples);
+  assert.ok(!state(store).clips.some(clip => clip.id === rightId));
+  const redone = moveSequenceSyncHistory(store, {projectId: store.projectId, direction: 'redo',
+    requestId: 'tsb-redo-speed-split', actionId: result.actionId,
+    expected: {position: undone.receipt.history.position, revision: undone.receipt.history.revision}});
+  assert.ok(redone.ok, JSON.stringify(redone));
+  assert.deepEqual(timedClip(store, clipA).timing, left.timing);
+  assert.deepEqual(timedClip(store, rightId).timing, right.timing);
+  assert.deepEqual([...timedClip(store, clipA).samples, ...timedClip(store, rightId).samples], whole.samples);
 });
 
 test('removing a middle segment compacts the track and detaches the orphaned anchors', t => {
@@ -280,6 +340,34 @@ test('copy-and-move split piece carries a new shot, an adoption and the same all
   assert.equal(state(store).shots.some(shot => shot.id === newShot), false);
   assert.equal(state(store).adoptions.some(row => row.shotId === newShot), false);
   assert.ok(split);
+});
+
+test('format 6 copy-and-move and paste preserve a split piece’s stored window and samples', t => {
+  const store = fixture(t, FORMAT6_PROJECT_SCHEMA_VERSION);
+  applySpeed(store);
+  const child = id(91);
+  apply(store, {kind: 'clip-split', clipId: clipA, offsetFrames: 1, rightClipId: child});
+  const source = timedClip(store, child);
+  const movedShotId = id(92);
+  apply(store, {kind: 'clip-move', clipId: child, beforeClipId: null, copyNodeId: movedShotId});
+  const moved = timedClip(store, child);
+  assert.equal(moved.clip.sequenceSource?.nodeId, movedShotId);
+  assert.ok(state(store).adoptions.some(row => row.shotId === movedShotId && row.versionId === versionA));
+  assert.deepEqual(moved.timing, source.timing);
+  assert.deepEqual(moved.samples, source.samples);
+
+  const timeline = readFormat5TimelineRecord(store.db, 'project');
+  assert.ok(timeline);
+  const startFrame = timeline.durationFrames;
+  const {prepared} = apply(store, {kind: 'paste-clip', clipId: child, startFrame});
+  const pastedId = prepared.envelope.allocation.clips[0]?.clipId;
+  assert.ok(pastedId && pastedId !== child);
+  const pasted = timedClip(store, pastedId);
+  assert.equal(pasted.clip.startFrame, startFrame);
+  assert.deepEqual(pasted.timing, source.timing);
+  assert.deepEqual(pasted.samples, source.samples);
+  assert.equal(pasted.clip.sourceInFrame, source.clip.sourceInFrame);
+  assert.equal(pasted.clip.sourceSpanFrames, source.clip.sourceSpanFrames);
 });
 
 test('a changed plan digest or a reused request with different allocation is rejected', t => {

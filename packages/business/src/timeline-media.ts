@@ -1,3 +1,4 @@
+import {assertTimelineSpeedRenderable} from '../../contracts/src/timeline-speed-render.ts';
 import {getTimelineOpacityRenderBinding} from './timeline-opacity-render-binding.ts';
 import {prepareTimelineImageLayers} from './timeline-image-staging.ts';
 import {validateTimelineImageSourceInterpretation} from './timeline-image-source.ts';
@@ -130,7 +131,9 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
  // Nothing binds an opacity render: a snapshot with an opacity field is refused before any media work.
  getTimelineOpacityRenderBinding(snapshot as never,assets as never);
  checkMediaEffect(beforeEffect,signal);
- const timeline=snapshot.timeline,tracks=validateTimeline(timeline,assets);
+ const timeline=snapshot.timeline;
+ assertTimelineSpeedRenderable(timeline);
+ const tracks=validateTimeline(timeline,assets);
  // Transitions add segment edges and reach into neighbouring clips' ranges.
  const transitions=timelineTransitionRegions(timeline as never,assets as never);
  validateSubtitleSnapshotProfile(snapshot);

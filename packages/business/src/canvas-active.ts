@@ -2,14 +2,14 @@ import type {DatabaseSync} from 'node:sqlite';
 import {AppError} from '../../contracts/src/app-error.ts';
 import {INSPECTION_ROW_LIMITS} from './inspection-query.ts';
 import {isProjectDatabase} from './project-file/held-files.ts';
-import {FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
+import {FORMAT4_PROJECT_SCHEMA_VERSION, isSequenceProjectFormat} from './project-file/schema/databases.ts';
 import type {CanvasArchiveTable} from './project-file/schema/domains/canvas.ts';
 
 /** The held kernel has already validated the matching on-disk manifest. */
 export function hasCanvasArchives(db: DatabaseSync): boolean {
   if (!isProjectDatabase(db)) return false;
   const version = db.prepare('PRAGMA project.user_version').get()?.user_version;
-  return version === FORMAT4_PROJECT_SCHEMA_VERSION || version === FORMAT5_PROJECT_SCHEMA_VERSION;
+  return version === FORMAT4_PROJECT_SCHEMA_VERSION || isSequenceProjectFormat(version);
 }
 
 /** Supply only the fixed alias from the calling SQL statement. Legacy

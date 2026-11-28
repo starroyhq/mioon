@@ -19,7 +19,8 @@ import {mediaExecutable} from '@mioon/business/media-environment';
 import {inspectMediaTools} from '@mioon/business/media-tool-diagnostics';
 import {run as runMedia} from '@mioon/business/media-runtime';
 import {acquireWorkspaceLock} from '@mioon/business/workspace-lock';
-import {FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION, openProjectStore, recoverProjectFile} from '@mioon/business/project-file/index';
+import {FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION, FORMAT6_PROJECT_SCHEMA_VERSION,
+  openProjectStore, projectReadFormatOptions, recoverProjectFile} from '@mioon/business/project-file/index';
 import type {Format4Options, ProjectFileFormat} from '@mioon/business/project-file/index';
 import {createProviderCatalog} from '@mioon/business/provider-registry';
 import {listImageProfiles} from '@mioon/business/images';
@@ -137,7 +138,7 @@ export interface ServerOptions {
   projectBackupCopyForTest?: Parameters<typeof createProjectBackups>[0]['copy'];
   /** Trusted test host target for fixed legacy fixtures; production always
    * creates and upgrades to the current format. */
-  projectFormatForTest?: ProjectFileFormat;
+  projectFormatForTest?: Exclude<ProjectFileFormat, typeof FORMAT6_PROJECT_SCHEMA_VERSION>;
   projectCopyBoundaryForTest?: Parameters<typeof createProjectCopies>[0]['onBoundary'];
   projectCopyActionBoundaryForTest?: Parameters<typeof createProjectCopies>[0]['onActionBoundary'];
   /** Main-owned OS trash and window admission, never supplied by HTTP/env. */
@@ -224,8 +225,11 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
     const backgroundTasks = background;
     const backgroundHttp = createBackgroundTaskHttp(backgroundTasks);
     const assertProjectFile = createApplicationFileGuard(directories);
-    const targetFormat: ProjectFileFormat = options.projectFormatForTest ?? FORMAT5_PROJECT_SCHEMA_VERSION;
+    const format6Development = channel === 'development' && process.env.MIOON_FORMAT6_DEV === '1';
+    const targetFormat: ProjectFileFormat = options.projectFormatForTest ??
+      (format6Development ? FORMAT6_PROJECT_SCHEMA_VERSION : FORMAT5_PROJECT_SCHEMA_VERSION);
     const format4: Format4Options | undefined = targetFormat === FORMAT4_PROJECT_SCHEMA_VERSION ? {} : undefined;
+    const readFormat = projectReadFormatOptions(targetFormat, format4);
     const backups = createProjectBackups({directories, registry: library.registry, identity: library.projectFileIdentity, assertProjectFile, outsidePaths: library.outsidePaths, copy: options.projectBackupCopyForTest, targetFormat});
     drainBackups = backups.drain;
     manager = createProjectHostManager({directories, registry: library.registry, identity: library.projectFileIdentity, taskIndex: library.taskIndex,
@@ -242,7 +246,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
         }
       }}],
       openStore: options => { assertProjectFile(options.projectFile); return openProjectStore(options); },
-      maintenance: {recoverProjectFile: file => { assertProjectFile(file); return recoverProjectFile(file, format4 ? {deferLegacyRecovery: true} : undefined); }},
+      maintenance: {recoverProjectFile: file => { assertProjectFile(file); return recoverProjectFile(file, format4 ? {deferLegacyRecovery: true} : readFormat); }},
       recoverySnapshot: recover => assertProjectFile.withSnapshot(recover),
       factory: async context => { const runtime = await composeHostedProject(context, appLibrary, app, options, selfPort, listeningPort, editingWindows); opened.set(context.projectId, runtime); return runtime; },
       onEvent: event => { try {backgroundTasks.onHostEvent(event);} finally {
@@ -288,7 +292,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
     drainCopies = copies.drain;
     await copies.recover();
     const trash = createProjectTrash({manager, library: appLibrary, directories, assertProjectFile, signal: shutdown.signal,
-      inspectProjectWork: backgroundTasks.inspectProjectWork, format4,
+      inspectProjectWork: backgroundTasks.inspectProjectWork, format4: readFormat,
       ...(options.projectTrash === undefined ? {} : {port: options.projectTrash}),
       ...(options.projectTrashBoundaryForTest === undefined ? {} : {onBoundary: options.projectTrashBoundaryForTest})});
     drainTrash = trash.drain;
@@ -337,7 +341,8 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
     editingWindowRegistry = projectEntries;
     const userRules=createMioUserRules(library,{signal:shutdown.signal});
     const appAgentHttp = createApplicationAgentHttp(library, shutdown.signal);
-    const rpc = createApplicationRpc({library, app, manager, directories, backups, withProjectRecords: backups.withProjectRecords, copies, trash, createProject, format4, signal: shutdown.signal, providerList: () => createProviderCatalog({root, env: channel === 'development' ? process.env : {}, mockAllowed: channel !== 'production'}).list(),
+    const rpc = createApplicationRpc({library, app, manager, directories, backups, withProjectRecords: backups.withProjectRecords, copies, trash, createProject, format4,
+      allowFormat6: readFormat?.allowFormat6, signal: shutdown.signal, providerList: () => createProviderCatalog({root, env: channel === 'development' ? process.env : {}, mockAllowed: channel !== 'production'}).list(),
       imageProfiles: input => listImageProfiles({...app.profileDependencies, mockAllowed: channel !== 'production'}, input as never), refreshSummaries, readApplicationIdentity: () => projectEntries.readIdentity()});
     const covers = createProjectCoverHttp({directories, readProject: id => library!.registry.get(id), signal: shutdown.signal});
     const policy = createApplicationPolicy(library.agentPolicy);

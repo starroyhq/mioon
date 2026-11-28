@@ -445,7 +445,7 @@ function appFunction<S extends string>(name:S,end:string,env:Record<string,unkno
   const start = app.indexOf(`  ${name}`), stop = app.indexOf(`  ${end}`, start);
   assert.ok(start >= 0 && stop > start, 'Actual App callback boundaries must remain present');
   assert.equal(app.indexOf(`  ${name}`, start + name.length + 2), -1, 'The extracted callback must have a unique owner');
-  const scope = {msg: message, clipDraftRef: {current: null}, ...env};
+  const scope = {msg: message, clipDraftRef: {current: null}, isSequenceTimelineFormat: contracts.isSequenceTimelineFormat, ...env};
   return Function(...Object.keys(scope), `${app.slice(start, stop)}; return ${name.replace(/^async function |^function /, '').split('(')[0]};`)(...Object.values(scope)) as ExtractedApp<S>;
 }
 test('actual project-leave guard checks the independent draft and only discards after accepted current-owner navigation', async () => {

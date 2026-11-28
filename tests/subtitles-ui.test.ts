@@ -1,3 +1,4 @@
+import {isSequenceTimelineFormat} from '../packages/contracts/src/timeline-replacement.ts';
 import type {RootModule,RootControlledModules} from './helpers/strict-root-ui-types.ts';
 import {createTimelinePlaybackClock} from '../apps/web/src/timeline-playback-clock.ts';
 import type {TimelinePlaybackClock} from '../apps/web/src/timeline-playback-clock.ts';
@@ -348,7 +349,7 @@ test('actual App subtitle bridge passes exact durable identity and rechecks visi
 test('actual App history handler blocks a dirty subtitle and calls the shared undo/redo route when clean', async () => {
   const saved = timeline(), history = { projectId, timelineId, revision: 7, cursor: 1, length: 2, canUndo: true, canRedo: true, undoEntry: { id: id(41), operation: 'timeline.subtitle.add' }, redoEntry: { id: id(42), operation: 'timeline.subtitle.remove' } };
   for (const dirty of [true, false]) {
-    const calls: unknown[] = [], scope = { workspaceMode: 'editing', currentProject: { current: projectId }, dataRef: { current: { project: { id: projectId }, timeline: saved, timelineHistory: history } }, timelineHistoryState, isBusy: () => false, timelinePending: false, clipDirty: false, subtitleDirty: dirty, online: true, auth: true, loading: false, mutateTimeline: (operation: unknown) => calls.push(operation) };
+    const calls: unknown[] = [], scope = { isSequenceTimelineFormat, workspaceMode: 'editing', currentProject: { current: projectId }, dataRef: { current: { project: { id: projectId }, timeline: saved, timelineHistory: history } }, timelineHistoryState, isBusy: () => false, timelinePending: false, clipDirty: false, subtitleDirty: dirty, online: true, auth: true, loading: false, mutateTimeline: (operation: unknown) => calls.push(operation) };
     const run = compile(section('  function changeTimelineHistory(', '  useEffect(() => {\n    const onKeyDown'), 'changeTimelineHistory', scope);
     run('undo'); run('redo'); assert.deepEqual(calls, dirty ? [] : ['timeline.undo', 'timeline.redo']);
   }

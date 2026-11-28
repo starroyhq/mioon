@@ -1,3 +1,4 @@
+import {isSequenceTimelineFormat} from '../packages/contracts/src/timeline-replacement.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -23,7 +24,8 @@ function appFunction(name: string, next: string, bindings: Record<string, unknow
   const start = appSource.indexOf(`  function ${name}(`), end = appSource.indexOf(next, start);
   assert.ok(start > 0 && end > start);
   const code = transformSync(appSource.slice(start, end), {loader: 'ts', format: 'cjs'}).code;
-  return Function(...Object.keys(bindings), `${code}\nreturn ${name};`)(...Object.values(bindings)) as (...args: unknown[]) => unknown;
+  const scope = {isSequenceTimelineFormat, ...bindings};
+  return Function(...Object.keys(scope), `${code}\nreturn ${name};`)(...Object.values(scope)) as (...args: unknown[]) => unknown;
 }
 
 async function fixture(execute?: (command: MenuCommandId) => unknown, scopeFor?: (command: MenuCommandId) => string, readView?: () => ReturnType<typeof workbenchMenuView>) {
@@ -412,11 +414,11 @@ test('actual App keyboard routing leaves desktop accelerators single-owned, reta
   assert.ok(start > 0 && end > start);
   const code = transformSync(appSource.slice(start, end), {loader: 'ts', format: 'cjs'}).code;
   const calls: string[] = [], doc = {modal: false}, playbackClock = createTimelinePlaybackClock();
-  const keyboard = (desktop: boolean, projectFormatVersion = 4, format5Clipboard = {current: null as string | null}, format5HistoryState = {canUndo: false, canRedo: false}) => Function('nativeMenuBridge', 'viewRef', 'hasOpenWorkbenchModal', 'document', 'canvasShortcutInText', 'timelineSplitActionForKey', 'getSplitStateAt', 'playbackClock', 'effectivePlayhead', 'splitTimelineClip', 'timelineHistoryActionForKey', 'historyState', 'format5HistoryState', 'changeTimelineHistory', 'dataRef', 'format5Clipboard', 'format5CopyTimelineClip', 'format5PasteTimelineClip', `${code};return onKeyDown;`)(
+  const keyboard = (desktop: boolean, projectFormatVersion = 4, format5Clipboard = {current: null as string | null}, format5HistoryState = {canUndo: false, canRedo: false}) => Function('nativeMenuBridge', 'viewRef', 'hasOpenWorkbenchModal', 'document', 'canvasShortcutInText', 'timelineSplitActionForKey', 'getSplitStateAt', 'playbackClock', 'effectivePlayhead', 'splitTimelineClip', 'timelineHistoryActionForKey', 'historyState', 'format5HistoryState', 'changeTimelineHistory', 'dataRef', 'format5Clipboard', 'format5CopyTimelineClip', 'format5PasteTimelineClip', 'isSequenceTimelineFormat', `${code};return onKeyDown;`)(
     desktop ? {} : null, {current: {activeMode: 'editing'}}, () => doc.modal, {}, () => false, timelineSplitActionForKey,
     (frame: number) => ({canSplit: frame > 0 && frame < 60}), playbackClock, 30, () => calls.push('split'), timelineHistoryActionForKey,
     {canUndo: true, canRedo: true}, format5HistoryState, (direction: string) => calls.push(direction),
-    {current: {projectFormatVersion}}, format5Clipboard, () => calls.push('copy'), () => calls.push('paste'),
+    {current: {projectFormatVersion}}, format5Clipboard, () => calls.push('copy'), () => calls.push('paste'), isSequenceTimelineFormat,
   ) as (event: unknown) => void;
   const event = (key: string, patch = {}) => ({key, ctrlKey: true, metaKey: false, altKey: false, shiftKey: false, repeat: false, defaultPrevented: false, isComposing: false, keyCode: 0, target: null, preventDefault() {this.defaultPrevented = true;}, ...patch});
   const desktop = keyboard(true); desktop(event('z')); desktop(event('z', {shiftKey: true})); desktop(event('b')); assert.deepEqual(calls, []);

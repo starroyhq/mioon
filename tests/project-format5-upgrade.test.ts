@@ -4,13 +4,15 @@ import {chmodSync, cpSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rm
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
-import {inspectProjectFormatReadOnly, openProjectStore} from '../packages/business/src/project-file/index.ts';
+import {DatabaseSync} from 'node:sqlite';
+import {createProjectBackup, copyProjectBackup, inspectProjectFormatReadOnly, openProjectStore} from '../packages/business/src/project-file/index.ts';
 import {openProjectStore as openStore} from '../packages/business/src/project-file/store.ts';
-import {FORMAT5_PROJECT_SCHEMA_VERSION, FORMAT5_HISTORY_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
-import {previewFormat5Upgrade, upgradeProjectFormatTo5} from '../packages/business/src/project-file/format5-upgrade.ts';
+import {FORMAT5_PROJECT_SCHEMA_VERSION, FORMAT5_HISTORY_SCHEMA_VERSION, FORMAT6_PROJECT_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import {previewFormat5Upgrade, previewSequenceFormatUpgrade, upgradeProjectFormatTo5, upgradeProjectSequenceFormat} from '../packages/business/src/project-file/format5-upgrade.ts';
 import {createFormat4UpgradeBackup, readFormat4BackupManifest, verifyFormat4Backup} from '../packages/business/src/project-file/format4-backup.ts';
 import {restoreFormat4Backup} from '../packages/business/src/project-file/format4-restore.ts';
 import {copyProjectToNewFile} from '../packages/business/src/project-file/copy.ts';
+import type {CopyProjectOptions} from '../packages/business/src/project-file/copy.ts';
 import {inspectCopiedProjectFile} from '../packages/business/src/project-file/backup.ts';
 import {createFormat5SequenceEditService} from '../packages/business/src/format5-sequence-edit-service.ts';
 import {createOwnedMediaGraphReader} from '../packages/business/src/inspection.ts';
@@ -21,13 +23,15 @@ import {sequencePreviewFailureResponseSchema, sequencePreviewResponseSchema} fro
 import {sequenceHistoryViewResponseSchema} from '../packages/contracts/src/sequence-editing.ts';
 import {isTimelineRecord} from '../packages/contracts/src/timeline-replacement.ts';
 import {readProjectContentStamp} from '../packages/business/src/project-file/content-stamp.ts';
-import {captureProjectDocumentInside} from '../packages/business/src/project-versions/document.ts';
+import {captureProjectDocumentInside, decodeSupportedProjectDocument} from '../packages/business/src/project-versions/document.ts';
 import {buildRestorePlan} from '../packages/business/src/project-versions/preview.ts';
 import {applyRestorePlanInside} from '../packages/business/src/project-versions/restore.ts';
 import {collectProject} from '../packages/business/src/project-package/document.ts';
-import {FORMAT5_SOURCE_RELEASES, prepareFormat5Release} from './helpers/format5-release-fixture.ts';
+import {FORMAT5_SOURCE_RELEASES, format5KernelSnapshot, prepareFormat5Release} from './helpers/format5-release-fixture.ts';
 import type {Format5SourceRelease} from './helpers/format5-release-fixture.ts';
 import {releaseProjectPaths} from './helpers/format4-release-fixture.ts';
+import type {Format5Timeline} from '../packages/contracts/src/project-format5.ts';
+import type {MediaReference} from '../packages/contracts/src/media-reference.ts';
 
 const releases = ['v0.1.1', 'v0.2.0'] as const;
 const sourceVersions = new Map<Format5SourceRelease, 3 | 4>([['v0.1.1', 3], ['v0.2.0', 4]]);
@@ -357,4 +361,132 @@ test('a format 5 project copies to a new file with its native rows and named ver
 test('format 5 source releases pin real published commit identities', () => {
   assert.deepEqual(Object.keys(FORMAT5_SOURCE_RELEASES).sort(), ['v0.1.0', 'v0.1.1', 'v0.2.0']);
   for (const [release, sha] of Object.entries(FORMAT5_SOURCE_RELEASES)) assert.match(sha, /^[0-9a-f]{40}$/u, release);
+});
+
+test('format 6 uses the exact format 5 schema, preserves every timeline byte, and refuses a modified format 5', () => {
+  const f = released('v0.2.0'), options = {projectFile: f.projectFile, locate: () => f.location, approveUpgrade: () => true};
+  const {store: legacy} = upgradeProjectFormatTo5(options);
+  const initial = format5KernelSnapshot(legacy);
+  const previous = legacy.tx(() => captureProjectDocumentInside(legacy));
+  legacy.close();
+  const preview = previewSequenceFormatUpgrade(FORMAT6_PROJECT_SCHEMA_VERSION, f.projectFile, undefined, f.historyFile)!;
+  assert.equal(preview.projectVersion, FORMAT5_PROJECT_SCHEMA_VERSION);
+  assert.equal(preview.targetProjectVersion, FORMAT6_PROJECT_SCHEMA_VERSION);
+  assert.equal(preview.historyVersion, FORMAT5_HISTORY_SCHEMA_VERSION);
+  assert.equal(preview.targetHistoryVersion, preview.historyVersion);
+  assert.throws(() => upgradeProjectSequenceFormat(FORMAT6_PROJECT_SCHEMA_VERSION, {...options, approveUpgrade: () => false}),
+    {code: 'PROJECT_FORMAT_UPGRADE_REQUIRED'});
+  for (const fault of ['before-backup', 'before-version-write', 'after-version-write', 'before-commit'] as const) {
+    const failure = Object.assign(new Error('Synthetic storage failure'), {code: 'SQLITE_IOERR'});
+    assert.throws(() => upgradeProjectSequenceFormat(FORMAT6_PROJECT_SCHEMA_VERSION, {...options,
+      onUpgradeBoundary: phase => {if (phase === fault) throw failure;}}), error => error === failure);
+    assert.equal(inspectProjectFormatReadOnly(f.projectFile).formatVersion, FORMAT5_PROJECT_SCHEMA_VERSION);
+  }
+  const unknown = path.join(f.root, 'unknown-format5.mioon');
+  cpSync(f.projectFile, unknown);
+  const changedSchema = new DatabaseSync(unknown);
+  try {changedSchema.exec('CREATE TABLE unknown_field(id INTEGER PRIMARY KEY)');} finally {changedSchema.close();}
+  assert.throws(() => previewSequenceFormatUpgrade(FORMAT6_PROJECT_SCHEMA_VERSION, unknown), {code: 'PROJECT_INVALID'});
+  const {store, backupId} = upgradeProjectSequenceFormat(FORMAT6_PROJECT_SCHEMA_VERSION, options);
+  try {
+    const after = format5KernelSnapshot(store);
+    assert.deepEqual(after, {...initial, versions: {...initial.versions, project: FORMAT6_PROJECT_SCHEMA_VERSION}});
+    assert.deepEqual(decodeSupportedProjectDocument(previous, FORMAT6_PROJECT_SCHEMA_VERSION).tables, previous.tables);
+    assert.ok(backupId);
+    const backupRoot = path.join(f.location.localDir, 'format-upgrade-backups');
+    const manifest = readFormat4BackupManifest(backupRoot, backupId);
+    assert.equal(manifest.projectVersion, FORMAT5_PROJECT_SCHEMA_VERSION);
+    assert.equal(manifest.historyVersion, FORMAT5_HISTORY_SCHEMA_VERSION);
+    verifyFormat4Backup(path.join(backupRoot, backupId), manifest);
+  } finally {store.close();}
+  assert.throws(() => openProjectStore({projectFile: f.projectFile,
+    locate: () => assert.fail('a newer format must fail before local records are used')}), {
+    code: 'PROJECT_FORMAT_NEWER', details: {database: 'project', reason: 'format-newer',
+      formatVersion: FORMAT6_PROJECT_SCHEMA_VERSION, supportedFormatVersion: FORMAT5_PROJECT_SCHEMA_VERSION},
+  });
+  if (process.platform !== 'win32') {
+    const current = inspectProjectFormatReadOnly(f.projectFile, {allowFormat6: true});
+    const restored = restoreFormat4Backup({projectFile: f.projectFile, location: f.location, projectId: current.projectId,
+      allowFormat6: true, backupId: backupId!, expected: current});
+    assert.equal(restored.projectVersion, FORMAT5_PROJECT_SCHEMA_VERSION);
+    const oldStore = openProjectStore({projectFile: f.projectFile, locate: () => f.location});
+    try { assert.deepEqual(format5KernelSnapshot(oldStore), initial); } finally { oldStore.close(); }
+  }
+});
+
+test('the released project formats each upgrade through format 5 with one atomic format-6 confirmation and backup', () => {
+  for (const release of releases) {
+    const f = released(release), phases: number[] = [];
+    const {store, backupId} = upgradeProjectSequenceFormat(FORMAT6_PROJECT_SCHEMA_VERSION, {
+      projectFile: f.projectFile, locate: () => f.location, approveUpgrade: preview => {
+        assert.equal(preview.projectVersion, sourceVersions.get(release));
+        assert.equal(preview.targetProjectVersion, FORMAT6_PROJECT_SCHEMA_VERSION);
+        return true;
+      }, onUpgradeBoundary: (phase, observed) => {
+        if (phase === 'after-version-write') phases.push(observed.projectVersion);
+      },
+    });
+    try {
+      assert.deepEqual(phases, [FORMAT5_PROJECT_SCHEMA_VERSION, FORMAT6_PROJECT_SCHEMA_VERSION]);
+      const timeline = readFormat5TimelineRecord(store.db, 'project')!;
+      assert.ok(timeline.clips.length);
+      assert.ok(timeline.clips.every(clip => !Object.hasOwn(clip, 'timing')));
+    } finally {store.close();}
+    assert.deepEqual(readdirSync(path.join(f.location.localDir, 'format-upgrade-backups')), [backupId]);
+  }
+});
+
+test('named versions, native backups, and project copies preserve format-6 timing', async () => {
+  const f = released('v0.2.0');
+  const {store} = upgradeProjectSequenceFormat(FORMAT6_PROJECT_SCHEMA_VERSION,
+    {projectFile: f.projectFile, locate: () => f.location, approveUpgrade: () => true});
+  try {
+    const timeline = readFormat5TimelineRecord(store.db, 'project')!;
+    const clip = timeline.clips.find(value => value.sequenceSource?.kind === 'media' && value.sourceState === 'ready')!;
+    assert.ok(clip);
+    const asset = store.get('assets', clip.assetId!) as {id: string; sha256: string; sizeBytes: number; reference: MediaReference};
+    assert.ok(clip.sequenceSource?.kind === 'media');
+    const node = store.get('nodes', clip.sequenceSource.nodeId) as {id: string};
+    const timing = {profile: 'timeline-freeze-v1' as const, sourceFrame: clip.sourceInFrame,
+      sourceVersionId: null, sourceSha256: asset.sha256};
+    // The lifecycle test uses synthetic ready video metadata; it never decodes media.
+    const timedTimeline: Format5Timeline = {...timeline, clips: timeline.clips.map(value =>
+      value.id === clip.id ? {...value, muted: true, sourceSpanFrames: 1, timing} : value)};
+    store.tx(() => {
+      store.put('assets', {...asset, mimeType: 'video/mp4', duration: 4, sha256: null,
+        reference: {...asset.reference, fullSha256: null}, publication: {
+          version: 1, publicationId: randomUUID(), projectId: store.projectId, assetId: asset.id,
+          owner: {kind: 'import', id: randomUUID(), requestId: randomUUID(), inputHash: asset.sha256},
+          targetKind: 'assets', relativePath: '素材/sample.mp4', sha256: asset.sha256,
+          sizeBytes: asset.sizeBytes, mimeType: 'video/mp4',
+        }});
+      store.put('nodes', {...node, type: 'video'});
+      store.put('timelines', timedTimeline);
+    });
+    const saved = store.tx(() => captureProjectDocumentInside(store));
+    store.put('timelines', {...timedTimeline, clips: timedTimeline.clips.map(value =>
+      value.id === clip.id ? {...value, name: 'Temporarily renamed'} : value)});
+    store.tx(() => {
+      const current = captureProjectDocumentInside(store);
+      const boundary = Number(store.db.prepare('SELECT COALESCE(max(rowid),0) n FROM main.mio_changes').get()!.n);
+      const plan = buildRestorePlan(store, saved, current, boundary, new Date().toISOString());
+      applyRestorePlanInside(store, plan, {requestId: randomUUID(), now: new Date().toISOString()});
+    });
+    assert.deepEqual(readFormat5TimelineRecord(store.db, 'project')!.clips.find(value => value.id === clip.id), timedTimeline.clips.find(value => value.id === clip.id));
+    const backupFile = path.join(f.root, 'timed-backup.mioon');
+    assert.equal((await createProjectBackup(store, backupFile)).formatVersion, FORMAT6_PROJECT_SCHEMA_VERSION);
+    for (const role of ['copy', 'restore']) {
+      const projectFile = path.join(f.root, role + '.mioon');
+      const request: CopyProjectOptions = {projectFile, sourceProjectDir: f.root, targetFormat: FORMAT6_PROJECT_SCHEMA_VERSION};
+      const result = role === 'copy' ? await copyProjectToNewFile(store, request) : await copyProjectBackup({...request, backupFile});
+      assert.equal(result.formatVersion, FORMAT6_PROJECT_SCHEMA_VERSION);
+      const target = openProjectStore({projectFile, allowFormat6: true, locate: () => ({
+        localDir: path.join(f.root, role + '-records'), cacheDir: path.join(f.root, role + '-cache'), tempDir: path.join(f.root, role + '-temp'),
+      })});
+      try {
+        assert.notEqual(target.projectId, store.projectId);
+        assert.deepEqual(readFormat5TimelineRecord(target.db, 'project')!.clips.find(value => value.id === clip.id)?.timing, timing);
+      } finally {target.close();}
+    }
+  } finally {store.close();}
 });

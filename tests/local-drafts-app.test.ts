@@ -1,3 +1,4 @@
+import {isSequenceTimelineFormat} from '../packages/contracts/src/timeline-replacement.ts';
 import type {ClipDraftController,ClipDraftClient,ClipDraftWrite} from '../apps/web/src/clip-draft-state.ts';
 type DraftCompile<N extends string>=N extends 'guardNavigation'?(message?:string)=>Promise<boolean>:N extends 'registerClipDraft'?(controller:object)=>()=>void:(operation:string,input:Record<string,unknown>,revision?:number)=>Promise<unknown>;
 interface StoredDraft{supported:boolean;workspaceScope:string;instanceId:string;key:typeof key;revision:number;targetStatus:string;draft:{raw:ClipDraftRaw;source:ClipDraftWrite['source'];baseRevision:number;updatedAt:string}|null}
@@ -214,6 +215,7 @@ test('actual App draft discard leaves the original pending timeline request and 
   const original = Object.freeze({ requestId: 'original-request', expectedRevision: 7, clipId: key.clipId, patch: Object.freeze({ name: 'Previously submitted' }) });
   const tasks = { current: Object.freeze({ operation: 'timeline.clip.update', input: original, status: 'unknown' }) }, calls: (unknown[] | (string | boolean)[])[] = [];
   const mutate = compile(mutationSource, 'mutateTimeline', {
+    isSequenceTimelineFormat,
     application: null, // The ordinary App entry has no candidate application capability.
     clipDraftRef: { current: f.controller },
     dataRef: { current: { timeline: { revision: 7 } } }, currentProject: { current: key.projectId },

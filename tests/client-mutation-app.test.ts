@@ -1,3 +1,4 @@
+import {isSequenceTimelineFormat} from '../packages/contracts/src/timeline-replacement.ts';
 import type {captureTaskWorkspaceIntent as CapturedIntent} from '../apps/web/src/task-workspace-intent.ts';
 import type {PendingEntry} from '../apps/web/src/submissions.ts';
 import { i18nTestModule, createI18nTestContext, message as msg, renderMessage as renderCoreMessage, translate } from './helpers/i18n.ts';
@@ -25,7 +26,7 @@ const section = (start: string, end: string) => source.slice(source.indexOf(star
 const runSource = section('async function runSession(', 'async function inspect(').replace('async function runSession(', 'async function run(');
 const addShotSource = section('async function addShot()', 'async function addStructure()');
 const structureSource = section('async function addStructure()', 'async function addNode(');
-function compile(code: string, name: string, scope: { [s: string]: unknown; }|ArrayLike<unknown>) { scope = { msg, ...createI18nTestContext(), localizedError: (value?: string|DisplayMessage|null|undefined) => Object.assign(new Error(renderCoreMessage('zh-Hans', value)), { displayMessage: value }), ...scope }; return Function(...Object.keys(scope), `${stripSourceTypes(code,{loader:'tsx'})}; return ${name};`)(...Object.values(scope)); }
+function compile(code: string, name: string, scope: { [s: string]: unknown; }|ArrayLike<unknown>) { scope = { msg, isSequenceTimelineFormat, ...createI18nTestContext(), localizedError: (value?: string|DisplayMessage|null|undefined) => Object.assign(new Error(renderCoreMessage('zh-Hans', value)), { displayMessage: value }), ...scope }; return Function(...Object.keys(scope), `${stripSourceTypes(code,{loader:'tsx'})}; return ${name};`)(...Object.values(scope)); }
 function storage(t: { after: (arg0: () => boolean|typeof globalThis) => void; }) {
   const previous = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage'), values = new Map<string,string>();
   Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: { get length() { return values.size; }, key: (i:number) => [...values.keys()][i], getItem: (k:string) => values.get(k) ?? null, setItem: (k:string,v:string) => values.set(k, String(v)), removeItem: (k:string) => values.delete(k) } });
