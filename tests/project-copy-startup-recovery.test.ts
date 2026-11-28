@@ -110,7 +110,8 @@ for (const format of ['exFAT', 'FAT32'] as const) {
     const {root, mount} = volume;
     const projectsDir = path.join(mount, 'projects'), targets = path.join(mount, 'copies');
     fs.mkdirSync(projectsDir); fs.mkdirSync(targets);
-    const options: ServerOptions = {dataDir: path.join(root, 'app'), projectsDir, port: 0, token,
+    const dataDir = path.join(root, 'app');
+    const options: ServerOptions = {dataDir, projectsDir, port: 0, token,
       localDraftChannel: 'development', projectFormatForTest: 5};
     let server: Awaited<ReturnType<typeof startServer>> | undefined, stopBeforePublish = true;
     let stopAtCapture = false;
@@ -128,7 +129,7 @@ for (const format of ['exFAT', 'FAT32'] as const) {
       const source = await native.create({projectFile: path.join(projectsDir, 'Source.mioon'), name: 'Portable source'});
       const input = {projectId: source.projectId, requestId: randomUUID(), projectFile: path.join(targets, 'Recovered.mioon')};
       await assert.rejects(native.duplicate!(input), /stop at legacy FAT intent boundary/u);
-      const record = path.join(options.dataDir, 'project-copies', `project.duplicate-${input.requestId}.json`);
+      const record = path.join(dataDir, 'project-copies', `project.duplicate-${input.requestId}.json`);
       const intent = JSON.parse(fs.readFileSync(record, 'utf8'));
       assert.equal(intent.phase, 'records-published'); assert.equal(intent.placeholderIdentity, null);
       assert.equal(fs.existsSync(input.projectFile), false);
@@ -193,7 +194,7 @@ for (const format of ['exFAT', 'FAT32'] as const) {
         assert.equal(writeFailure, true);
         assert.equal(fs.existsSync(diskFull.projectFile), false);
       } finally {t.mock.restoreAll(); syncBuiltinESMExports();}
-      const failed = JSON.parse(fs.readFileSync(path.join(options.dataDir, 'project-copies', `project.duplicate-${diskFull.requestId}.json`), 'utf8'));
+      const failed = JSON.parse(fs.readFileSync(path.join(dataDir, 'project-copies', `project.duplicate-${diskFull.requestId}.json`), 'utf8'));
       assert.equal(failed.phase, 'captured'); assert.ok(failed.fatStage.file);
       assert.equal(fs.existsSync(failed.stageDirectory), false, 'ordinary write failure cleans the proved partial immediately');
       await close(); native = await launch();
@@ -205,12 +206,12 @@ for (const format of ['exFAT', 'FAT32'] as const) {
         const duplicateInput = {...request, projectId: source.projectId}, copyToInput = {...request, ...observedSource};
         const worker = new URL(family === 'duplicate' ? './fixtures/project-copy-worker.ts' : './fixtures/project-copy-action-worker.ts', import.meta.url);
         const child = spawnSync(process.execPath, [worker.pathname,
-          JSON.stringify({root: options.dataDir, input: family === 'duplicate' ? duplicateInput : copyToInput, operation: family, point: 'copy-build-chunk'})], {
+          JSON.stringify({root: dataDir, input: family === 'duplicate' ? duplicateInput : copyToInput, operation: family, point: 'copy-build-chunk'})], {
           env: testEnv(), encoding: 'utf8', timeout: 40_000,
         });
         assert.equal(child.error, undefined); assert.equal(child.signal, 'SIGKILL', child.stderr);
         const namespace = family === 'duplicate' ? 'project-copies' : 'project-copy-actions';
-        const partial = JSON.parse(fs.readFileSync(path.join(options.dataDir, namespace, `project.${family}-${request.requestId}.json`), 'utf8'));
+        const partial = JSON.parse(fs.readFileSync(path.join(dataDir, namespace, `project.${family}-${request.requestId}.json`), 'utf8'));
         assert.equal(partial.phase, 'captured'); assert.ok(partial.fatStage.file);
         assert.equal(fs.statSync(path.join(partial.stageDirectory, 'project.mioon')).size, 64 * 1024);
         assert.equal(fs.existsSync(request.projectFile), false);
@@ -230,12 +231,12 @@ for (const format of ['exFAT', 'FAT32'] as const) {
       const crash = {...input, requestId: randomUUID(), projectFile: path.join(targets, 'Crashed.mioon')};
       await close();
       const worker = new URL('./fixtures/project-copy-worker.ts', import.meta.url);
-      const child = spawnSync(process.execPath, [worker.pathname, JSON.stringify({root: options.dataDir, input: crash, point: 'records-published'})], {
+      const child = spawnSync(process.execPath, [worker.pathname, JSON.stringify({root: dataDir, input: crash, point: 'records-published'})], {
         env: testEnv(), encoding: 'utf8', timeout: 40_000,
       });
       assert.equal(child.error, undefined); assert.equal(child.signal, 'SIGKILL', child.stderr);
       assert.equal(fs.existsSync(crash.projectFile), false);
-      const interrupted = JSON.parse(fs.readFileSync(path.join(options.dataDir, 'project-copies', `project.duplicate-${crash.requestId}.json`), 'utf8'));
+      const interrupted = JSON.parse(fs.readFileSync(path.join(dataDir, 'project-copies', `project.duplicate-${crash.requestId}.json`), 'utf8'));
       native = await launch();
       const recovered = await native.duplicate!(crash);
       assert.equal(recovered.project.projectId, interrupted.projectId); assert.equal(recovered.contentToken, interrupted.contentToken);
@@ -250,7 +251,7 @@ for (const format of ['exFAT', 'FAT32'] as const) {
           : native.copyTo!({...request, ...observedSource});
         await assert.rejects(retry(), /stop before the legacy FAT stage is created/u);
         const namespace = family === 'duplicate' ? 'project-copies' : 'project-copy-actions';
-        const record = path.join(options.dataDir, namespace, `project.${family}-${request.requestId}.json`);
+        const record = path.join(dataDir, namespace, `project.${family}-${request.requestId}.json`);
         const old = JSON.parse(fs.readFileSync(record, 'utf8'));
         assert.equal(old.phase, 'captured'); assert.equal(old.fatStage, undefined);
         const stage = fs.mkdtempSync(path.join(targets, '.project-copy-')), file = path.join(stage, 'project.mioon');
