@@ -1,3 +1,4 @@
+import {FCP_EXPORT_TASK_KIND as FCPXML_EXPORT_TASK_KIND, fcpExportStartInputSchema} from './fcp-export.ts';
 import {z} from 'zod';
 import {projectIdSchema} from './project-file.ts';
 import {isNormalizedAbsolutePath} from './media-reference.ts';
@@ -35,9 +36,19 @@ export const recentProjectSchema = z.object({
 }).strict();
 export type RecentProject = z.infer<typeof recentProjectSchema>;
 
-/** Task kinds, named after their tables in the local records. */
+/** Durable index kinds name the owning task tables. Final Cut Pro tasks use
+ * the export index and have their own kind in the task center view. */
 export const BACKGROUND_TASK_KINDS = Object.freeze(['job', 'export', 'edit_task', 'image_task', 'frame_task', 'scene_task', 'subject_variant_batch'] as const);
 export type BackgroundTaskKind = typeof BACKGROUND_TASK_KINDS[number];
+export {FCPXML_EXPORT_TASK_KIND};
+export const fcpxmlExportTaskSchema = z.object({
+  kind: z.literal(FCPXML_EXPORT_TASK_KIND), mode: z.literal(FCPXML_EXPORT_TASK_KIND),
+  id, projectId: projectIdSchema, requestId: fcpExportStartInputSchema.shape.requestId.max(200), title: z.string().min(1).max(200),
+  status: z.enum(['running', 'done', 'failed', 'cancelled']), revision: count.min(1), createdAt: date, updatedAt: date,
+  progress: z.object({files: count, totalFiles: count, bytes: count, totalBytes: count}).strict(),
+}).strict().refine(({progress}) => progress.files <= progress.totalFiles && progress.bytes <= progress.totalBytes,
+  'Export progress must be within the planned files and bytes.');
+export type FcpExportTask = z.infer<typeof fcpxmlExportTaskSchema>;
 /** An unfinished task. After a restart the backend reopens its project to
  * keep polling and reconciling. */
 export const backgroundTaskIndexEntryV3Schema = z.object({

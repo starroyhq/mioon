@@ -148,6 +148,24 @@ test('save freezes both revisions and exact intent; double click never mints ano
   f.controller.choose('square_1080'); const second = f.controller.save(); assert.equal(f.submits[1].input.expectedRevision, 1); f.ack(1); await second;
 });
 
+test('a format no-op refreshes metadata and silently accepts the already-selected preset', async () => {
+  const f = fixture();
+  f.set({timelineId, timelineRevision: 1});
+  f.server({timelineId, timelineRevision: 1});
+  await f.ready();
+  assert.equal(f.controller.choose('landscape_1080'), true);
+  const saving = f.controller.save();
+  f.set({timelineId, timelineRevision: 3});
+  f.server({timelineId, timelineRevision: 3, presetId: 'landscape_1080', width: 1920, height: 1080});
+  f.responses[0]!.resolve!({status: 'not_applied', error: {code: 'SEQUENCE_EDIT_NOOP'}});
+  assert.equal(await saving, null);
+  assert.equal(f.state().base?.timelineRevision, 3);
+  assert.equal(f.state().dirty, false);
+  assert.equal(f.state().conflict, false);
+  assert.equal(f.state().errorMessage, null);
+  assert.equal(f.state().uncertain, null);
+});
+
 for (const later of ['square_1080', 'portrait_1080']) test(`late ACK does not erase later ${later} draft while the panel is hidden`, async () => {
   const f = fixture(); await f.ready(); f.controller.choose('landscape_1080'); const saving = f.controller.save();
   f.controller.choose(later); f.controller.setVisible(false); f.ack(); await saving;
@@ -433,9 +451,17 @@ function appFunction<S extends string>(name:S,end:string,env:Record<string,unkno
 test('actual project-leave guard checks the independent draft and only discards after accepted current-owner navigation', async () => {
   const f = fixture(); await f.ready(); f.controller.choose('landscape_1080');
   let approved = false; const checks: { dirty: unknown; }[]|{ message: unknown; dirty: unknown; }[] = [];
-  const guard = appFunction('async function guardProjectNavigation(', 'async function changeMode(', { nativeWindow: null, timelineFormatRef: { current: f }, deliveryNameRef: { current: null }, localDeliveryRef: { current: null }, guardNavigation: async (message: unknown, dirty: unknown) => { checks.push({ message, dirty }); return approved; } });
+  const settled: unknown[] = [];
+  const guard = appFunction('async function guardProjectNavigation(', 'async function changeMode(', {
+    nativeWindow: null, timelineFormatRef: { current: f }, deliveryNameRef: { current: null }, localDeliveryRef: { current: null },
+    currentProject: {current: projectId},
+    settleDiscardedAgentEditingDrafts: (owner: string|null) => settled.push({owner, dirty: f.controller.hasUnsaved()}),
+    guardNavigation: async (message: unknown, dirty: unknown) => { checks.push({ message, dirty }); return approved; },
+  });
   assert.equal(await guard('leave'), false); assert.equal(f.state().dirty, true); assert.equal(checks[0].dirty, true);
+  assert.deepEqual(settled, []);
   approved = true; assert.equal(await guard('leave'), true); assert.equal(f.state().dirty, false);
+  assert.deepEqual(settled, [{owner: projectId, dirty: false}]);
   assert.match(app, /selectProject[\s\S]*?guardProjectNavigation\(draftMessage/);
   assert.match(app, /async function createProject[\s\S]*?guardProjectNavigation\(/);
   assert.match(app, /onPop = async[\s\S]*?selectProject\(id, false, true\)/);
@@ -467,7 +493,7 @@ for (const outcome of ['accepted unchanged', 'cancelled', 'newer name', 'name ch
   test(`actual project guard preserves combined format and delivery-name drafts unless confirmation is current: ${outcome}`, async t => {
     const f = fixture(); await f.ready(); assert.equal(f.controller.choose('landscape_1080'), true);
     const delivery = deliveryNameController(); assert.equal(delivery.choose('First delivery', context().scope), true);
-    const deliveryNameRef = { current: { controller: delivery } }, confirmation = deferred(), checks: (unknown)[] = [];
+    const deliveryNameRef = { current: { controller: delivery } }, confirmation = deferred(), checks: (unknown)[] = [], settled: (unknown)[] = [];
     let epoch = 1;
     const getLocalContext = () => ({ scope: `${projectId}:${epoch}`, projectId, timelineId, timelineRevision: 1,
        connected: true, visible: true, busy: false,
@@ -480,14 +506,15 @@ for (const outcome of ['accepted unchanged', 'cancelled', 'newer name', 'name ch
       t.after(() => controller.dispose()); return controller;
     };
     const local = makeLocalController(), localDeliveryRef = { current: { controller: local } }, timelineFormatRef = { current: f };
+    const settleDiscardedAgentEditingDrafts = (owner: string|null) => settled.push({owner, dirty: timelineFormatRef.current.controller.hasUnsaved()});
     const guardNavigation = appFunction('async function guardNavigation(', 'async function guardProjectNavigation(', { nativeWindow: null,
       shotTextRef: { current: null }, clipDraftRef: { current: null },
       context: () => ({ projectId, epoch }), isCurrent: (captured: { projectId: string; epoch: number; }) => captured.projectId === projectId && captured.epoch === epoch,
-      subtitlesRef: { current: null }, dirtyRef: { current: false },
+      subtitlesRef: { current: null }, dirtyRef: { current: false }, settleDiscardedAgentEditingDrafts,
       confirm: (message: unknown) => { checks.push(message); return confirmation.promise; },
     });
     const guard = appFunction('async function guardProjectNavigation(', 'async function changeMode(', { nativeWindow: null,
-      timelineFormatRef, deliveryNameRef, localDeliveryRef, guardNavigation,
+      timelineFormatRef, deliveryNameRef, localDeliveryRef, guardNavigation, currentProject: {current: projectId}, settleDiscardedAgentEditingDrafts,
     });
     const leaving = guard('Discard both drafts?');
     assert.deepEqual(checks, ['Discard both drafts?']);
@@ -516,6 +543,7 @@ for (const outcome of ['accepted unchanged', 'cancelled', 'newer name', 'name ch
     confirmation.resolve!(outcome !== 'cancelled');
     const accepted = outcome === 'accepted unchanged';
     assert.equal(await leaving, accepted);
+    assert.deepEqual(settled, accepted ? [{owner: projectId, dirty: true}, {owner: projectId, dirty: false}] : []);
     assert.equal(f.controller.hasUnsaved(), !accepted); assert.equal(currentDelivery.hasUnsaved(), !accepted);
     if (accepted) {
       assert.equal(f.state().dirty, false); assert.equal(f.state().draftPresetId, 'portrait_1080');

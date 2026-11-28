@@ -226,6 +226,15 @@ jobs:
         shell: pwsh
         run: node --test tests/windows-project-volume-facts.test.ts
 
+      - name: Verify native Windows export installation
+        run: |
+          # The fixture creates a private temporary directory with the native
+          # helper. Use the verified local profile ancestry, not RUNNER_TEMP.
+          $env:TEMP = $env:LOCALAPPDATA
+          $env:TMP = $env:LOCALAPPDATA
+          node --test --test-name-pattern 'native Windows installs a pinned export' tests/windows-private-storage-native.test.ts
+          if ($LASTEXITCODE -ne 0) { throw 'Windows native export installation verification failed.' }
+
       - name: Launch actual packaged Windows application
         timeout-minutes: 8
         run: |

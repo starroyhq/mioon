@@ -9,6 +9,7 @@
 import type {ChainSyncOperation} from './chain-sync-algorithm.ts';
 import type {SequenceEditIntent} from './sequence-edit.ts';
 import {sequenceEditIntentSide} from './sequence-edit.ts';
+import type {SourceRange} from './source-range.ts';
 
 export const SEQUENCE_SYNC_COMMANDS = Object.freeze([
   'sync-board', 'board-version', 'clip-version',
@@ -42,7 +43,8 @@ export type SequenceSyncCommand =
   | {readonly kind: 'clip-add'; readonly clip: SequenceSyncAddClip; readonly beforeClipId: string | null;
     readonly nodeKind?: 'shot' | 'video' | 'image'; readonly nodeAssetId?: string; readonly nodeName?: string;
     readonly copyFromClipId?: string}
-  | {readonly kind: 'insert-asset'; readonly assetId: string; readonly trackId: string | null; readonly startFrame: number}
+  | {readonly kind: 'insert-asset'; readonly assetId: string; readonly trackId: string | null; readonly startFrame: number;
+    readonly assetRange?: SourceRange}
   | {readonly kind: 'paste-clip'; readonly clipId: string; readonly startFrame: number}
   | {readonly kind: 'clip-copy-as-new-shot'; readonly clipId: string; readonly newClipId: string; readonly copyNodeId: string}
   /** Split one segment; left keeps its id, the right takes the allocated id. */
@@ -89,7 +91,7 @@ export function sequenceSyncOperation(command: SequenceSyncCommand): ChainSyncOp
       ...(command.copyFromClipId ? {copyFromClipId: command.copyFromClipId} : {})}};
     case 'insert-asset':
       return {kind: 'track', edit: {kind: 'insert-asset', assetId: command.assetId, trackId: command.trackId,
-        startFrame: command.startFrame}};
+        startFrame: command.startFrame, ...(command.assetRange === undefined ? {} : {assetRange: command.assetRange})}};
     case 'paste-clip':
       return {kind: 'track', edit: {kind: 'paste-clip', clipId: command.clipId, startFrame: command.startFrame}};
     case 'clip-copy-as-new-shot':

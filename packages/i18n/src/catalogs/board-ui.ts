@@ -166,11 +166,12 @@ export const boardUiMessages = {
   'boardUi.error.sequenceAlreadyLinked': {'zh-Hans':'这个镜头已经在成片里，先断开原来的一条。','zh-Hant':'這個鏡頭已經在成片裡，先斷開原來的一條。',en:'This shot is already in the film. Disconnect the existing link first.',ja:'このショットはすでに完成映像にあります。既存のリンクを先に切断してください。'},
   'boardUi.error.sequenceMultiplePredecessors': {'zh-Hans':'这个镜头前面已经有一条连线。','zh-Hant':'這個鏡頭前面已經有一條連線。',en:'This shot already has a link before it.',ja:'このショットの前にはすでにリンクがあります。'},
   'boardUi.error.sequenceMultipleSuccessors': {'zh-Hans':'这里后面已经有一条连线。','zh-Hant':'這裡後面已經有一條連線。',en:'This position already has a link after it.',ja:'この位置の後ろにはすでにリンクがあります。'},
-  'boardUi.error.sequenceFilmStart': {'zh-Hans':'成片必须从成片卡开始。','zh-Hant':'成片必須從成片卡開始。',en:'A film must start from the film card.',ja:'完成映像は完成映像カードから始める必要があります。'},
+  'boardUi.error.sequenceFilmStart': {'zh-Hans':'成片卡是顺序的起点，请从成片卡连向下一张卡。','zh-Hant':'成片卡是順序的起點，請從成片卡連向下一張卡。',en:'The film card starts the sequence. Connect from it to the next card.',ja:'完成映像カードは順番の起点です。このカードから次のカードへ接続してください。'},
   'boardUi.error.sequenceInvalidTypes': {'zh-Hans':'这两个元素不能直接排成顺序。','zh-Hant':'這兩個元素不能直接排成順序。',en:'These two elements cannot be connected in sequence.',ja:'この 2 つの要素は順序で接続できません。'},
   'boardUi.error.sequenceTextAnnotation': {'zh-Hans':'文字卡只做标注，不能进入成片顺序。','zh-Hant':'文字卡只做標註，不能進入成片順序。',en:'Text cards are annotations and cannot join the film order.',ja:'テキストカードは注釈用で、完成映像の順序には入りません。'},
   'boardUi.error.sequenceCycle': {'zh-Hans':'这样连会形成循环。','zh-Hant':'這樣連會形成循環。',en:'This connection would create a loop.',ja:'この接続は循環になります。'},
-  'boardUi.error.sequenceMissingNode': {'zh-Hans':'要连接的卡片已经不存在，请重新读取。','zh-Hant':'要連接的卡片已經不存在，請重新讀取。',en:'The card to connect no longer exists. Read the board again.',ja:'接続するカードが見つかりません。ボードを読み直してください。'},
-  'boardUi.error.sequenceDuplicateEdge': {'zh-Hans':'这条连线已经存在。','zh-Hant':'這條連線已經存在。',en:'This link already exists.',ja:'このリンクはすでに存在します。'},
+  'boardUi.error.sequenceMissingNode': {'zh-Hans':'画板上找不到要操作的卡片，刷新后重新选择。','zh-Hant':'畫板上找不到要操作的卡片，重新整理後再選擇。',en:'The card could not be found on the board. Refresh the board and select it again.',ja:'操作するカードがボードに見つかりません。ボードを再読み込みして選び直してください。'},
+  'boardUi.error.sequenceDuplicateEdge': {'zh-Hans':'这条顺序线已经存在，要改顺序请先断开原来的线。','zh-Hant':'這條順序線已經存在，要改順序請先斷開原來的線。',en:'This sequence link already exists. To change the order, disconnect it first.',ja:'この順序リンクはすでにあります。順番を変えるには先に既存のリンクを外してください。'},
+  'boardUi.error.sequenceActiveFilmRemoved': {'zh-Hans':'这张成片卡是当前时间线的起点，要移除内容请在时间线上选择片段。','zh-Hant':'這張成片卡是目前時間軸的起點，要移除內容請在時間軸上選擇片段。',en:'This film card starts the current timeline. To remove content, select its clips in the timeline.',ja:'この完成映像カードは現在のタイムラインの起点です。内容を取り除くには、タイムラインでクリップを選んでください。'},
   'boardUi.error.capacity': {'zh-Hans':'这个镜头的参考已经到上限，先断开一条再连。','zh-Hant':'這個鏡頭的參考已經到上限，先斷開一條再連。',en:'This shot has reached its reference limit. Disconnect one first.',ja:'このショットの参照は上限に達しました。1 つ切断してから接続してください。'}
 } as const satisfies MessageCatalog;

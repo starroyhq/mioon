@@ -639,7 +639,7 @@ test('in-place copy rejects a non-main-track source without creating history or 
   assert.deepEqual(cursor(), []);
   const result = previewSequenceSync(store, {kind: 'clip-copy-as-new-shot', clipId: audioClip,
     newClipId: id(93), copyNodeId: id(94)}, {requestId: requestId()});
-  assert.deepEqual(result, {ok: false, code: 'INVALID_TRACK_TARGET', ids: [audioClip]});
+  assert.deepEqual(result, {ok: false, code: 'INVALID_TRACK_TARGET', ids: [audioClip], reason: 'COPY_REQUIRES_MAIN_TRACK'});
   assert.deepEqual(cursor(), []);
 
   const valid = previewSequenceSync(store, {kind: 'clip-copy-as-new-shot', clipId: clipA,

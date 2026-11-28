@@ -1,15 +1,26 @@
 import assert from 'node:assert/strict';
+import {execFile} from 'node:child_process';
+import {randomUUID} from 'node:crypto';
 import {mkdtemp, readFile, realpath, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import {promisify} from 'node:util';
+import {Client} from '@modelcontextprotocol/sdk/client/index.js';
+import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
+import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
 import {run} from '../packages/business/src/media-runtime.ts';
 import {FORMAT5_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {createClient} from '../packages/client/src/index.ts';
 import {exportPreflightResponseSchema} from '../packages/contracts/src/export-preflight.ts';
+import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import type {SequenceEditEnvelope} from '../packages/contracts/src/sequence-edit.ts';
 import {TIMELINE_EXPORT_DEFAULT_SETTINGS} from '../packages/contracts/src/timeline-export-profile.ts';
 import {startServer, type InspectProject} from './helpers/test-server.ts';
+
+const execute = promisify(execFile);
+const repo = path.resolve(import.meta.dirname, '..');
+type RenderEnvelope = {ok: true; data: unknown} | {ok: false; error: {code: string; details: unknown}};
 
 const cases = [
   {route: 'direct sequence insertion', prepared: false, endFrame: 30, issue: null},
@@ -94,5 +105,71 @@ for (const {route, prepared, endFrame, issue} of cases) {
       }
     }
     assert.deepEqual(reference(), afterFirst);
+
+    if (prepared) await t.test('format 5 render replay and revision rejection agree across HTTP, CLI, and MCP', {timeout: 45_000}, async () => {
+      assert.ok(server);
+      assert.ok(first.snapshotHash);
+      const {url, token} = server;
+      const env = {...mediaEnvironment(), MIOON_BASE_URL: url, MIOON_TOKEN: token};
+      const request = {...input, purpose: 'export', requestId: randomUUID(), preflightSnapshotHash: first.snapshotHash};
+      const callHttp = async (body: typeof request) => {
+        const response = await fetch(url + projectRpcPath(projectId), {
+          method: 'POST', redirect: 'error', headers: {authorization: `Bearer ${token}`, 'content-type': 'application/json'},
+          body: JSON.stringify({operation: 'timeline.render', input: body}), signal: AbortSignal.timeout(15_000),
+        });
+        return {status: response.status, envelope: await response.json() as RenderEnvelope};
+      };
+      const callCli = async (body: typeof request) => {
+        const runCli = execute(process.execPath, ['apps/cli/src/index.ts', 'timeline', 'render', '--input', JSON.stringify(body)],
+          {cwd: repo, env, timeout: 15_000});
+        return runCli.then(({stdout}) => ({code: 0, envelope: JSON.parse(stdout) as unknown}), (error: unknown) => {
+          if (!(error instanceof Error) || !('code' in error) || typeof error.code !== 'number' ||
+            !('stdout' in error) || typeof error.stdout !== 'string' || !error.stdout) throw error;
+          return {code: error.code, envelope: JSON.parse(error.stdout) as unknown};
+        });
+      };
+      const client = new Client({name: 'format5-render-preflight-test', version: '1.0.0'});
+      const transport = new StdioClientTransport({command: process.execPath, args: ['apps/mcp/src/index.ts'], cwd: repo, env});
+      const callMcp = async (body: typeof request) => {
+        const result = await client.callTool({name: 'timeline_render', arguments: body}, undefined, {timeout: 15_000});
+        assert.ok(Array.isArray(result.content));
+        const block = result.content[0];
+        assert.ok(block?.type === 'text');
+        assert.deepEqual(JSON.parse(block.text), result.structuredContent);
+        return {isError: Boolean(result.isError), envelope: result.structuredContent};
+      };
+      const exportRows = () => inspect(projectId, db => db.prepare('SELECT id FROM main.exports ORDER BY id').all());
+      const receipt = (requestId: string) => inspect(projectId, db => db.prepare('SELECT response FROM main.timeline_requests WHERE requestId=?').get(requestId));
+      try {
+        await client.connect(transport);
+        const accepted = await callHttp(request);
+        assert.equal(accepted.status, 200);
+        assert.equal(accepted.envelope.ok, true);
+        const originalReceipt = receipt(request.requestId);
+        assert.ok(originalReceipt);
+        assert.deepEqual(await callCli(request), {code: 0, envelope: accepted.envelope});
+        assert.deepEqual(await callMcp(request), {isError: false, envelope: accepted.envelope});
+        assert.deepEqual(await callHttp(request), accepted);
+        assert.deepEqual(receipt(request.requestId), originalReceipt);
+        const exportsBeforeRejection = exportRows();
+        assert.equal(exportsBeforeRejection.length, 1);
+        const stale = {...request, requestId: randomUUID(), expectedRevision: request.expectedRevision + 1};
+        const http = await callHttp(stale);
+        const cli = await callCli(stale);
+        const mcp = await callMcp(stale);
+        assert.equal(http.status, 409);
+        assert.ok(!http.envelope.ok);
+        assert.equal(http.envelope.error.code, 'REVISION_CONFLICT');
+        assert.deepEqual(http.envelope.error.details, {expectedRevision: stale.expectedRevision, currentRevision: request.expectedRevision});
+        assert.equal(receipt(stale.requestId), undefined);
+        assert.deepEqual(exportRows(), exportsBeforeRejection);
+        assert.deepEqual({cli, mcp}, {
+          cli: {code: 3, envelope: http.envelope},
+          mcp: {isError: true, envelope: http.envelope},
+        });
+      } finally {
+        await client.close();
+      }
+    });
   });
 }

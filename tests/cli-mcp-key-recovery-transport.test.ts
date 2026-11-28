@@ -15,6 +15,7 @@ import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {startServer} from './helpers/test-server.ts';
 import {canonicalImageInput, IMAGE_FIXED_OPTIONS, IMAGE_MODELS, DEFAULT_IMAGE_CONFIGURATION} from '@mioon/contracts';
+import {SEQUENCE_EDIT_CONTRACT_VERSION, type SequenceEditEnvelope} from '../packages/contracts/src/sequence-edit.ts';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const hash = (value: unknown): string => createHash('sha256').update(canonicalImageInput(value)).digest('hex');
@@ -206,6 +207,41 @@ test('real CLI and MCP preserve proof-specific rejection and HTTP status semanti
   });
 });
 
+test('CLI and MCP distinguish a submission refusal from a missing acknowledgement', {timeout: 60000}, async (t: TestContext) => {
+  const f = await fixture(t, 'submission-refusal-vs-missing-acknowledgement');
+  const projectId = randomUUID(), requestId = randomUUID(), fromId = randomUUID(), toId = randomUUID();
+  const envelope: SequenceEditEnvelope = {
+    contractVersion: SEQUENCE_EDIT_CONTRACT_VERSION, projectId, requestId,
+    epoch: randomUUID(), actionId: randomUUID(), filmId: randomUUID(), originSide: 'board',
+    intents: [{side: 'board', operation: {kind: 'board', edit: {kind: 'connect', fromId, toId}}}],
+    baseline: {contentRevision: 1, timelineRevision: 1, syncRevision: 1, historyPosition: 0, historyRevision: 1, targets: []},
+    impact: {nodeIds: [fromId, toId], edgeIds: [], mainTrackClipIds: [], otherTrackItemIds: [], subtitleCueIds: []},
+    allocation: {clips: [], nodes: [], splitClips: [], edges: [{id: randomUUID(), fromId, toId}]},
+  };
+  const commit = {projectId, envelope, expectedPlanDigest: hash(envelope)};
+  const cases = [
+    {operation: 'timeline.render', input: {projectId, requestId, expectedRevision: 1, purpose: 'export', preflightSnapshotHash: '0'.repeat(64)}, code: 'PREFLIGHT_STALE', message: 'The preflight is stale.', details: {}},
+    {operation: 'sequence.commit', input: commit, code: 'SEQUENCE_EDIT_REVISION_CONFLICT', message: 'The sequence changed.', details: {ids: [fromId]}},
+    {operation: 'sequence.action.commit', input: commit, code: 'SEQUENCE_EDIT_REVISION_CONFLICT', message: 'The sequence changed.', details: {ids: [toId]}},
+    {operation: 'export.create', input: {projectId, requestId}, code: 'REVISION_CONFLICT', message: 'The export inputs changed.', details: {expectedRevision: 1, currentRevision: 2}},
+  ];
+  for (const {operation, input, code, message, details} of cases) for (const kind of ['CLI', 'MCP']) await t.test(`${kind}: ${operation}`, async () => {
+    f.set({status: 409, body: {ok: false, error: {code, message, details, retryable: false}}});
+    const refused = await f.call(kind, operation, input, 3);
+    assert.deepEqual(refused, f.wire.at(-1)?.body, 'an explicit rejection preserves the server envelope');
+
+    f.set({status: 500, body: {ok: false, error: {code: 'INTERNAL_ERROR', message: 'No acknowledgement available.', details: {}}}});
+    const failed = await f.call(kind, operation, input, 1);
+    assert.equal(failed.error?.code, 'INTERNAL_ERROR');
+    uncertain(failed, operation, requestId);
+
+    f.set({fault: 'drop', body: {ok: true, data: null}});
+    const disconnected = await f.call(kind, operation, input, 4);
+    assert.equal(disconnected.error?.code, 'BACKEND_UNAVAILABLE');
+    uncertain(disconnected, operation, requestId);
+  });
+});
+
 test('nested review commits survive real wire loss and exact cross-client replay without approval', {timeout: 60000}, async (t: TestContext) => {
   const f = await fixture(t, 'nested-review-replay', {business: true});
   const project = await f.rpc('project.create', {name: 'Synthetic review transport acceptance'});
@@ -261,6 +297,35 @@ test('read errors keep exit classifications and sanitization across real CLI and
       assert.equal(value.error?.code, fault === 'drop' ? 'BACKEND_UNAVAILABLE' : 'BACKEND_PROTOCOL_ERROR');
       assert.deepEqual(value.error?.details, {operation});
     });
+  }
+});
+
+test('CLI and MCP expose all four Final Cut Pro operations and recover the exact start request after wire loss', {timeout: 30000}, async t => {
+  const f = await fixture(t, 'fcpxml-export');
+  const projectId = randomUUID(), exportId = randomUUID(), requestId = 'synthetic-fcp-replay';
+  const start = {projectId, requestId, name: 'Film', copyMedia: false, destination: {kind: 'project'}};
+  const progress = {files: 0, totalFiles: 0, bytes: 0, totalBytes: 0};
+  const cases = [
+    ['export.fcpxml.preview', {projectId, copyMedia: false}, {timeline: {width: 1920, height: 1080, fps: 24, durationFrames: 24, clipCount: 1},
+      defaultName: 'Film', projectDestination: {displayPath: '~/synthetic/Exports'}, mediaFiles: 0, mediaBytes: 0, missing: [], approximations: []}],
+    ['export.fcpxml.start', start, {exportId}],
+    ['export.fcpxml.get', {projectId, exportId}, {status: 'running', progress}],
+    ['export.fcpxml.cancel', {projectId, exportId}, {status: 'cancelled'}],
+  ] as const;
+  for (const kind of ['CLI', 'MCP']) {
+    for (const [operation, input, data] of cases) {
+      const body = {ok: true, data};
+      f.set({body});
+      assert.deepEqual(await f.call(kind, operation, input, 0), body);
+    }
+    for (const fault of ['drop', 'truncate', 'bad-review'] as const) {
+      f.set({body: {ok: true, data: {exportId}}, fault});
+      const failed = await f.call(kind, 'export.fcpxml.start', start, 4);
+      assert.equal(failed.error?.code, fault === 'drop' ? 'BACKEND_UNAVAILABLE' : 'BACKEND_PROTOCOL_ERROR');
+      uncertain(failed, 'export.fcpxml.start', requestId);
+    }
+    f.set({body: {ok: true, data: {exportId}}});
+    assert.deepEqual(await f.call(kind === 'CLI' ? 'MCP' : 'CLI', 'export.fcpxml.start', start, 0), {ok: true, data: {exportId}});
   }
 });
 
