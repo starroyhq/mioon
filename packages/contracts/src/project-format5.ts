@@ -301,11 +301,13 @@ export function format5TimelineHeader(value:Format5Timeline):Format5TimelineHead
   return header as Format5TimelineHeader;
 }
 
+interface Format5TimelineValidationOptions {projectId?:string;formatVersion?:number|undefined}
+
 /** Header-only validation used by the commit fence before scanning row state. */
-export function getFormat5TimelineHeaderIssue(value:unknown,{projectId}:{projectId?:string}={}):Format5Issue|null {
+export function getFormat5TimelineHeaderIssue(value:unknown,{projectId,formatVersion}:Format5TimelineValidationOptions={}):Format5Issue|null {
   if(!headerFields(value)||!uuid(value.id)||!uuid(value.projectId)||
       projectId!==undefined&&value.projectId!==projectId||!integer(value.revision,1,Number.MAX_SAFE_INTEGER)||
-      !timelineOutputPreset(value)||!integer(value.durationFrames,0,FORMAT5_LIMITS.durationFrames)||
+      !timelineOutputPreset(value,{allowProjectFps:formatVersion===6})||!integer(value.durationFrames,0,FORMAT5_LIMITS.durationFrames)||
       !timestamp.safeParse(value.createdAt).success||!timestamp.safeParse(value.updatedAt).success||
       !mainTrackFields(value.mainTrack)||!uuid(value.mainTrack.trackId)||!uuid(value.mainTrack.sequenceNodeId)||
       !Array.isArray(value.tracks)||value.tracks.length<1||value.tracks.length>FORMAT5_LIMITS.tracks)
@@ -328,10 +330,10 @@ export function getFormat5TimelineHeaderIssue(value:unknown,{projectId}:{project
 }
 
 /** Validate persisted editing structure, without resolving any filesystem source. */
-export function getFormat5TimelineIssue(value:unknown,{projectId,formatVersion}:{projectId?:string;formatVersion?:number|undefined}={}):Format5Issue|null {
+export function getFormat5TimelineIssue(value:unknown,{projectId,formatVersion}:Format5TimelineValidationOptions={}):Format5Issue|null {
   if(!timelineFields(value)||!uuid(value.id)||!uuid(value.projectId)||
       projectId!==undefined&&value.projectId!==projectId||!integer(value.revision,1,Number.MAX_SAFE_INTEGER)||
-      !timelineOutputPreset(value)||!integer(value.durationFrames,0,FORMAT5_LIMITS.durationFrames)||
+      !timelineOutputPreset(value,{allowProjectFps:formatVersion===6})||!integer(value.durationFrames,0,FORMAT5_LIMITS.durationFrames)||
       !timestamp.safeParse(value.createdAt).success||!timestamp.safeParse(value.updatedAt).success||
       !mainTrackFields(value.mainTrack)||!uuid(value.mainTrack.trackId)||!uuid(value.mainTrack.sequenceNodeId)||
       !Array.isArray(value.tracks)||value.tracks.length<1||value.tracks.length>FORMAT5_LIMITS.tracks||
@@ -420,8 +422,8 @@ function subtitleIssue(value:unknown,duration:number,validAnchor:(item:RecordVal
   return null;
 }
 
-export const isFormat5Timeline=(value:unknown,options:{projectId?:string}={}):value is Format5Timeline=>getFormat5TimelineIssue(value,options)===null;
-export function assertFormat5Timeline(value:unknown,options:{projectId?:string}={}):asserts value is Format5Timeline {
+export const isFormat5Timeline=(value:unknown,options:Format5TimelineValidationOptions={}):value is Format5Timeline=>getFormat5TimelineIssue(value,options)===null;
+export function assertFormat5Timeline(value:unknown,options:Format5TimelineValidationOptions={}):asserts value is Format5Timeline {
   const error=getFormat5TimelineIssue(value,options);
   if(error)throw Object.assign(new Error(error.message),{code:error.code,ids:error.ids??[]});
 }

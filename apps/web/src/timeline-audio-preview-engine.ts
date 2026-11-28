@@ -1,5 +1,5 @@
 import {
-  audioPreviewPlanSchema, audioPreviewEnvelopeGainAtLocalSample,
+  audioPreviewPlanSchema, audioPreviewEnvelopeGainAtLocalSample, timelineAudioSampleBoundary,
   type AudioPreviewPlan, type AudioPreviewVoice,
 } from '@mioon/contracts/timeline-audio-preview';
 
@@ -8,7 +8,7 @@ export const AUDIO_PREVIEW_SAMPLE_RATE = 48_000;
 export const AUDIO_PREVIEW_SAMPLES_PER_FRAME = 1_600;
 export const AUDIO_PREVIEW_SCHEDULE_LEAD_SECONDS = 0.02;
 const RATE = AUDIO_PREVIEW_SAMPLE_RATE;
-const FRAME = AUDIO_PREVIEW_SAMPLES_PER_FRAME;
+type TimelineFps = NonNullable<Parameters<typeof timelineAudioSampleBoundary>[1]>;
 
 export type AudioPreviewTransportStatus = 'ready' | 'starting' | 'playing' | 'paused' | 'stopped' | 'ended' | 'disposed';
 export type AudioPreviewStopReason = 'explicit-stop' | 'outside-prepared-interval' | 'context-suspended' | 'context-closed' | 'audio-output-failed' | 'resume-failed' | 'schedule-failed' | 'revoked';
@@ -54,12 +54,12 @@ function validateBuffers(plan: AudioPreviewPlan, buffers: ReadonlyMap<string, Au
   // already owned by a source. Finiteness was checked during serial preparation.
 }
 
-function applyEnvelope(param: AudioParam, voice: AudioPreviewVoice, from: number, to: number, when: number): void {
-  const clipStart = voice.startFrame * FRAME;
-  const points = [from, voice.startFrame * FRAME + voice.fadeInFrames * FRAME,
-    (voice.startFrame + voice.durationFrames - voice.fadeOutFrames) * FRAME, to];
+function applyEnvelope(param: AudioParam, voice: AudioPreviewVoice, from: number, to: number, when: number, fps: TimelineFps): void {
+  const clipStart = timelineAudioSampleBoundary(voice.startFrame, fps);
+  const points = [from, timelineAudioSampleBoundary(voice.startFrame + voice.fadeInFrames, fps),
+    timelineAudioSampleBoundary(voice.startFrame + voice.durationFrames - voice.fadeOutFrames, fps), to];
   const boundaries = [...new Set(points.filter(sample => sample >= from && sample <= to))].sort((a, b) => a - b);
-  const initial = audioPreviewEnvelopeGainAtLocalSample(voice, from - clipStart);
+  const initial = audioPreviewEnvelopeGainAtLocalSample(voice, from - clipStart, fps);
   // A source onset may round to the sample just before its floating-time
   // automation event. That first sample must use the original envelope too,
   // rather than GainNode's default intrinsic value of one.
@@ -68,7 +68,7 @@ function applyEnvelope(param: AudioParam, voice: AudioPreviewVoice, from: number
   for (const sample of boundaries.slice(1)) {
     // The right endpoint is a continuous envelope limit, not a half-open
     // membership test. An interval cut through a fade must not ramp to silence.
-    param.linearRampToValueAtTime(audioPreviewEnvelopeGainAtLocalSample(voice, sample - clipStart), when + (sample - from) / RATE);
+    param.linearRampToValueAtTime(audioPreviewEnvelopeGainAtLocalSample(voice, sample - clipStart, fps), when + (sample - from) / RATE);
   }
 }
 
@@ -78,6 +78,7 @@ function applyEnvelope(param: AudioParam, voice: AudioPreviewVoice, from: number
 export function scheduleTimelineAudioPreviewGraph(options: AudioPreviewGraphOptions): AudioPreviewScheduledGraph {
   const { context, buffers, cursorSample, originTime, onEnded } = options;
   const plan = audioPreviewPlanSchema.parse(options.plan);
+  const fps = plan.fps ?? 30;
   validateBuffers(plan, buffers, context);
   if (!Number.isSafeInteger(cursorSample) || cursorSample < plan.range.startSample || cursorSample >= plan.range.endSample)
     invalid('Playback cursor is outside the prepared interval.');
@@ -99,8 +100,8 @@ export function scheduleTimelineAudioPreviewGraph(options: AudioPreviewGraphOpti
   const stop = (): void => { if (stopped) return; stopped = true; for (const entry of nodes) release(entry); };
   try {
     for (const voice of plan.voices) {
-      const from = Math.max(cursorSample, voice.intersectionStartFrame * FRAME);
-      const to = Math.min(plan.range.endSample, voice.intersectionEndFrame * FRAME);
+      const from = Math.max(cursorSample, timelineAudioSampleBoundary(voice.intersectionStartFrame, fps));
+      const to = Math.min(plan.range.endSample, timelineAudioSampleBoundary(voice.intersectionEndFrame, fps));
       if (from >= to || voice.gain === 0) continue;
       const source = context.createBufferSource();
       const entry = { source, gain: null as GainNode | null, released: false }; nodes.push(entry);
@@ -110,9 +111,9 @@ export function scheduleTimelineAudioPreviewGraph(options: AudioPreviewGraphOpti
       gain.channelCount = 2; gain.channelCountMode = 'explicit'; gain.channelInterpretation = 'discrete';
       source.connect(gain); gain.connect(destination);
       const when = originTime + (from - cursorSample) / RATE;
-      applyEnvelope(gain.gain, voice, from, to, when);
+      applyEnvelope(gain.gain, voice, from, to, when, fps);
       source.onended = () => release(entry);
-      source.start(when, (from - voice.intersectionStartFrame * FRAME) / RATE, (to - from) / RATE);
+      source.start(when, (from - timelineAudioSampleBoundary(voice.intersectionStartFrame, fps)) / RATE, (to - from) / RATE);
     }
     // A clock-owned silent end sentinel also handles empty windows and trailing
     // gaps, without a wall timer or RAF changing transport state. Its 16 bytes
@@ -171,7 +172,7 @@ export function createTimelineAudioPreviewTransport(options: AudioPreviewTranspo
     : cursor;
   const getState = (): AudioPreviewTransportState => {
     const sample = currentSample();
-    return { status, sample, frame: Math.floor(sample / FRAME), reason };
+    return { status, sample, frame: Math.floor(sample / timelineAudioSampleBoundary(1, plan.fps)), reason };
   };
   const emit = (): void => { onChange?.(getState()); };
   const cancelPaint = (): void => { if (frameHandle !== null) { cancelFrame?.(frameHandle); frameHandle = null; } };
@@ -256,7 +257,7 @@ export function createTimelineAudioPreviewTransport(options: AudioPreviewTranspo
       stop('outside-prepared-interval'); return false;
     }
     const wasPlaying = status === 'playing';
-    const token = revoke(); cursor = frame * FRAME; reason = null;
+    const token = revoke(); cursor = timelineAudioSampleBoundary(frame, plan.fps); reason = null;
     if (cursor === plan.range.endSample) { status = 'ended'; emit(); return true; }
     status = 'paused';
     if (wasPlaying) return schedule(token);

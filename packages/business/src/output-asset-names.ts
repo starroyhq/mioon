@@ -40,8 +40,8 @@ function outputTitle(title: string): string {
   return title.length <= 160 ? title : title.slice(0, 159).replace(/[\uD800-\uDBFF]$/u, '') + '…';
 }
 
-export function exportAssetName(db: DatabaseSync, output: {id: string; projectId: string; mode?: unknown; purpose?: unknown}, geometry: unknown): string {
-  const aspect = timelineOutputRatio(geometry);
+export function exportAssetName(db: DatabaseSync, output: {id: string; projectId: string; mode?: unknown; purpose?: unknown}, geometry: unknown, allowProjectFps = false): string {
+  const aspect = timelineOutputRatio(geometry,{allowProjectFps});
   if (!aspect) throw Object.assign(new Error('Export name requires a frozen timeline or storyboard geometry.'), {code:'INVALID_TIMELINE_SNAPSHOT'});
   const ratio = aspect.replace(':', 'x');
   const locale = outputLocaleFor(db, output.id);

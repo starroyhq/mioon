@@ -1,3 +1,4 @@
+import {timelineAudioSampleSpan} from '@mioon/contracts/timeline-audio-preview';
 import {
   CONTINUOUS_AUDIO_HEADERS as H, CONTINUOUS_AUDIO_LIMITS as L,
   CONTINUOUS_AUDIO_PROFILE, continuousAudioPlanInputSchema, continuousAudioPlanSchema,
@@ -59,8 +60,8 @@ async function errorCode(response: Response, signal: AbortSignal): Promise<never
 export async function readContinuousAudioBlock(response: Response, input: ContinuousAudioBlockInput, plan: ContinuousAudioPlan,
   context: ContinuousPrepareOptions['context'], signal: AbortSignal): Promise<ContinuousAudioBlock> {
   if (!response.ok) return errorCode(response, signal);
-  const endFrame = Math.min(input.blockStartFrame + L.blockFrames, plan.durationFrames);
-  const samples = (endFrame - input.blockStartFrame) * 1600, bytes = samples * 8;
+  const endFrame = Math.min(input.blockStartFrame + plan.blockFrames, plan.durationFrames);
+  const samples = timelineAudioSampleSpan(input.blockStartFrame, endFrame, plan.fps), bytes = samples * 8;
   const header = (key: string): string | null => response.headers.get(key);
   const valid = response.status === 200 && header('Content-Type') === 'application/octet-stream' &&
     header('Content-Length') === String(bytes) && header('Cache-Control') === 'no-store' &&

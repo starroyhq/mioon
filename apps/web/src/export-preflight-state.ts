@@ -1,6 +1,7 @@
 import { translate } from '../../../packages/i18n/src/index.ts';
 import type { Locale } from '../../../packages/i18n/src/index.ts';
 import { isExportPreflightResponse, isTimelineExportCapabilitiesResponse } from '@mioon/contracts';
+import { isTimelineFps, type TimelineFps } from '../../../packages/contracts/src/timeline-fps.ts';
 import { exportPreflightResponseSchema, timelineExportCapabilitiesResponseSchema } from '@mioon/contracts';
 import { exportRangeContextFields, sameExportRangeContext, rangeFields } from './export-range-state.ts';
 import { exportSettingsKey, freezeExportSettings } from './export-settings-state.ts';
@@ -14,6 +15,7 @@ export interface ExportPreflightContext {
   readonly projectId?: unknown;
   readonly timelineId?: unknown;
   readonly revision?: unknown;
+  readonly projectFps?: unknown;
   readonly connected?: unknown;
   readonly settingsVersion?: unknown;
   readonly exportSettings?: unknown;
@@ -28,6 +30,7 @@ export interface ExportPreflightState {
   projectId: unknown;
   timelineId: unknown;
   revision: unknown;
+  projectFps: TimelineFps;
   connected: boolean;
   exportSettings: unknown;
   settingsKey: string|null;
@@ -73,6 +76,7 @@ interface CapturedContext extends Record<string, unknown> {
   projectId: unknown;
   timelineId: unknown;
   revision: unknown;
+  projectFps: TimelineFps;
   settingsKey: string|null;
   settingsVersion: number;
 }
@@ -80,7 +84,7 @@ interface CapturedContext extends Record<string, unknown> {
 const isRecord=(value: unknown): value is Record<string, unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const property=(value: unknown,key: string): unknown=>isRecord(value)?value[key]:undefined;
 const errorCode=(error: unknown): string|undefined=>typeof property(error,'code')==='string'?property(error,'code') as string:undefined;
-const initialState=(): ExportPreflightState => ({ ...exportRangeContextFields(null), ...deliveryNameContextFields(null), scope: null, projectId: null, timelineId: null, revision: null, connected: false, exportSettings: undefined, settingsKey: 'legacy', settingsVersion: 0, capability: null, capabilityPhase: 'idle', checkingStep: null, phase: 'idle', report: null, binding: null, uncheckedIntent: null, error: '', attempted: false });
+const initialState=(): ExportPreflightState => ({ ...exportRangeContextFields(null), ...deliveryNameContextFields(null), scope: null, projectId: null, timelineId: null, revision: null, projectFps: 30, connected: false, exportSettings: undefined, settingsKey: 'legacy', settingsVersion: 0, capability: null, capabilityPhase: 'idle', checkingStep: null, phase: 'idle', report: null, binding: null, uncheckedIntent: null, error: '', attempted: false });
 const hasRevision=(value: unknown): value is number=>Number.isSafeInteger(value) && (value as number) > 0;
 const knownIssueCodes = new Set(['EXPORT_RANGE_BOUNDS', 'TIMELINE_MISSING', 'EMPTY_TIMELINE', 'INVALID_TIMELINE_SNAPSHOT', 'TIMELINE_SOURCE_UNAVAILABLE', 'PREFLIGHT_SOURCE_INVALID', 'PREFLIGHT_SOURCE_CHANGED', 'PREFLIGHT_MEDIA_INVALID', 'PREFLIGHT_INCOMPLETE', 'PREFLIGHT_BUDGET', 'PREFLIGHT_SNAPSHOT_BUDGET', 'PREFLIGHT_TIMEOUT', 'PREFLIGHT_BUSY', 'PREFLIGHT_STALE', 'PLACEHOLDER_CLIP', 'VERSION_TOO_SHORT', 'SPEED_RENDER_NOT_READY']);
 for (const code of ['TIMELINE_IMAGE_COMPOSITOR_BUDGET', 'INVALID_TIMELINE_COLOUR', 'TIMELINE_COLOUR_SOURCE_UNSUPPORTED', 'TIMELINE_COLOUR_SOURCE_MISMATCH', 'TIMELINE_COLOUR_RESOURCE_CHANGED', 'TIMELINE_COLOUR_LUT_BUDGET', 'TIMELINE_COLOUR_LOOK_UNAVAILABLE', 'SOURCE_BOUNDS', 'FADE_AUDIO_UNSUPPORTED', 'AUDIO_ROLE_CLIP_UNSUPPORTED', 'TIMELINE_VOLUME_ENVELOPE_SOURCE_UNSUPPORTED', 'VOLUME_ENVELOPE_SOURCE_UNSUPPORTED', 'INVALID_CLIP_TYPE', 'INVALID_FADE']) knownIssueCodes.add(code);
@@ -153,8 +157,8 @@ export function createExportPreflightController({ read, readCapabilities, getCon
     getState: () => state,
     setContext(context: ExportPreflightContext|null|undefined) {
       const settingsKey = exportSettingsKey(context?.exportSettings);
-      const next = context ? { ...exportRangeContextFields(context), ...deliveryNameContextFields(context), scope: context.scope, projectId: context.projectId || null, timelineId: context.timelineId || null, revision: hasRevision(context.revision) ? context.revision : null, connected: Boolean(context.connected), settingsVersion: context.settingsVersion ?? 0, settingsKey, exportSettings: settingsKey === null ? undefined : freezeExportSettings(context.exportSettings) } : initialState();
-      if (['scope', 'projectId', 'timelineId', 'revision', 'connected', 'settingsKey', 'settingsVersion', 'deliveryNameKey', 'deliveryNameVersion', 'exportRangeKey', 'rangeVersion'].every(key => state[key] === (next as Record<string, unknown>)[key])) return;
+      const next = context ? { ...exportRangeContextFields(context), ...deliveryNameContextFields(context), scope: context.scope, projectId: context.projectId || null, timelineId: context.timelineId || null, revision: hasRevision(context.revision) ? context.revision : null, projectFps: isTimelineFps(context.projectFps) ? context.projectFps : 30, connected: Boolean(context.connected), settingsVersion: context.settingsVersion ?? 0, settingsKey, exportSettings: settingsKey === null ? undefined : freezeExportSettings(context.exportSettings) } : initialState();
+      if (['scope', 'projectId', 'timelineId', 'revision', 'projectFps', 'connected', 'settingsKey', 'settingsVersion', 'deliveryNameKey', 'deliveryNameVersion', 'exportRangeKey', 'rangeVersion'].every(key => state[key] === (next as Record<string, unknown>)[key])) return;
       invalidate();
       const changedProject = next.scope !== state.scope || next.projectId !== state.projectId;
       if (changedProject) state = initialState();
@@ -176,7 +180,7 @@ export function createExportPreflightController({ read, readCapabilities, getCon
       if (getContext) controller.setContext(getContext());
       if (state.exportRangeKey === null || state.deliveryNameKey === null || state.settingsKey === null || !state.projectId || !state.timelineId || !hasRevision(state.revision) || !state.connected) return null;
       invalidate();
-      const captured: CapturedContext = { ...exportRangeContextFields(state), ...deliveryNameContextFields(state), scope: state.scope, projectId: state.projectId, timelineId: state.timelineId, revision: state.revision, settingsKey: state.settingsKey, settingsVersion: state.settingsVersion, exportSettings: state.exportSettings, generation };
+      const captured: CapturedContext = { ...exportRangeContextFields(state), ...deliveryNameContextFields(state), scope: state.scope, projectId: state.projectId, timelineId: state.timelineId, revision: state.revision, projectFps: state.projectFps, settingsKey: state.settingsKey, settingsVersion: state.settingsVersion, exportSettings: state.exportSettings, generation };
       const abort = new AbortController(); activeRead = abort;
       const capabilityInput = { projectId: captured.projectId, expectedRevision: captured.revision, ...(captured.exportSettings === undefined ? {} : { exportSettings: captured.exportSettings }) };
       const input = { ...capabilityInput, ...deliveryNameRequestFields(captured), ...rangeFields(captured) };
@@ -202,7 +206,7 @@ export function createExportPreflightController({ read, readCapabilities, getCon
         }
         const result = await read(input, { signal: abort.signal });
         if (!current(captured)) return null;
-        if (!isExportPreflightResponse(result, input)) throw protocolError();
+        if (!isExportPreflightResponse(result, input, {projectFps: captured.projectFps})) throw protocolError();
         const typedResult=result as ExportPreflightReport;
         // A bounded ownership read can end before a timeline tuple is available.
         // Keep that outcome incomplete without a checked binding; any returned

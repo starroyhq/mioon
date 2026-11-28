@@ -87,7 +87,8 @@ export function createApplicationRpc({library, app, manager, directories, signal
       case 'project.create': {
         const created = await createProject({name: input.name as string,
           ...(input.description === undefined ? {} : {description: input.description as string}),
-          ...(input.timelinePresetId === undefined ? {} : {timelinePresetId: input.timelinePresetId as NonNullable<ProjectEntryCreateInput['timelinePresetId']>})});
+          ...(input.timelinePresetId === undefined ? {} : {timelinePresetId: input.timelinePresetId as NonNullable<ProjectEntryCreateInput['timelinePresetId']>}),
+          ...(input.timelineFps === undefined ? {} : {timelineFps: input.timelineFps as NonNullable<ProjectEntryCreateInput['timelineFps']>})});
         const lease = await manager.acquire(created.registration.projectId, 'request');
         try {return publicValue(lease.host.store.get('projects', created.registration.projectId));}
         finally {lease.release();}

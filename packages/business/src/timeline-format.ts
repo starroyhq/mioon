@@ -1,8 +1,9 @@
 import {TIMELINE_HISTORY_OPERATIONS} from './timeline-history-operations.ts';
 import {timelineRenderDeliveryFields} from '@mioon/contracts/timeline-delivery';
-import {AppError,timelineOutputPreset,DEFAULT_TIMELINE_OUTPUT_PRESET,isTimelineRecord,isTimelineRenderRecord,isEditTask,hasRequestNotAppliedProof,TIMELINE_RESPONSE_BYTES,TIMELINE_RENDER_RESPONSE_BYTES} from '@mioon/contracts';
+import {AppError,timelineOutputPreset,DEFAULT_TIMELINE_OUTPUT_PRESET,isTimelineRecord,isEditTask,hasRequestNotAppliedProof,TIMELINE_RESPONSE_BYTES,TIMELINE_RENDER_RESPONSE_BYTES} from '@mioon/contracts';
 import {createTimelineRecoveryBoundary,readTimelineReceipt,invalidTimeline,restoreTimelineEditableSnapshot,projectVersionRestoreBefore} from './timeline-recovery.ts';
 import {TIMELINE_RECEIPT_PROJECT_EXPRESSION} from './timeline-receipt-project.ts';
+import {isTimelineRecordFor,isTimelineRenderRecordFor} from './timeline-record-format.ts';
 import {readWrappedTimelineReceipt} from './timeline-retained-receipts.ts';
 import {canonicalFormatValue,formatRequestHash,readTimelineFormatProvenance} from './timeline-format-receipts.ts';
 import {executingTimelineFormatTask} from './timeline-format-task-context.ts';
@@ -71,7 +72,7 @@ export function walkTimelineFormatHistory(db: DatabaseSync,projectId: string,tim
    if(nativeHistory&&operation==='project.version.restore'){
     if(!nativeOwner||nativeOwner.id!==saved.id||
       getFormat5TimelineIssue({...saved,mainTrack:nativeOwner.mainTrack},{projectId,formatVersion}))invalidTimeline();
-   }else if(!isTimelineRecord(saved,{projectId}))invalidTimeline();
+   }else if(!isTimelineRecordFor(db,saved,{projectId}))invalidTimeline();
    return saved;
   };
   const before=(entry: Record<string,unknown>): unknown=>{
@@ -122,8 +123,8 @@ export function readTimelineFormatState(db: DatabaseSync,input: TimelineRecovery
    createTimelineRecoveryBoundary(db,saved as TimelineRecoveryInput).replay('timeline.format.set',receipt.response as string);
   }else{
    if(response.mode==='timeline'){
-    if(!isTimelineRenderRecord(response,{projectId:input.projectId,requestId:receipt.requestId,expectedRevision:response.timelineRevision,purpose:response.purpose,...timelineRenderDeliveryFields(response.snapshot)}))invalidTimeline();
-    if(!timeline||response.snapshot.timeline.id!==timeline.id||response.snapshot.timeline.revision>timeline.revision)invalidTimeline();
+    if(!isTimelineRenderRecordFor(db,response,{projectId:input.projectId,requestId:receipt.requestId,expectedRevision:response.timelineRevision,purpose:response.purpose,...timelineRenderDeliveryFields(response.snapshot)}))invalidTimeline();
+    if(!timeline||response.snapshot.timeline.id!==timeline.id||response.snapshot.timeline.fps!==timeline.fps||response.snapshot.timeline.revision>timeline.revision)invalidTimeline();
     boundary.sources(response.snapshot.timeline as TimelineRecord);
    }else{
     const saved=Object.hasOwn(response,'operation')?readWrappedTimelineReceipt(response,input.projectId,receipt.requestId):response;
@@ -141,7 +142,7 @@ export function readTimelineFormatState(db: DatabaseSync,input: TimelineRecovery
   const value=parse(row.data);
   if(!uuid(row.id)||row.id!==value.id||row.projectId!==input.projectId||value.projectId!==input.projectId)invalidTimeline();
   if(value.mode==='timeline'){
-   if(!isTimelineRenderRecord(value,{projectId:input.projectId,requestId:value.requestId,expectedRevision:value.timelineRevision,purpose:value.purpose,...(timelineRenderDeliveryFields(value.snapshot as never) as object)})||!timeline||value.snapshot.timeline.id!==timeline.id||value.snapshot.timeline.revision>timeline.revision)invalidTimeline();
+   if(!isTimelineRenderRecordFor(db,value,{projectId:input.projectId,requestId:value.requestId,expectedRevision:value.timelineRevision,purpose:value.purpose,...(timelineRenderDeliveryFields(value.snapshot as never) as object)})||!timeline||value.snapshot.timeline.id!==timeline.id||value.snapshot.timeline.fps!==timeline.fps||value.snapshot.timeline.revision>timeline.revision)invalidTimeline();
    boundary.sources(value.snapshot.timeline as TimelineRecord);if(value.assetId!==null)boundary.asset(value.assetId as string);exportHistory=true;
   }else if(Object.hasOwn(value,'mode')||!Array.isArray(value.snapshot)||!Array.isArray(value.orderedVersionIds))invalidTimeline();
  }
@@ -170,9 +171,9 @@ export function readTimelineFormatState(db: DatabaseSync,input: TimelineRecovery
    row.operation==='timeline.format.set'&&row.projectId===input.projectId&&row.requestId===input.requestId&&canonicalFormatValue(saved)===canonicalFormatValue(input)&&row.digest===formatRequestHash(input);
   if(!own)reasons.push('PENDING_EDIT');
  }
- const preset=timelineOutputPreset(timeline??DEFAULT_TIMELINE_OUTPUT_PRESET)!;
- if(!preset)invalidTimeline();
- return {project,timeline,boundary,response:{projectId:input.projectId,projectRevision:project.revision,timelineId:timeline?.id??null,timelineRevision:timeline?.revision??0,presetId:preset.id,fps:preset.fps,width:preset.width,height:preset.height,eligible:reasons.length===0,blockedReasons:reasons}};
+ const preset=timelineOutputPreset(timeline??DEFAULT_TIMELINE_OUTPUT_PRESET,{allowProjectFps:true});
+ if(!preset)return invalidTimeline();
+ return {project,timeline,boundary,response:{projectId:input.projectId,projectRevision:project.revision,timelineId:timeline?.id??null,timelineRevision:timeline?.revision??0,presetId:preset.id,fps:timeline?.fps??preset.fps,width:preset.width,height:preset.height,eligible:reasons.length===0,blockedReasons:reasons}};
 }
 export function getTimelineFormat(db: DatabaseSync,input: TimelineRecoveryInput,options: TimelineFormatStateOptions={}): TimelineFormatResponse{
  if(db.isTransaction)return readTimelineFormatState(db,input,options).response;

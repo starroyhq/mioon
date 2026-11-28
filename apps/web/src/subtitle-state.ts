@@ -3,6 +3,7 @@ import { message, renderMessage } from '../../../packages/i18n/src/index.ts';
 import type { DisplayMessage } from '../../../packages/i18n/src/types.ts';
 import type { MessageKey } from '../../../packages/i18n/src/index.ts';
 import { TIMELINE_SUBTITLE_LIMITS, TIMELINE_SUBTITLE_PROFILE_ID, getTimelineSubtitleIssue, isTimelineMutationResponse } from '@mioon/contracts';
+import { isTimelineFps } from '../../../packages/contracts/src/timeline-fps.ts';
 import { FORMAT5_LIMITS, isFormat5Timeline, type Format5Timeline } from '@mioon/contracts/project-format5';
 import { taskInputKey } from './edit-task-client.ts';
 import { isSequenceEditNoop } from './edit-ui/lost-response.ts';
@@ -14,6 +15,7 @@ export interface SubtitleTimeline {
   readonly id: string;
   readonly projectId: string;
   readonly revision: number;
+  readonly fps?: number;
   readonly durationFrames: number;
   readonly mainTrack?: Format5Timeline['mainTrack'];
   readonly subtitles?: { readonly cues?: readonly SubtitleCue[] } | null;
@@ -66,6 +68,7 @@ export interface SubtitleIntent {
   readonly previousIds: readonly string[];
 }
 export interface SubtitleContext {
+  formatVersion?: 5 | 6 | undefined;
   collaboration?: AgentEditingProof | null;
   scope?: string | null;
   projectId?: string | null;
@@ -143,12 +146,12 @@ export function subtitleAddMessage(timeline: SubtitleTimeline | null | undefined
 }
 export const subtitleAddReason = (timeline: SubtitleTimeline | null | undefined, frame: number, blocked = false): string => renderMessage('zh-Hans', subtitleAddMessage(timeline, frame, blocked));
 export function subtitleAcknowledged(intent: SubtitleIntent | null | undefined,
-  timeline: SubtitleTimeline | null | undefined, native = false): boolean {
+  timeline: SubtitleTimeline | null | undefined, native = false, formatVersion?: 5 | 6): boolean {
   if (!intent || !timeline || timeline.id !== intent.timelineId) return false;
   if (native) {
     const { expectedRevision, cueId, patch } = intent.input;
     if (!intent.projectId || expectedRevision === null || expectedRevision < 1 || timeline.revision !== expectedRevision + 1
-      || !isFormat5Timeline(timeline, {projectId: intent.projectId})) return false;
+      || !isFormat5Timeline(timeline, {projectId: intent.projectId, formatVersion})) return false;
     const cue = cues(timeline).find(row => row.id === cueId);
     if (intent.operation === 'timeline.subtitle.remove') return Boolean(cueId && !cue);
     if (intent.operation === 'timeline.subtitle.update') return Boolean(cue && patch
@@ -168,6 +171,7 @@ export function subtitleAcknowledged(intent: SubtitleIntent | null | undefined,
 // hiding/remounting its view cannot dispatch, clear, or replay that request.
 export function createSubtitleController({ submit, createRequestId, getContext, onChange = () => {} }: SubtitleControllerOptions) {
   let state = initial(), serial = 0, sequence = 0, active = true, visible = false;
+  let formatVersion: SubtitleContext['formatVersion'];
   let collaborationBaseline:{proof:AgentEditingProof;saved:unknown}|null=null,lastCollaboration:AgentEditingProof|null=null;
   const resolved = new Map<unknown, unknown>();
   const emit = (patch: Partial<SubtitleState>): SubtitleState => { state = { ...state, ...patch }; onChange(state); return state; };
@@ -178,7 +182,7 @@ export function createSubtitleController({ submit, createRequestId, getContext, 
     if (!admits(expected) || state.pending || state.submitting || state.uncertain || !state.connected || state.conflict) return null;
     const removing = operation === 'timeline.subtitle.remove';
     if (removing ? !state.cueId || state.dirty : !subtitleCanSave(state)) return null;
-    const timeline = state.timeline, draft = state.draft;
+    const timeline = state.timeline, draft = state.draft, submittedFormat = formatVersion;
     if (!timeline || !draft) return null;
     const patchFields = { ...fields(draft), startFrame: Number(draft.startFrame), durationFrames: Number(draft.durationFrames) };
     const existing = cues(timeline).find(cue => cue.id === state.cueId);
@@ -206,7 +210,7 @@ export function createSubtitleController({ submit, createRequestId, getContext, 
       }
       if (result?.status === 'applied') {
         const saved = result.timeline;
-        if (!subtitleAcknowledged(intent, saved as SubtitleTimeline, Boolean(timeline.mainTrack))) throw protocolError();
+        if (!subtitleAcknowledged(intent, saved as SubtitleTimeline, Boolean(timeline.mainTrack), submittedFormat)) throw protocolError();
         const applied = saved as SubtitleTimeline, current = state.timeline;
         if (!current) return null;
         if (current.revision > applied.revision) { emit({ submitting: false, conflict: true, error: '时间线已有更新版本；请核对后放弃草稿并载入最新字幕。', errorMessage: message('subtitles.error.newer') }); return applied; }
@@ -228,6 +232,7 @@ export function createSubtitleController({ submit, createRequestId, getContext, 
     hasUnsaved: (): boolean => state.dirty || state.submitting,
     setContext(context: SubtitleContext = {}): void {
       if (!active) return;
+      formatVersion = context.formatVersion;
       const next = { scope: context.scope ?? null, projectId: context.projectId || null, connected: Boolean(context.connected), pending: Boolean(context.pending) };
       const timeline = context.timeline?.projectId === next.projectId ? context.timeline : null;
       if (next.scope !== state.scope || next.projectId !== state.projectId) { serial++; collaborationBaseline=null;lastCollaboration=null; resolved.clear(); state = initial(); emit({ ...next, timeline, selection: ++sequence }); return; }
@@ -258,7 +263,8 @@ export function createSubtitleController({ submit, createRequestId, getContext, 
       const timeline = state.timeline;
       if (!timeline) return false;
       const nextStart = Math.min(timeline.durationFrames, ...cues(timeline).filter(cue => cue.startFrame > frame).map(cue => cue.startFrame));
-      serial++; emit({ cueId: null, selection: ++sequence, draft: { text: '', startFrame: frame, durationFrames: Math.min(90, nextStart - frame) }, baseRevision: timeline.revision, dirty: true, conflict: false, error: '', errorMessage: null }); return true;
+      const fps = isTimelineFps(timeline.fps) ? timeline.fps : 30;
+      serial++; emit({ cueId: null, selection: ++sequence, draft: { text: '', startFrame: frame, durationFrames: Math.min(3 * fps, nextStart - frame) }, baseRevision: timeline.revision, dirty: true, conflict: false, error: '', errorMessage: null }); return true;
     },
     edit(key: 'text' | 'startFrame' | 'durationFrames', value: string | number, expected: SubtitleState = state): boolean {
       const draft = state.draft;

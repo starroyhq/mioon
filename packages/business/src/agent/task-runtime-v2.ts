@@ -677,16 +677,21 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       if(uncertain&&prepared?.risk!=='read_only'){
         journal.updateStep(runId,step.id,{status:'unknown',error:{code:failure,message:'工具结果未知，请核对原请求。'}});pause(runId,'unknown_outcome');return null;
       }
-      const previewError=current.status==='intent'&&error instanceof MioSequencePreviewRejection?error:undefined;
-      const evidence=previewError&&record(previewError.details)&&typeof previewError.details.messageKey==='string'
-        ?sequenceEditFailureEvidence(failure,previewError.details):undefined;
-      const toolError={code:failure,message:previewError?.message??'工具未完成，请检查参数或可用性。'};
-      if(failure==='SEQUENCE_EDIT_DIALOGUE_CONFLICT'&&previewError&&record(previewError.details)){
-        const conflict=sequenceEditDialogueConflictSchema.safeParse(previewError.details.dialogueConflict);
+      const previewError=(current.status==='intent'||current.status==='awaiting_approval')&&error instanceof MioSequencePreviewRejection?error:undefined;
+      const initialPreview=current.status==='intent'?previewError:undefined;
+      const details=previewError&&record(previewError.details)?previewError.details:undefined;
+      const evidence=initialPreview&&typeof details?.messageKey==='string'
+        ?sequenceEditFailureEvidence(failure,details):undefined;
+      const toolError={code:failure,message:initialPreview?.message??'工具未完成，请检查参数或可用性。'};
+      if(failure==='SEQUENCE_EDIT_DIALOGUE_CONFLICT'&&initialPreview){
+        const conflict=sequenceEditDialogueConflictSchema.safeParse(details?.dialogueConflict);
         if(conflict.success)return journal.updateStep(runId,step.id,{status:'failed',
           result:{error:{...toolError,details:{dialogueConflict:json(conflict.data)}}},error:toolError});
       }
-      return journal.updateStep(runId,step.id,{status:'failed',result:{error:json({...toolError,...evidence})},error:toolError});
+      const reason=details?.reason;
+      const reasonDetails=!evidence&&typeof reason==='string'&&/^[A-Z][A-Z0-9_]{0,79}$/u.test(reason)
+        ?{details:{reason}}:{};
+      return journal.updateStep(runId,step.id,{status:'failed',result:{error:json({...toolError,...evidence,...reasonDetails})},error:toolError});
     }
   }
   async function checkExecutionWitness(runId:string,signal:AbortSignal):Promise<void>{

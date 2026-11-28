@@ -91,13 +91,14 @@ function assertSyncStates(db: DatabaseSync, schema: ProjectSchema, header: {read
 export function assertFormat5ProjectContent(db: DatabaseSync, schema: ProjectSchema): void {
   const projectId = readProjectIdentity(db, schema);
   const timeline = assertFormat5TimelineRows(db, schema);
+  const formatVersion = Number(db.prepare(`PRAGMA ${schema}.user_version`).get()?.user_version);
   const graph = readGraphProjection(db, schema, timeline);
   try {
     validateFormat5SequenceGraph({
       projectId, shots: graph.shots, nodes: graph.nodes, edges: graph.edges, versions: graph.versions,
       assets: graph.assets, subjects: graph.subjects, subjectVersions: graph.subjectVersions,
       subjectBindings: graph.subjectBindings, adoptions: graph.adoptions, retainedShots: graph.retainedShots,
-      ...(timeline ? {timeline} : {}),
+      ...(timeline ? {timeline, formatVersion} : {}),
     });
   } catch { invalidFormat5Timeline(); }
   assertSyncStates(db, schema, timeline ? {id: timeline.id, sequenceNodeId: timeline.mainTrack.sequenceNodeId} : null, projectId, true);

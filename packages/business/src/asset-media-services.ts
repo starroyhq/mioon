@@ -19,7 +19,9 @@ import {admitMedia, checkMediaStatus, computeFullSha256, relinkMedia, resolveRef
 import {createReferencedAssetImportHandler} from './referenced-asset-import.ts';
 import {checkpoint} from './operation-lifecycle.ts';
 import {createPreparedMediaFileFence} from './prepared-media-file.ts';
+import {exposesProjectAssetFrameRate, measuredProjectAssetFrameRate, projectAssetFrameRateView} from './project-asset-frame-rate.ts';
 import {probe} from './media.ts';
+import {originalVideoFrameRate} from './media-probe.ts';
 import {isMediaToolFailure} from './media-runtime.ts';
 import {mediaUnavailableError, mediaUnavailableErrorDetailsSchemas} from '../../contracts/src/media-reference-errors.ts';
 import {EXPORT_PREFLIGHT_LIMITS} from '../../contracts/src/export-preflight.ts';
@@ -122,8 +124,33 @@ export function createAssetMediaServices(store: ProjectStore, {outsidePaths, sig
       try {
         for (const wanted of input.assets as {assetId: string; referenceRevision: number}[]) {
           const old = record(wanted.assetId); if (old.referenceRevision !== wanted.referenceRevision) fail();
-          const prepared = await prepareProjectAssetFullHash(store.root, wanted.assetId, {signal: prepareSignal, beforeEffect: fence, maxBytes: EXPORT_PREFLIGHT_LIMITS.sourceBytes}); fence();
-          assets.push(toAssetMediaDto(prepared));
+          let beforeEffect = fence;
+          let expectedFile: string | undefined;
+          let inferredRate: ReturnType<typeof originalVideoFrameRate> | undefined;
+          if (!Object.hasOwn(old, 'videoFrameRate') && exposesProjectAssetFrameRate(store.db, old.mimeType)) {
+            const admitted = await references.resolve(wanted.assetId, {signal: prepareSignal, beforeEffect: fence});
+            if (admitted.referenceRevision !== wanted.referenceRevision || digest(record(wanted.assetId)) !== digest(old)) fail();
+            // The original hash/CAS below must verify the same file as this
+            // probe. Keep both behind the pinned permission and stat fence.
+            expectedFile = admitted.file;
+            beforeEffect = createPreparedMediaFileFence(store, expectedFile, {assetId: wanted.assetId, outsidePaths, beforeEffect: fence});
+            try {
+              inferredRate = originalVideoFrameRate(await probe(admitted.file, {signal: prepareSignal, beforeEffect}));
+            } catch (error) {
+              checkpoint(prepareSignal);
+              if (!isMediaToolFailure(error) && !(object(error) && !('terminationUnconfirmed' in error) &&
+                (error.code === 'MEDIA_INVALID_METADATA' || error.code === 'MEDIA_NO_STREAM'))) throw error;
+              inferredRate = null;
+            }
+            beforeEffect();
+            if (digest(record(wanted.assetId)) !== digest(old)) fail();
+          }
+          const prepared = await prepareProjectAssetFullHash(store.root, wanted.assetId, {signal: prepareSignal, beforeEffect, maxBytes: EXPORT_PREFLIGHT_LIMITS.sourceBytes, expectedFile});
+          beforeEffect();
+          // Old import receipts bind the complete stored row. This supplemental
+          // probe is for this explicit prepare response only.
+          const visible = inferredRate === undefined ? prepared : {...prepared, videoFrameRate: inferredRate};
+          assets.push(toAssetMediaDto(projectAssetFrameRateView(store.db, visible)));
         }
       } catch (error) {
         checkpoint(signal);
@@ -243,7 +270,9 @@ export function createAssetMediaServices(store: ProjectStore, {outsidePaths, sig
       if(prepared.reference.fullSha256)await computeFullSha256(access(),prepared.reference,{signal,beforeEffect:sourceFence});sourceFence();
       const key=digest([store.projectId,op,input.requestId]),id=`${key.slice(0,8)}-${key.slice(8,12)}-5${key.slice(13,16)}-a${key.slice(17,20)}-${key.slice(20,32)}`;
       const existing=store.get('assets',id);if(object(existing))return {asset:toAssetMediaDto(existing),replacesAssetId:old.id};
-      const asset={id,projectId:store.projectId,name:old.name,mimeType:prepared.type.mimeType,width:metadata.width,height:metadata.height,duration:metadata.duration,hasAudio:metadata.hasAudio,hasVideo:metadata.hasVideo,provenance:'user-import',reference:prepared.reference,referenceRevision:1,sha256:prepared.reference.fullSha256,sizeBytes:prepared.reference.sizeBytes,url:projectMediaPath(store.projectId,id),createdAt:new Date().toISOString()};
+      const asset={id,projectId:store.projectId,name:old.name,mimeType:prepared.type.mimeType,width:metadata.width,height:metadata.height,duration:metadata.duration,hasAudio:metadata.hasAudio,hasVideo:metadata.hasVideo,
+        ...measuredProjectAssetFrameRate(store.db, prepared.type.mimeType, metadata),
+        provenance:'user-import',reference:prepared.reference,referenceRevision:1,sha256:prepared.reference.fullSha256,sizeBytes:prepared.reference.sizeBytes,url:projectMediaPath(store.projectId,id),createdAt:new Date().toISOString()};
       return store.tx(() => {
         sourceFence(); if (digest(record(String(old.id))) !== digest(old)) fail();
         const result = toAssetMediaDto(store.put('assets', asset));

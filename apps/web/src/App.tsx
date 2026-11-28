@@ -3035,6 +3035,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   function subtitleContext(): SubtitleContext {
     const projectId = currentProject.current, snapshot = dataRef.current;
     return { collaboration: projectId ? agentEditingProof(projectId, subtitlesRef.current?.controller.getState().cueId ? 'timeline_subtitle' : 'timeline', subtitlesRef.current?.controller.getState().cueId || projectId) : null, scope: `${projectId}:${projectEpoch.current}`, projectId: projectSessionReady() && snapshot.project?.id === projectId ? projectId : null, timeline: snapshot.timeline as SubtitleTimeline | null,
+      formatVersion: isSequenceTimelineFormat(snapshot.projectFormatVersion) ? snapshot.projectFormatVersion : undefined,
       connected: workbenchReady && online && auth === true && !loading, pending: !projectId || isBusy('timeline:mutation') || (tasksRef.current!.blocked as unknown as (projectId: string | null, lane?: string) => boolean)(projectId, 'timeline:mutation') || pendingForProject(projectId as string, {  }).some(entry => entry.operation.startsWith('timeline.') && entry.operation !== 'timeline.render'),
       visible: workbenchReady && workspaceMode === 'editing' && propertiesPage === 'subtitle' && rightDockTab === 'properties' && panelVisible('inspector') } as SubtitleContext;
   }
@@ -3210,6 +3211,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
   function exportCheckContext(): Record<string, unknown> & {scope: string} {
     return { scope: `${currentProject.current}:${projectEpoch.current}`, projectId: projectSessionReady() && dataRef.current!.project?.id === currentProject.current ? currentProject.current : null,
       timelineId: dataRef.current!.timeline?.id, revision: dataRef.current!.timeline?.revision, connected: workbenchReady && online && auth === true && !loading,
+      projectFps: dataRef.current.projectFormatVersion === 6 ? dataRef.current.timeline?.fps : undefined,
       exportSettings: exportSettings.controller!.getSettings(`${currentProject.current}:${projectEpoch.current}`), settingsVersion: exportSettings.controller!.getVersion(`${currentProject.current}:${projectEpoch.current}`),
       exportRange: exportRange.controller!.getRange(`${currentProject.current}:${projectEpoch.current}`), rangeVersion: exportRange.controller!.getVersion(`${currentProject.current}:${projectEpoch.current}`),
       deliveryName: deliveryName.controller!.getName(`${currentProject.current}:${projectEpoch.current}`), deliveryNameVersion: deliveryName.controller!.getVersion(`${currentProject.current}:${projectEpoch.current}`) };

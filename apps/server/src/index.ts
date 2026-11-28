@@ -274,7 +274,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
     });
     if (token === undefined) { token = randomBytes(32).toString('hex'); writePrivateFileAtomic(tokenFile, token, {root, maxBytes: 4098, replace: false}); }
     const createProject = createInitializedProject({manager, registry: appLibrary.registry, directories,
-      identity: appLibrary.projectFileIdentity, assertProjectFile, format4, targetFormat});
+      identity: appLibrary.projectFileIdentity, assertProjectFile, format4, targetFormat, format6Development});
     const refreshSummaries = (): void => {
       for (const [id, runtime] of opened) {
         // A closing runtime can remain indexed while findMoved awaits I/O,

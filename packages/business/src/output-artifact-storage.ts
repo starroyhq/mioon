@@ -7,6 +7,7 @@ import {outputArtifactSchema,outputArtifactFileInfoSchema} from '../../contracts
 import type {OutputArtifact} from '../../contracts/src/output-artifact.ts';
 import type {ProjectOutputOwner} from '../../contracts/src/project-output-publication.ts';
 import {timelineExportAudioCheckSchema} from '../../contracts/src/timeline-export-float.ts';
+import {isTimelineFps} from '../../contracts/src/timeline-fps.ts';
 import {timelineExportOutputFrames} from '../../contracts/src/timeline-export-range.ts';
 import type {ProjectStore} from './project-file/store.ts';
 import {registeredProjectStore} from './project-media-storage.ts';
@@ -17,6 +18,7 @@ import {floatSnapshotSha256} from './timeline-float-outcome.ts';
 import type {MediaFileInfo} from './media.ts';
 
 export const outputArtifactDigest=(value:string):string=>createHash('sha256').update(value).digest('hex');
+const object=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const invalid=():never=>{throw Object.assign(Error('已完成的本地产物回执无法核对'),{code:'INVALID_OUTPUT_ARTIFACT'});};
 const sameOwner=(a:ProjectOutputOwner,b:ProjectOutputOwner):boolean=>a.kind===b.kind&&a.id===b.id&&a.requestId===b.requestId&&a.inputHash===b.inputHash;
 function folder(kind:OutputArtifact['kind']):string{return kind==='generation'?'job-results':'export-staging';}
@@ -95,6 +97,8 @@ export function writeOutputArtifact(store:ProjectStore,input:{owner:ProjectOutpu
 export function restoredArtifactAudioCheck(artifact:OutputArtifact,record:Record<string,unknown>):OutputArtifact['audioCheck']{
  if(!artifact.audioCheck)return undefined;
  const check=timelineExportAudioCheckSchema.parse(artifact.audioCheck);
- if(check.status!=='complete'||check.code!=='EXPORT_AUDIO_WITHIN_LIMIT'||check.projectId!==artifact.projectId||check.exportId!==artifact.owner.id||check.snapshotSha256!==floatSnapshotSha256(record.snapshot)||check.outputFrames!==timelineExportOutputFrames(record.snapshot as never)||check.output!==null)invalid();
+ const snapshot=record.snapshot;
+ if(!object(snapshot)||!object(snapshot.timeline)||!isTimelineFps(snapshot.timeline.fps)||(check.fps??30)!==snapshot.timeline.fps)invalid();
+ if(check.status!=='complete'||check.code!=='EXPORT_AUDIO_WITHIN_LIMIT'||check.projectId!==artifact.projectId||check.exportId!==artifact.owner.id||check.snapshotSha256!==floatSnapshotSha256(record.snapshot)||check.outputFrames!==timelineExportOutputFrames(snapshot,{allowProjectFps:true})||check.output!==null)invalid();
  return timelineExportAudioCheckSchema.parse({...check,attemptId:record.renderAttemptId,output:{assetId:artifact.assetId,sha256:artifact.info.sha256}});
 }

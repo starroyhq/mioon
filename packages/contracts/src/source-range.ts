@@ -1,12 +1,12 @@
 import {z} from 'zod';
 
-// Source ranges use the output timeline's clock, not native/VFR frame indexes.
+// Standalone asset ranges and scene analysis use this fixed grid.
 export const SOURCE_RANGE_FPS = 30;
-export function sourceFrameCount(duration: unknown): number | null {
+export function sourceFrameCount(duration: unknown, fps = SOURCE_RANGE_FPS): number | null {
   if (typeof duration !== 'number' || !Number.isFinite(duration) || duration <= 0) return null;
   // Ignore only binary rounding at an exact timeline-frame boundary. A partial
-  // final frame cannot provide a complete 30fps output frame.
-  const frames = Math.floor(duration * SOURCE_RANGE_FPS + 1e-6);
+  // final frame cannot provide a complete frame on the requested grid.
+  const frames = Math.floor(duration * fps + 1e-6);
   return Number.isSafeInteger(frames) && frames >= 1 ? frames : null;
 }
 
@@ -14,7 +14,7 @@ const id = z.string().uuid();
 const frame = z.number().finite().int().min(0).max(Number.MAX_SAFE_INTEGER);
 export const assetRangeOnSourceGridSchema = z.object({inFrame: frame, outFrame: frame}).strict()
   .refine(value => value.outFrame > value.inFrame, {path: ['outFrame'], message: 'Source range must contain at least one complete frame.'})
-  .describe('Optional half-open range on the standalone 30 fps asset grid for placing video or audio in a format 5 sequence.');
+  .describe('Optional half-open range on the standalone 30 fps asset grid for placing video or audio in a sequence.');
 export const sourceRangeSchemas = Object.freeze({
   'asset.range.get': z.object({projectId:id,assetId:id}).strict(),
   'asset.range.set': z.object({
@@ -29,6 +29,21 @@ export const sourceRangeSchemas = Object.freeze({
 export type SourceRangeGetInput = z.infer<typeof sourceRangeSchemas['asset.range.get']>;
 export type SourceRangeSetInput = z.infer<typeof sourceRangeSchemas['asset.range.set']>;
 export interface SourceRange {inFrame: number; outFrame: number}
+
+/** Convert a verified standalone asset frame boundary to a project grid. */
+export function assetFrameBoundaryInTimeline(frame: number, fps: number, edge: 'ceil' | 'floor'): number {
+  const denominator = BigInt(SOURCE_RANGE_FPS);
+  const numerator = BigInt(frame) * BigInt(fps);
+  return Number((numerator + (edge === 'ceil' ? denominator - 1n : 0n)) / denominator);
+}
+
+/** Keep only complete project frames inside the half-open asset range. */
+export function assetRangeInTimeline(range: SourceRange, fps: number): SourceRange | null {
+  const inFrame = assetFrameBoundaryInTimeline(range.inFrame, fps, 'ceil');
+  const outFrame = assetFrameBoundaryInTimeline(range.outFrame, fps, 'floor');
+  return Number.isSafeInteger(inFrame) && Number.isSafeInteger(outFrame) && inFrame < outFrame
+    ? {inFrame, outFrame} : null;
+}
 export interface SourceRangeResponse {
   id: string;
   assetId: string;

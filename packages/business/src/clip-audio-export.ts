@@ -20,9 +20,12 @@ import {
   CLIP_AUDIO_EXPORT_MODE, clipAudioExportRecordSchema, clipAudioExportSchemas,
 } from '../../contracts/src/clip-audio-export.ts';
 import type {ClipAudioExportRecord, ClipAudioExportRequest} from '../../contracts/src/clip-audio-export.ts';
+import type {TimelineFps} from '../../contracts/src/timeline-fps.ts';
 import {assertTimelineSpeedRenderable} from '../../contracts/src/timeline-speed-render.ts';
 import {isSequenceProjectFormat} from './project-file/schema/databases.ts';
 import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
+import {assertProjectReaderRequirements} from './project-file/reader-requirements.ts';
+import {timelineStorageFormat} from './project-file/timeline-storage.ts';
 import type {ProjectStore} from './project-file/store.ts';
 import {validAssetLocator} from './asset-reference-record.ts';
 import {verifiedManagedHash} from './managed-media.ts';
@@ -37,8 +40,6 @@ import {bindAgentTaskJobInside} from './agent/task-effects-v2.ts';
 
 type Row = Record<string, unknown>;
 const now = (): string => new Date().toISOString();
-const isFormat5 = (store: ProjectStore): boolean =>
-  isSequenceProjectFormat(store.db.prepare('PRAGMA project.user_version').get()?.user_version);
 const uuid = (value: unknown): value is string => typeof value === 'string' &&
   /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/u.test(value);
 const sha256 = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{64}$/u.test(value);
@@ -51,17 +52,18 @@ export function clipAudioExportRequestHash(input: ClipAudioExportRequest): strin
   return createHash('sha256').update(canonical).digest('hex');
 }
 
-interface FrozenSource {
-  readonly clipId: string; readonly clipName: string; readonly assetId: string; readonly assetSha256: string;
-  readonly sizeBytes: number; readonly name: string; readonly mimeType: string;
-  readonly sourceInFrame: number; readonly durationFrames: number; readonly fps: 30;
+function assertClipAudioClock(store: ProjectStore, fps: number): asserts fps is TimelineFps {
+  const projectFps = assertProjectReaderRequirements(store.db, 'project', timelineStorageFormat(store.db, 'project')) ?? 30;
+  if (fps !== projectFps) invalid('片段声音的时间线帧率无法核对');
 }
 
 /** Freeze the clip's current source range and the exact owned bytes. */
-export function freezeClipAudioSource(store: ProjectStore, clipId: string): FrozenSource {
-  if (!isFormat5(store)) throw new AppError('SEQUENCE_EDIT_CONTRACT_INVALID', '这个操作只适用于格式 5 项目。', 409, {reason: 'FORMAT_REQUIRED'});
+export function freezeClipAudioSource(store: ProjectStore, clipId: string): ClipAudioExportRecord['source'] {
+  if (!isSequenceProjectFormat(timelineStorageFormat(store.db, 'project'))) throw new AppError('SEQUENCE_EDIT_CONTRACT_INVALID', '这个操作只适用于格式 5 项目。', 409, {reason: 'FORMAT_REQUIRED'});
   const timeline = readFormat5TimelineRecord(store.db, 'project');
   if (!timeline) throw new AppError('PROJECT_INVALID', '项目没有格式 5 时间线。', 422, {database: 'project', reason: 'metadata'});
+  const {fps} = timeline;
+  assertClipAudioClock(store, fps);
   const clip = timeline.clips.find(item => item.id === clipId);
   if (!clip) throw new AppError('NOT_FOUND', '片段不存在', 404, {clipId});
   assertTimelineSpeedRenderable({fps: timeline.fps, clips: [clip]});
@@ -77,11 +79,11 @@ export function freezeClipAudioSource(store: ProjectStore, clipId: string): Froz
     || asset.hasAudio !== true || !sha256(asset.sha256) || !Number.isSafeInteger(asset.sizeBytes) || Number(asset.sizeBytes) < 1) {
     invalid('这个片段没有可另存的声音', {clipId, assetId: clip.assetId});
   }
-  const frames = sourceFrameCount(asset.duration as never) ?? 0;
+  const frames = sourceFrameCount(asset.duration, fps) ?? 0;
   if (clip.durationFrames < 1 || clip.sourceInFrame + clip.durationFrames > frames) invalid('片段范围超出素材', {clipId});
   return {clipId: clip.id, clipName: clip.name.slice(0, 200), assetId: clip.assetId as string,
     assetSha256: String(asset.sha256), sizeBytes: Number(asset.sizeBytes), name: String(asset.name ?? '').slice(0, 200),
-    mimeType: String(asset.mimeType), sourceInFrame: clip.sourceInFrame, durationFrames: clip.durationFrames, fps: 30};
+    mimeType: String(asset.mimeType), sourceInFrame: clip.sourceInFrame, durationFrames: clip.durationFrames, fps};
 }
 
 function readRecord(store: ProjectStore, exportId: string, projectId: string): ClipAudioExportRecord | null {
@@ -90,7 +92,9 @@ function readRecord(store: ProjectStore, exportId: string, projectId: string): C
   let value: unknown = null;
   try { value = typeof row?.data === 'string' ? JSON.parse(row.data) : null; } catch { value = null; }
   const parsed = clipAudioExportRecordSchema.safeParse(value);
-  return parsed.success ? parsed.data : null;
+  if (!parsed.success) return null;
+  assertClipAudioClock(store, parsed.data.source.fps);
+  return parsed.data;
 }
 
 /** Start one clip-audio export task. Replays the exact accepted row for the same
@@ -158,7 +162,7 @@ export function getClipAudioExport(store: ProjectStore, raw: unknown): ClipAudio
 // ---------------------------------------------------------------------------
 
 const AAC_PROFILE = Object.freeze({codec: 'aac', bitrate: '128k', sampleRate: 48000, channels: 2});
-const seconds = (frames: number): string => (frames / 30).toFixed(6);
+const seconds = (frames: number, fps: TimelineFps): string => (frames / fps).toFixed(6);
 
 function audioCodecOf(probeResult: Awaited<ReturnType<typeof probe>>): string | undefined {
   const stream = probeResult.probe.streams.find(item => item.codec_type === 'audio');
@@ -217,6 +221,8 @@ export async function runClipAudioExport(store: ProjectStore, record: ClipAudioE
   const save = (values: Row): void => hooks.save({...values, updatedAt: now()});
   try {
     hooks.beforeEffect();
+    const {sourceInFrame, durationFrames, fps} = record.source;
+    assertClipAudioClock(store, fps);
     const sourceRow = store.db.prepare('SELECT data FROM project.assets WHERE id=?').get(record.source.assetId) as {data?: unknown} | undefined;
     let asset: Row | null = null;
     try { asset = typeof sourceRow?.data === 'string' ? JSON.parse(sourceRow.data) as Row : null; } catch { asset = null; }
@@ -231,10 +237,11 @@ export async function runClipAudioExport(store: ProjectStore, record: ClipAudioE
     save({phase: mode === 'copy' ? 'copying' : 'encoding'});
     work = createPrivateTemporaryDirectory(store.tempDir, 'clip-audio-');
     const stage = path.join(work, 'clip-sound.m4a');
-    const totalMs = (record.source.durationFrames / 30) * 1000;
+    const expectedSeconds = durationFrames / fps;
+    const totalMs = expectedSeconds * 1000;
     let lastReported = 0;
     const args = ['-hide_banner', '-loglevel', 'error', '-nostdin', '-y',
-      '-ss', seconds(record.source.sourceInFrame), '-t', seconds(record.source.durationFrames),
+      '-ss', seconds(sourceInFrame, fps), '-t', seconds(durationFrames, fps),
       '-i', verified.file, '-vn', '-map', '0:a:0', '-progress', 'pipe:1', '-nostats',
       ...(mode === 'copy' ? ['-c:a', 'copy'] : ['-c:a', AAC_PROFILE.codec, '-b:a', AAC_PROFILE.bitrate,
         '-ar', String(AAC_PROFILE.sampleRate), '-ac', String(AAC_PROFILE.channels)]),
@@ -259,9 +266,8 @@ export async function runClipAudioExport(store: ProjectStore, record: ClipAudioE
     const info = await fileInfo(stage, {signal, beforeEffect: hooks.beforeEffect});
     const outputProbe = await probe(stage, {signal, beforeEffect: hooks.beforeEffect});
     const outputCodec = audioCodecOf(outputProbe);
-    const expectedSeconds = record.source.durationFrames / 30;
     if (!outputProbe.hasAudio || outputProbe.hasVideo || outputCodec !== 'aac' || info.sizeBytes < 1
-      || Math.abs(outputProbe.duration - expectedSeconds) > Math.max(0.25, 3 / 30)) {
+      || Math.abs(outputProbe.duration - expectedSeconds) > Math.max(0.25, 3 / fps)) {
       invalid('生成的音频文件无法核对', {assetId: record.source.assetId});
     }
     save({phase: 'finalizing', progress: 99});
@@ -275,8 +281,7 @@ export async function runClipAudioExport(store: ProjectStore, record: ClipAudioE
       mimeType: 'audio/mp4', sha256: info.sha256, sizeBytes: info.sizeBytes, displayName}, {signal, beforeEffect: hooks.beforeEffect});
     const createdAt = now();
     const clipAudioSource = {clipId: record.source.clipId, sourceAssetId: record.source.assetId,
-      sourceHash: record.source.assetSha256, sourceInFrame: record.source.sourceInFrame,
-      durationFrames: record.source.durationFrames, fps: 30 as const, taskId: record.id, mode};
+      sourceHash: record.source.assetSha256, sourceInFrame, durationFrames, fps, taskId: record.id, mode};
     const assetRow: Row = {id: assetId, projectId: record.projectId, name: displayName, mimeType: 'audio/mp4',
       reference: published.reference, referenceRevision: 1, sizeBytes: published.sizeBytes, sha256: published.sha256,
       duration: outputProbe.duration, hasAudio: true, hasVideo: false, publication: published.publication,

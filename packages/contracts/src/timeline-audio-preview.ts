@@ -1,4 +1,9 @@
 import {z} from 'zod';
+import {timelineFpsSchema} from './timeline-fps.ts';
+import type {TimelineFps} from './timeline-fps.ts';
+import {timelineAudioFpsFields,timelineAudioFpsSchema,timelineAudioSampleBoundary,timelineAudioSampleSpan} from './timeline-audio-clock.ts';
+
+export {timelineAudioSampleBoundary,timelineAudioSampleSpan} from './timeline-audio-clock.ts';
 import {timelineCompositionSegments} from './timeline-segments.ts';
 
 /** Disposable saved-timeline sound only. This profile never changes a saved
@@ -13,6 +18,8 @@ export const AUDIO_PREVIEW_LIMITS = Object.freeze({
   prepareTimeoutMs:120000, planBytes:256*1024,
 } as const);
 
+const windowSeconds = AUDIO_PREVIEW_LIMITS.windowFrames / AUDIO_PREVIEW_LIMITS.fps;
+const maxWindowFrames = windowSeconds * 60;
 const id=z.string().uuid(), digest=z.string().regex(/^[a-f0-9]{64}$/u);
 const integer=(max:number,min=0):z.ZodNumber=>z.number().finite().int().min(min).max(max);
 const frame=integer(AUDIO_PREVIEW_LIMITS.timelineFrames);
@@ -32,17 +39,17 @@ export type AudioPreviewSourceInput=z.infer<typeof audioPreviewSourceInputSchema
 
 const rangeSchema=z.object({
   startFrame:integer(17999),endFrame:positiveFrames,
-  startSample:integer(28_798_400),endSample:integer(28_800_000,1),
-  sampleFrames:integer(960_000,1600),
+  startSample:integer(35_998_000),endSample:integer(36_000_000,1),
+  sampleFrames:integer(960_000,800),
 }).strict();
 const decodeSegmentSchema=z.object({
   sourceInFrame:integer(17999),frameCount:positiveFrames,
-  trimStartFrame:integer(17999),outputFrames:integer(600,1),
+  trimStartFrame:integer(17999),outputFrames:integer(maxWindowFrames,1),
 }).strict();
 const sourceSchema=z.object({
   sourceKey:digest,profileId:z.literal(AUDIO_PREVIEW_PROFILE),clipId:id,assetId:id,
-  sourceHash:digest,sourceInFrame:integer(17999),durationFrames:integer(600,1),
-  sampleFrames:integer(960_000,1600),pcmBytes:integer(7_680_000,12_800),
+  sourceHash:digest,sourceInFrame:integer(17999),durationFrames:integer(maxWindowFrames,1),
+  sampleFrames:integer(960_000,800),pcmBytes:integer(7_680_000,6400),
   sourceBytes:integer(AUDIO_PREVIEW_LIMITS.sourceBytes,1),
   decodeSegments:z.array(decodeSegmentSchema).min(1).max(AUDIO_PREVIEW_LIMITS.totalDecodeSegments),
 }).strict();
@@ -69,29 +76,29 @@ export type AudioPreviewDecodeSegment=z.infer<typeof decodeSegmentSchema>;
 export type AudioPreviewSourceDescriptor=z.infer<typeof sourceSchema>;
 export type AudioPreviewVoice=z.infer<typeof voiceSchema>;
 
-function sourceIdentity(source:Pick<AudioPreviewSourceDescriptor,'assetId'|'sourceHash'|'sourceInFrame'|'durationFrames'|'profileId'|'decodeSegments'>):string {
-  return canonical({assetId:source.assetId,sourceHash:source.sourceHash,
+function sourceIdentity(source:Pick<AudioPreviewSourceDescriptor,'assetId'|'sourceHash'|'sourceInFrame'|'durationFrames'|'profileId'|'decodeSegments'>,fps:TimelineFps):string {
+  return canonical({...timelineAudioFpsFields(fps),assetId:source.assetId,sourceHash:source.sourceHash,
     sourceInFrame:source.sourceInFrame,durationFrames:source.durationFrames,profileId:source.profileId,
     decodeSegments:source.decodeSegments});
 }
 
 export const audioPreviewPlanSchema=z.object({
   schemaVersion:z.literal(1),status:z.literal('planned'),profileId:z.literal(AUDIO_PREVIEW_PROFILE),
-  projectId:id,timelineId:id,timelineRevision:revision,planHash:digest,
+  projectId:id,timelineId:id,timelineRevision:revision,planHash:digest,fps:timelineAudioFpsSchema,
   range:rangeSchema,sources:z.array(sourceSchema).max(100),voices:z.array(voiceSchema).max(100),memory:memorySchema,work:workSchema,
 }).strict().superRefine((plan,context)=>{
   const fail=(message:string):void=>context.addIssue({code:'custom',message});
-  const range=plan.range;
-  if(range.endFrame<=range.startFrame||range.endFrame-range.startFrame>AUDIO_PREVIEW_LIMITS.windowFrames||
-      range.startSample!==range.startFrame*1600||range.endSample!==range.endFrame*1600||
+  const range=plan.range,fps=plan.fps??30;
+  if(range.endFrame<=range.startFrame||range.endFrame-range.startFrame>windowSeconds*fps||
+      range.startSample!==timelineAudioSampleBoundary(range.startFrame,fps)||range.endSample!==timelineAudioSampleBoundary(range.endFrame,fps)||
       range.sampleFrames!==range.endSample-range.startSample)fail('Invalid half-open preview range or sample clock.');
   const sources=new Map<string,AudioPreviewSourceDescriptor>(),identities=new Set<string>();
   let retained=0,largest=0,hashReads=0,decodedSourceFrames=0,decodeSegments=0;
   for(const source of plan.sources){
-    const identity=sourceIdentity(source);
+    const identity=sourceIdentity(source,fps);
     if(sources.has(source.sourceKey)||identities.has(identity))fail('Duplicate source identity.');
     sources.set(source.sourceKey,source);identities.add(identity);
-    if(source.sampleFrames!==source.durationFrames*1600||source.pcmBytes!==source.sampleFrames*8||
+    if(source.sampleFrames!==timelineAudioSampleSpan(source.sourceInFrame,source.sourceInFrame+source.durationFrames,fps)||source.pcmBytes!==source.sampleFrames*8||
         source.sourceInFrame+source.durationFrames>18000)fail('Invalid source sample count or bounds.');
     let outputFrames=0,previousEnd:number|undefined;
     for(const segment of source.decodeSegments){
@@ -154,7 +161,7 @@ const assetSchema=z.object({
   duration:z.number().finite().nonnegative().nullable(),hasAudio:z.boolean().nullable().optional(),
 }).strict();
 const snapshotSchema=z.object({
-  timeline:z.object({id,projectId:id,revision,fps:z.literal(30),durationFrames:frame,
+  timeline:z.object({id,projectId:id,revision,fps:timelineFpsSchema,durationFrames:frame,
     tracks:z.array(trackSchema).min(1).max(12),clips:z.array(clipSchema).max(100)}).strict(),
   assets:z.array(assetSchema).max(100),
 }).strict();
@@ -238,41 +245,44 @@ export interface TimelineAudioSamples {
 }
 /** Integer clock shared with export's existing clip-relative FFmpeg fades.
  * fadeOutStartSample is clip-local; startSample/endSample are timeline-global. */
-export function deriveTimelineAudioSamples(clip:TimelineAudioSampleClip,segmentStartFrame:number):TimelineAudioSamples {
+export function deriveTimelineAudioSamples(clip:TimelineAudioSampleClip,segmentStartFrame:number,fps:TimelineFps=30):TimelineAudioSamples {
   const fadeIn=clip.fadeInFrames===undefined?0:clip.fadeInFrames,fadeOut=clip.fadeOutFrames===undefined?0:clip.fadeOutFrames;
   const integral=(value:number,min:number,max:number):boolean=>Number.isSafeInteger(value)&&value>=min&&value<=max;
   if(!integral(clip.startFrame,0,18000)||!integral(clip.durationFrames,1,18000)||
       clip.startFrame+clip.durationFrames>18000||
-      !integral(clip.sourceInFrame,0,Math.floor(Number.MAX_SAFE_INTEGER/1600)-18000)||
+      !integral(clip.sourceInFrame,0,Math.floor(Number.MAX_SAFE_INTEGER/timelineAudioSampleBoundary(1,fps))-18000)||
       !integral(fadeIn,0,clip.durationFrames)||!integral(fadeOut,0,clip.durationFrames)||fadeIn+fadeOut>clip.durationFrames||
       !integral(segmentStartFrame,clip.startFrame,clip.startFrame+clip.durationFrames))
     fail('AUDIO_PREVIEW_INVALID_INPUT','Invalid clip sample mapping.');
-  return {startSample:clip.startFrame*1600,endSample:(clip.startFrame+clip.durationFrames)*1600,
-    durationSamples:clip.durationFrames*1600,sourceInSample:clip.sourceInFrame*1600,
-    offsetSamples:(segmentStartFrame-clip.startFrame)*1600,
-    sourceSample:(clip.sourceInFrame+segmentStartFrame-clip.startFrame)*1600,
-    fadeInSamples:fadeIn*1600,fadeOutSamples:fadeOut*1600,fadeOutStartSample:(clip.durationFrames-fadeOut)*1600};
+  const clipEnd=clip.startFrame+clip.durationFrames,fadeOutStart=clipEnd-fadeOut;
+  return {startSample:timelineAudioSampleBoundary(clip.startFrame,fps),endSample:timelineAudioSampleBoundary(clipEnd,fps),
+    durationSamples:timelineAudioSampleSpan(clip.startFrame,clipEnd,fps),sourceInSample:timelineAudioSampleBoundary(clip.sourceInFrame,fps),
+    offsetSamples:timelineAudioSampleSpan(clip.startFrame,segmentStartFrame,fps),
+    sourceSample:timelineAudioSampleBoundary(clip.sourceInFrame+segmentStartFrame-clip.startFrame,fps),
+    fadeInSamples:timelineAudioSampleSpan(clip.startFrame,clip.startFrame+fadeIn,fps),
+    fadeOutSamples:timelineAudioSampleSpan(fadeOutStart,clipEnd,fps),
+    fadeOutStartSample:timelineAudioSampleSpan(clip.startFrame,fadeOutStart,fps)};
 }
 
 /** Half-open output, with original clip-local fades after windowing or seek.
  * This computes one scalar, not a limiter or normalization across voices. */
-export function audioPreviewEnvelopeAtSample(voice:AudioPreviewVoice,globalSample:number):number {
+export function audioPreviewEnvelopeAtSample(voice:AudioPreviewVoice,globalSample:number,fps:TimelineFps=30):number {
   if(!Number.isSafeInteger(globalSample)||!Number.isFinite(voice.gain)||voice.gain<0||voice.gain>2)
     fail('AUDIO_PREVIEW_INVALID_INPUT','Invalid envelope sample or gain.');
-  const samples=deriveTimelineAudioSamples(voice,voice.intersectionStartFrame);
+  const samples=deriveTimelineAudioSamples(voice,voice.intersectionStartFrame,fps);
   if(!Number.isSafeInteger(voice.intersectionEndFrame)||voice.intersectionEndFrame<=voice.intersectionStartFrame||
       voice.intersectionEndFrame>voice.startFrame+voice.durationFrames)
     fail('AUDIO_PREVIEW_INVALID_INPUT','Invalid envelope intersection.');
   if(globalSample<samples.startSample||globalSample>=samples.endSample||
-      globalSample<voice.intersectionStartFrame*1600||globalSample>=voice.intersectionEndFrame*1600)return 0;
-  return audioPreviewEnvelopeGainAtLocalSample(voice,globalSample-samples.startSample);
+      globalSample<timelineAudioSampleBoundary(voice.intersectionStartFrame,fps)||globalSample>=timelineAudioSampleBoundary(voice.intersectionEndFrame,fps))return 0;
+  return audioPreviewEnvelopeGainAtLocalSample(voice,globalSample-samples.startSample,fps);
 }
 
 /** Continuous envelope used for Web Audio ramp endpoints, including the
  * left-hand gain at clip end. It does not assert the clip is playing there.
  * An interior prepared-window endpoint must not introduce an artificial fade. */
-export function audioPreviewEnvelopeGainAtLocalSample(voice:AudioPreviewVoice,localSample:number):number {
-  const samples=deriveTimelineAudioSamples(voice,voice.startFrame);
+export function audioPreviewEnvelopeGainAtLocalSample(voice:AudioPreviewVoice,localSample:number,fps:TimelineFps=30):number {
+  const samples=deriveTimelineAudioSamples(voice,voice.startFrame,fps);
   if(!Number.isSafeInteger(localSample)||localSample<0||localSample>samples.durationSamples||
       !Number.isFinite(voice.gain)||voice.gain<0||voice.gain>2)
     fail('AUDIO_PREVIEW_INVALID_INPUT','Invalid continuous envelope sample or gain.');
@@ -325,7 +335,7 @@ export function buildAudioPreviewPlan(
     if(fadeIn+fadeOut>clip.durationFrames||(fadeIn>0||fadeOut>0)&&asset.hasAudio!==true)
       fail('AUDIO_PREVIEW_INVALID_SNAPSHOT','Invalid saved audio fade.');
     if(image?clip.sourceInFrame!==0:asset.duration===null||asset.duration<=0||
-        clip.sourceInFrame+clip.durationFrames>Math.floor(asset.duration*30+1e-6))
+        clip.sourceInFrame+clip.durationFrames>Math.floor(asset.duration*timeline.fps+1e-6))
       fail('AUDIO_PREVIEW_INVALID_SNAPSHOT','Saved clip exceeds the source range.');
     if(!byTrack.has(clip.trackId))byTrack.set(clip.trackId,[]);
     byTrack.get(clip.trackId)!.push(clip);
@@ -342,7 +352,7 @@ export function buildAudioPreviewPlan(
     if(!digest.safeParse(result).success)fail('AUDIO_PREVIEW_INVALID_INPUT','Invalid hash adapter result.');
     return result;
   };
-  const startFrame=input.startFrame,endFrame=Math.min(startFrame+600,timeline.durationFrames);
+  const fps=timeline.fps,startFrame=input.startFrame,endFrame=Math.min(startFrame+windowSeconds*fps,timeline.durationFrames);
   const compositionSegments=timelineCompositionSegments(timeline);
   const sources:AudioPreviewSourceDescriptor[]=[],voices:AudioPreviewVoice[]=[],sourceMap=new Map<string,AudioPreviewSourceDescriptor>();
   const ordered=[...timeline.clips].sort((a,b)=>trackMap.get(a.trackId)!.orderIndex-trackMap.get(b.trackId)!.orderIndex||
@@ -364,10 +374,10 @@ export function buildAudioPreviewPlan(
         frameCount:segment.endFrame-segment.beginFrame,trimStartFrame:from-segment.beginFrame,outputFrames:to-from});
     }
     const identity=sourceIdentity({assetId:asset.id,sourceHash:asset.sha256,sourceInFrame,durationFrames,
-      profileId:AUDIO_PREVIEW_PROFILE,decodeSegments:segments});
+      profileId:AUDIO_PREVIEW_PROFILE,decodeSegments:segments},fps);
     let source=sourceMap.get(identity);
     if(!source){
-      const sampleFrames=durationFrames*1600,pcmBytes=sampleFrames*8;
+      const sampleFrames=timelineAudioSampleSpan(sourceInFrame,sourceInFrame+durationFrames,fps),pcmBytes=sampleFrames*8;
       source={sourceKey:checkedHash(identity),profileId:AUDIO_PREVIEW_PROFILE,clipId:clip.id,assetId:asset.id,
         sourceHash:asset.sha256,sourceInFrame,durationFrames,sampleFrames,pcmBytes,sourceBytes:asset.sizeBytes,decodeSegments:segments};
       sourceMap.set(identity,source);sources.push(source);
@@ -384,8 +394,9 @@ export function buildAudioPreviewPlan(
   if(decodedSourceFrames>AUDIO_PREVIEW_LIMITS.decodeWorkFrames||decodeSegments>AUDIO_PREVIEW_LIMITS.totalDecodeSegments)
     fail('AUDIO_PREVIEW_BUDGET','The complete preview interval exceeds the original-segment decode work budget.');
   const plan:AudioPreviewPlan={schemaVersion:1,status:'planned',profileId:AUDIO_PREVIEW_PROFILE,
-    projectId:input.projectId,timelineId:input.timelineId,timelineRevision:timeline.revision,planHash:'0'.repeat(64),
-    range:{startFrame,endFrame,startSample:startFrame*1600,endSample:endFrame*1600,sampleFrames:(endFrame-startFrame)*1600},
+    projectId:input.projectId,timelineId:input.timelineId,timelineRevision:timeline.revision,planHash:'0'.repeat(64),...timelineAudioFpsFields(fps),
+    range:{startFrame,endFrame,startSample:timelineAudioSampleBoundary(startFrame,fps),endSample:timelineAudioSampleBoundary(endFrame,fps),
+      sampleFrames:timelineAudioSampleSpan(startFrame,endFrame,fps)},
     sources,voices,memory:{retainedPcmBytes:retained,largestSourcePcmBytes:largest,
       transportReserveBytes:AUDIO_PREVIEW_LIMITS.transportReserveBytes,admittedBytes,hashReadBytes:hashReads},
     work:{decodedSourceFrames,decodeSegments}};

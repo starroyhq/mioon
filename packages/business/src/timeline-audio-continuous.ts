@@ -1,10 +1,12 @@
+import {timelineAudioFpsFields,timelineAudioSampleBoundary,timelineAudioSampleSpan} from '../../contracts/src/timeline-audio-clock.ts';
+import type {TimelineFps} from '../../contracts/src/timeline-fps.ts';
 import {assertTimelineSpeedRenderable, isTimelineSpeedRenderError} from '../../contracts/src/timeline-speed-render.ts';
 import {hasSampledTimelineReferences, prepareTimelineReferenceHashes} from './timeline-reference-prepare.ts';
 import {mediaLocatorFields, validAssetLocator} from './asset-reference-record.ts';
 import type {MediaLocator} from './asset-reference-record.ts';
 import {createHash} from 'node:crypto';
 import {volumeEnvelopeField, volumeEnvelopeSnapshotFields, volumeEnvelopeReadSnapshot} from '../../contracts/src/timeline-volume-envelope-processing.ts';
-import {createVolumeEnvelopeEvaluator} from '../../contracts/src/timeline-volume-envelope.ts';
+import {createTimelineVolumeEnvelopeSampler} from './timeline-volume-envelope-clock.ts';
 import {assertVolumeEnvelopeSource} from './timeline-volume-envelope-source.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import {CONTINUOUS_AUDIO_LIMITS as LIMITS, CONTINUOUS_AUDIO_PROFILE,
@@ -119,9 +121,9 @@ export function createProjectAudioSnapshotStamp(db: DatabaseSync, projectFormat:
  * Active work is retained through transport close; a replacement cannot open
  * cursors before old allocations/processes settle. The native lease separately
  * reserves the full 96 MiB across renderer retirement and window handoff. */
-export const CONTINUOUS_AUDIO_PCM_ACCOUNTING = Object.freeze({sourceReadBytes: 60 * 12800,
+export const CONTINUOUS_AUDIO_PCM_ACCOUNTING = Object.freeze({sourceReadBytes: 2 * 48000 * 8,
   pipeChunkBytes: 1024 * 1024, cursors: 12, mixedCopies: 6,
-  peakBoundBytes: 12 * (60 * 12800 + 3 * 1024 * 1024) + 6 * 60 * 12800 + 2 * 1024 * 1024});
+  peakBoundBytes: 12 * (2 * 48000 * 8 + 3 * 1024 * 1024) + 6 * 2 * 48000 * 8 + 2 * 1024 * 1024});
 export interface ContinuousAudioConsumeContext {
   plan: ContinuousAudioPlan; input: ContinuousAudioBlockInput; startFrame: number; endFrame: number;
   sampleFrames: number; signal: AbortSignal; beforeEffect: () => void;
@@ -204,7 +206,7 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
       if (track.kind === 'audio' ? (soundOnly ? !video || asset.hasAudio !== true : !audio) : soundOnly || audio)
         throw fail('AUDIO_PREVIEW_INVALID_SNAPSHOT');
       if (image ? asset.hasAudio === true || clip.sourceInFrame !== 0 : typeof asset.hasAudio !== 'boolean' || asset.duration === null ||
-          asset.duration <= 0 || clip.sourceInFrame + clip.durationFrames > Math.floor(asset.duration * 30 + 1e-6)) throw fail('AUDIO_PREVIEW_INVALID_SNAPSHOT');
+          asset.duration <= 0 || clip.sourceInFrame + clip.durationFrames > Math.floor(asset.duration * timeline.fps + 1e-6)) throw fail('AUDIO_PREVIEW_INVALID_SNAPSHOT');
       if ((clip.fadeInFrames ?? 0) + (clip.fadeOutFrames ?? 0) > clip.durationFrames ||
           ((clip.fadeInFrames ?? 0) > 0 || (clip.fadeOutFrames ?? 0) > 0) && asset.hasAudio !== true && clip.volumeEnvelope == null) throw fail('AUDIO_PREVIEW_INVALID_SNAPSHOT');
       const list = byTrack.get(clip.trackId) ?? []; list.push(clip); byTrack.set(clip.trackId, list);
@@ -234,7 +236,8 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
     const snapshotHash = hash(canonical(snapshot));
     const plan: ContinuousAudioPlan = {...volumeEnvelopeSnapshotFields(timeline), schemaVersion: 2, status: 'planned', profileId: CONTINUOUS_AUDIO_PROFILE,
       projectId: input.projectId, timelineId: input.timelineId, timelineRevision: input.expectedRevision,
-      startFrame: input.startFrame, durationFrames: timeline.durationFrames, blockFrames: 60, sampleRate: 48000,
+      startFrame: input.startFrame, durationFrames: timeline.durationFrames, blockFrames: (timeline.fps * 2) as ContinuousAudioPlan['blockFrames'],
+      ...timelineAudioFpsFields(timeline.fps), sampleRate: 48000,
       channels: 2, admittedBytes: LIMITS.memoryBytes, snapshotHash, planHash: '0'.repeat(64)};
     plan.planHash = hash(continuousAudioPlanDigestMaterial(plan));
     continuousAudioPlanSchema.parse(plan);
@@ -357,6 +360,7 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
     runtime.telemetry?.({type: 'hash', bytes: session.hashBytes});
   }
   async function sourcePart(session: Session, clip: Clip, segment: TimelineCompositionSegment, from: number, to: number, signal: AbortSignal): Promise<Buffer> {
+    const fps = session.initial.snapshot.timeline.fps;
     const key = `${clip.id}:${segment.beginFrame}:${segment.endFrame}`;
     let cursor = session.cursors.get(clip.trackId);
     if (cursor && (cursor.key !== key || cursor.nextFrame !== from)) {
@@ -370,7 +374,8 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
       // Thereafter charge actual produced output cumulatively, never refunding
       // cancellation. Charging an unexecuted ten-minute suffix on every pause
       // would exhaust normal controls despite bounded physical work.
-      const reserve = Math.ceil(3 * 1024 * 1024 / 12800);
+      const bytesPerFrame = timelineAudioSampleBoundary(1, fps) * 8;
+      const reserve = Math.ceil(3 * 1024 * 1024 / bytesPerFrame);
       let producedBytes = 0, charged = Math.min(fullWork, prefix + 1 + reserve);
       const debit = (frames: number): void => {
         if (session.workFrames + frames > LIMITS.sessionDecodeWorkFrames || session.generationWorkFrames + frames > LIMITS.decodeWorkFrames) throw fail('AUDIO_PREVIEW_BUDGET');
@@ -378,11 +383,11 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
       };
       debit(charged);
       const reader = runtime.decoder.open(verified.file, verified.probe!, {sourceInFrame: clip.sourceInFrame + segment.beginFrame - clip.startFrame,
-        frameCount: segment.endFrame - segment.beginFrame, trimStartFrame: from - segment.beginFrame},
+        frameCount: segment.endFrame - segment.beginFrame, trimStartFrame: from - segment.beginFrame, ...timelineAudioFpsFields(fps)},
       {signal: session.controller.signal, beforeEffect: () => fenceSession(session), onDecodedBytes(bytes) {
         if (!Number.isSafeInteger(bytes) || bytes < 1) throw fail('AUDIO_PREVIEW_INVALID_PCM');
         producedBytes += bytes;
-        const next = Math.min(fullWork, prefix + 1 + reserve + Math.ceil(producedBytes / 12800));
+        const next = Math.min(fullWork, prefix + 1 + reserve + Math.ceil(producedBytes / bytesPerFrame));
         debit(next - charged); charged = next;
       }});
       cursor = {key, reader, nextFrame: from, endFrame: segment.endFrame}; session.cursors.set(clip.trackId, cursor);
@@ -391,25 +396,27 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
     const cancel = (): void => {void cursor?.reader.close().catch(error => {session.failure = error; admission.failure = error;});};
     signal.addEventListener('abort', cancel, {once: true});
     try {
-      const pcm = await cursor.reader.read((to - from) * 1600); fenceSession(session, signal);
-      if (!Buffer.isBuffer(pcm) || pcm.length !== (to - from) * 12800) throw fail('AUDIO_PREVIEW_INVALID_PCM');
+      const sampleFrames = timelineAudioSampleSpan(from, to, fps);
+      const pcm = await cursor.reader.read(sampleFrames); fenceSession(session, signal);
+      if (!Buffer.isBuffer(pcm) || pcm.length !== sampleFrames * 8) throw fail('AUDIO_PREVIEW_INVALID_PCM');
       cursor.nextFrame = to;
       if (!verified.complete) {await hashAsset(session, verified, signal); verified.complete = true;}
       if (to === cursor.endFrame) {await cursor.reader.done; await cursor.reader.close(); session.cursors.delete(clip.trackId);}
       return pcm;
     } finally {signal.removeEventListener('abort', cancel);}
   }
-  function mixPart(output: Buffer, pcm: Buffer, clip: Clip, from: number, to: number, blockStart: number): void {
+  function mixPart(output: Buffer, pcm: Buffer, clip: Clip, from: number, to: number, blockStart: number, fps: TimelineFps): void {
     const voice: AudioPreviewVoice = {...clip, clipId: clip.id, sourceKey: '0'.repeat(64), fadeInFrames: clip.fadeInFrames ?? 0,
       fadeOutFrames: clip.fadeOutFrames ?? 0, intersectionStartFrame: from, intersectionEndFrame: to};
-    const start = (from - clip.startFrame) * 1600, end = (to - clip.startFrame) * 1600;
+    const start = timelineAudioSampleSpan(clip.startFrame, from, fps), end = timelineAudioSampleSpan(clip.startFrame, to, fps);
+    const blockOffset = timelineAudioSampleSpan(blockStart, from, fps);
     if (clip.volumeEnvelope != null) {
-      const envelope = createVolumeEnvelopeEvaluator(clip);
+      const envelope = createTimelineVolumeEnvelopeSampler(clip, fps);
       for (let sample = start; sample < end; sample++) {
         // Linear fade × linear automation is generally quadratic, not a ramp.
-        const gain = audioPreviewEnvelopeGainAtLocalSample(voice, sample) * envelope.atSample(sample);
+        const gain = audioPreviewEnvelopeGainAtLocalSample(voice, sample, fps) * envelope.atSample(sample);
         const sourceOffset = (sample - start) * 8;
-        const targetOffset = ((from - blockStart) * 1600 + sample - start) * 8;
+        const targetOffset = (blockOffset + sample - start) * 8;
         for (let channel = 0; channel < 2; channel++) {
           const offset = targetOffset + channel * 4;
           const value = output.readFloatLE(offset) + pcm.readFloatLE(sourceOffset + channel * 4) * gain;
@@ -419,14 +426,16 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
       }
       return;
     }
-    const splits = [...new Set([start, end, voice.fadeInFrames * 1600, (clip.durationFrames - voice.fadeOutFrames) * 1600])]
+    const splits = [...new Set([start, end,
+      timelineAudioSampleSpan(clip.startFrame, clip.startFrame + voice.fadeInFrames, fps),
+      timelineAudioSampleSpan(clip.startFrame, clip.startFrame + clip.durationFrames - voice.fadeOutFrames, fps)])]
       .filter(sample => sample >= start && sample <= end).sort((a, b) => a - b);
     for (let part = 0; part < splits.length - 1; part++) {
       const begin = splits[part]!, finish = splits[part + 1]!, count = finish - begin;
-      const first = audioPreviewEnvelopeGainAtLocalSample(voice, begin), last = audioPreviewEnvelopeGainAtLocalSample(voice, finish);
+      const first = audioPreviewEnvelopeGainAtLocalSample(voice, begin, fps), last = audioPreviewEnvelopeGainAtLocalSample(voice, finish, fps);
       for (let sample = begin; sample < finish; sample++) {
         const gain = first + (last - first) * ((sample - begin) / count), sourceOffset = (sample - start) * 8;
-        const targetOffset = ((from - blockStart) * 1600 + sample - start) * 8;
+        const targetOffset = (blockOffset + sample - start) * 8;
         for (let channel = 0; channel < 2; channel++) {
           const offset = targetOffset + channel * 4;
           const value = output.readFloatLE(offset) + pcm.readFloatLE(sourceOffset + channel * 4) * gain;
@@ -500,21 +509,23 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
       const beforeEffect = (): void => {if (owned.latest !== token) throw fail('OPERATION_CANCELLED'); fenceSession(owned, signal);};
       try {
         beforeEffect();
-        const startFrame = input.blockStartFrame, endFrame = Math.min(startFrame + 60, owned.initial.plan.durationFrames);
+        const fps = owned.initial.snapshot.timeline.fps;
+        const startFrame = input.blockStartFrame, endFrame = Math.min(startFrame + owned.initial.plan.blockFrames, owned.initial.plan.durationFrames);
+        const sampleFrames = timelineAudioSampleSpan(startFrame, endFrame, fps);
         // Eligibility is independent of audibility and block intersection. Verify
         // every automated source before allocating/publishing even silent output.
         for (const clip of owned.initial.envelopeClips) {
           beforeEffect();
           const verified = await verifiedAsset(owned, clip.assetId, signal);
           const asset = owned.initial.snapshot.assets.find(asset => asset.id === clip.assetId)!;
-          assertVolumeEnvelopeSource(clip, {mimeType: asset.mimeType, audio: verified.probe ?? null});
+          assertVolumeEnvelopeSource(clip, {mimeType: asset.mimeType, audio: verified.probe ?? null}, fps);
           if (asset.hasAudio !== true) throw fail('AUDIO_PREVIEW_STALE');
           if (!verified.complete && !owned.initial.voices.some(voice => voice.assetId === clip.assetId &&
               voice.startFrame < endFrame && voice.startFrame + voice.durationFrames > startFrame)) {
             await hashAsset(owned, verified, signal); verified.complete = true;
           }
         }
-        const pcm = Buffer.alloc((endFrame - startFrame) * 12800);
+        const pcm = Buffer.alloc(sampleFrames * 8);
         for (const clip of owned.initial.voices) {
           const from = Math.max(startFrame, clip.startFrame), to = Math.min(endFrame, clip.startFrame + clip.durationFrames);
           if (from >= to) continue;
@@ -523,12 +534,12 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
             const begin = Math.max(from, segment.beginFrame), end = Math.min(to, segment.endFrame);
             if (begin >= end) continue;
             beforeEffect(); const part = await sourcePart(owned, clip, segment, begin, end, signal); beforeEffect();
-            mixPart(pcm, part, clip, begin, end, startFrame);
+            mixPart(pcm, part, clip, begin, end, startFrame, fps);
           }
         }
         beforeEffect();
         const result = await context.consume({pcm}, {plan: owned.initial.plan, input, startFrame, endFrame,
-          sampleFrames: (endFrame - startFrame) * 1600, signal, beforeEffect});
+          sampleFrames, signal, beforeEffect});
         beforeEffect(); owned.nextFrame = endFrame; owned.cancelled = false;
         runtime.telemetry?.({type: 'block', startFrame, endFrame, pcmBytes: pcm.length,
           pcmPeakBoundBytes: CONTINUOUS_AUDIO_PCM_ACCOUNTING.peakBoundBytes, hashBytes: owned.hashBytes, workFrames: owned.workFrames});

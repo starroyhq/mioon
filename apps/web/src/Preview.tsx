@@ -157,7 +157,7 @@ export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onB
   const captureKey = `${mediaKey}:${asset?.sha256 || ''}`;
   captureContext.current = { key: captureKey, visible, busy: captureBusy, scope: sourceScope };
   const timelineSeconds = (frame: number) => rendered ? playbackFrame(frame) / playbackFps
-    : clip ? ((clip.sourceInFrame || 0) + Math.max(0, Math.min(clip.durationFrames, frame - clip.startFrame))) / SOURCE_RANGE_FPS : null;
+    : clip ? ((clip.sourceInFrame || 0) + Math.max(0, Math.min(clip.durationFrames, frame - clip.startFrame))) / playbackFps : null;
   const sourceSeconds = timelineSeconds(playhead);
   const seekRequest = !rendered && !clip ? `${sourceScope || ''}:${sourceSeek && sourceSeek.scope === sourceScope ? sourceSeek.id : 'initial'}` : sourceSeconds;
   const pauseCurrent = useRef<() => void>(() => {});
@@ -266,7 +266,7 @@ export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onB
 
   function timelineFrame(element: HTMLMediaElement): number {
     if (rendered) return playbackFrame(Math.round(element.currentTime * playbackFps));
-    const frame = Math.round(element.currentTime * SOURCE_RANGE_FPS);
+    const frame = Math.round(element.currentTime * playbackFps);
     const local = frame - (clip?.sourceInFrame || 0);
     return clip ? clip.startFrame + Math.max(0, Math.min(clip.durationFrames, local)) : frame;
   }

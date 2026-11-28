@@ -18,7 +18,6 @@
  */
 import {randomUUID} from 'node:crypto';
 import {AppError, sourceFrameCount} from '@mioon/contracts';
-import {assetRangeOnSourceGridSchema} from '../../contracts/src/source-range.ts';
 import type {
   SequenceEditAffectedCounts, SequenceEditAllocation, SequenceEditBaselineChange, SequenceEditBoardDelta, SequenceEditBoardEntity,
   SequenceEditCommitResult, SequenceEditEnvelope, SequenceEditErrorCode, SequenceEditHistoryAction,
@@ -44,11 +43,12 @@ import type {ChainBoard, ChainNode, SequenceEdge} from '../../contracts/src/boar
 import type {TrackAnchoredItem} from '../../contracts/src/chain-sync-analysis.ts';
 import {format5SyncBaselineSchema, format5TimelineHeader, getFormat5TimelineIssue} from '../../contracts/src/project-format5.ts';
 import type {SequenceEditSpeedIntent} from '../../contracts/src/timeline-speed.ts';
+import {assetFrameBoundaryInTimeline, assetRangeInTimeline, assetRangeOnSourceGridSchema} from '../../contracts/src/source-range.ts';
 import {compileClipTimeMap} from '../../contracts/src/timeline-clip-timing.ts';
 import {timeMapPlanFrames} from '../../contracts/src/timeline-time-map.ts';
 import {planSpeedTimeline, splitSequenceClip, trimTimedSequenceClip} from './format6-sequence-speed.ts';
 import {validateSpeedTransitions} from './format6-transition-fit.ts';
-import {FORMAT6_PROJECT_SCHEMA_VERSION, isSequenceProjectFormat} from './project-file/schema/databases.ts';
+import {FORMAT5_PROJECT_SCHEMA_VERSION, FORMAT6_PROJECT_SCHEMA_VERSION, isSequenceProjectFormat} from './project-file/schema/databases.ts';
 import {copyFormat5ShotDialogue, format5ShotDialogue, projectFormat5DialogueCues} from './format5-dialogue-projection.ts';
 import type {Format5DialogueProjectedShot, Format5DialogueProjectionResult} from './format5-dialogue-projection.ts';
 import type {Format5Clip, Format5Cue, Format5SyncBaseline, Format5Timeline} from '../../contracts/src/project-format5.ts';
@@ -147,8 +147,8 @@ function baselineFromRaw(raw: string): Format5SyncBaseline {
 const isImageAsset = (asset: Row | undefined): boolean =>
   typeof asset?.mimeType === 'string' && asset.mimeType.startsWith('image/');
 
-const versionFromAsset = (id: string, asset: Row | undefined): ChainSyncVersion =>
-  ({id, sourceFrames: isImageAsset(asset) ? null : sourceFrameCount(asset?.duration)});
+const versionFromAsset = (id: string, asset: Row | undefined, fps: number): ChainSyncVersion =>
+  ({id, sourceFrames: isImageAsset(asset) ? null : sourceFrameCount(asset?.duration, fps)});
 
 /** Shot provenance selects the lookup, while the applied asset selects the source clock. */
 export function sequencePlanSourceIsStill(context: Pick<SequenceSyncContext, 'versions' | 'assets'>): ChainSyncSourceIsStill {
@@ -159,21 +159,22 @@ export function sequencePlanSourceIsStill(context: Pick<SequenceSyncContext, 've
 }
 
 function readMediaNode(node: ChainNode, nodeRows: ReadonlyMap<string, Row>, shots: ReadonlyMap<string, Row>,
-  versions: ReadonlyMap<string, Row>, assets: ReadonlyMap<string, Row>, clipDuration: (nodeId: string) => number | null): ChainSyncMedia | null {
+  versions: ReadonlyMap<string, Row>, assets: ReadonlyMap<string, Row>, clipDuration: (nodeId: string) => number | null,
+  fps: number): ChainSyncMedia | null {
   const row = nodeRows.get(node.id);
-  const fallback = clipDuration(node.id) ?? 120;
+  const fallback = clipDuration(node.id) ?? 4 * fps;
   if (node.kind === 'shot') {
     const shot = shots.get(node.id);
     const selected = typeof shot?.selectedVersionId === 'string' ? versions.get(shot.selectedVersionId) : undefined;
     const selectedVersion: ChainSyncVersion | null = selected && typeof selected.assetId === 'string'
-      ? versionFromAsset(selected.id, assets.get(selected.assetId)) : null;
+      ? versionFromAsset(selected.id, assets.get(selected.assetId), fps) : null;
     return {nodeId: node.id, selectedVersion, durationFrames: selectedVersion?.sourceFrames ?? fallback};
   }
   if (!row) return null;
   if (node.kind === 'image' || node.kind === 'video') {
     const assetId = typeof row.assetId === 'string' ? row.assetId : null;
     const asset = assetId === null ? undefined : assets.get(assetId);
-    const version = assetId !== null && asset ? versionFromAsset(assetId, asset) : null;
+    const version = assetId !== null && asset ? versionFromAsset(assetId, asset, fps) : null;
     return {nodeId: node.id, selectedVersion: version?.sourceFrames != null || isImageAsset(asset) ? version : null,
       durationFrames: version?.sourceFrames ?? fallback};
   }
@@ -226,7 +227,7 @@ function readSyncContext(store: ProjectStore): SyncContext {
   };
   const media: ChainSyncMedia[] = [];
   for (const node of board.nodes) {
-    const entry = readMediaNode(node, nodeRows, shots, versions, assets, clipDuration);
+    const entry = readMediaNode(node, nodeRows, shots, versions, assets, clipDuration, timeline.fps);
     if (entry) media.push(entry);
   }
   const anchored: TrackAnchoredItem[] = [];
@@ -257,6 +258,9 @@ export function readSequenceSyncContext(store: ProjectStore): SequenceSyncContex
 
 const saState = (context: SyncContext) => ({board: context.board, filmId: context.rootNodeId,
   media: context.media, clips: context.clips, anchored: context.anchored});
+const allowsAssetRange = (context: SyncContext): boolean =>
+  context.formatVersion === FORMAT5_PROJECT_SCHEMA_VERSION ||
+  (context.formatVersion === FORMAT6_PROJECT_SCHEMA_VERSION && process.env.MIOON_FORMAT6_DEV === '1');
 
 function derivedChain(context: SyncContext): {nodeIds: readonly string[]} {
   const nodeIds: string[] = [];
@@ -315,7 +319,7 @@ function resolveVersion(context: SyncContext, nodeId: string, versionId: string)
   }
   const asset = typeof version.assetId === 'string' ? context.assets.get(version.assetId) : undefined;
   if (!asset || asset.sha256 !== version.sha256) return failure('INVALID_MEDIA', [nodeId]);
-  return versionFromAsset(version.id, asset);
+  return versionFromAsset(version.id, asset, context.timeline.fps);
 }
 
 function planFailure(plan: Extract<ChainSyncPlan, {ok: false}>): SequenceEditTransactionFailure {
@@ -334,26 +338,35 @@ function mergeChanges(target: ChainSyncChanges, source: ChainSyncChanges): void 
     (target[key] as ChainSyncChange<unknown>[]).push(...(source[key] as ChainSyncChange<unknown>[]));
   }
 }
-interface SceneCut {readonly sourceFrame: number; readonly offsetFrames: number}
+interface SceneCut {readonly sourceFrame: number; readonly timelineSourceFrame: number; readonly offsetFrames: number}
 function clipSceneCuts(clip: Format5Clip, timeline: Format5Timeline, cuts: readonly number[]): SceneCut[] {
-  if (!clip.timing) return cuts.map(sourceFrame => ({sourceFrame, offsetFrames: sourceFrame - clip.sourceInFrame}))
-    .filter(cut => cut.offsetFrames > 0 && cut.offsetFrames < clip.durationFrames)
-    .sort((left, right) => left.offsetFrames - right.offsetFrames);
-  if (clip.timing.profile === 'timeline-freeze-v1') return [];
-  const plan = compileClipTimeMap(clip, timeline);
-  const frames = plan.ok ? timeMapPlanFrames(plan.value) : plan;
-  if (!frames.ok) throw new AppError(frames.code, frames.detail, 409, {ids: [clip.id]});
-  const vector = frames.value;
-  const reverse = clip.timing.view.direction === 'reverse';
+  if (clip.timing?.profile === 'timeline-freeze-v1') return [];
+  let vector: Int32Array | null = null;
+  if (clip.timing) {
+    const plan = compileClipTimeMap(clip, timeline);
+    const frames = plan.ok ? timeMapPlanFrames(plan.value) : plan;
+    if (!frames.ok) throw new AppError(frames.code, frames.detail, 409, {ids: [clip.id]});
+    vector = frames.value;
+  }
+  const reverse = clip.timing?.view.direction === 'reverse';
   const byOffset = new Map<number, SceneCut>();
   for (const sourceFrame of cuts) {
-    let lo = 0, hi = vector.length;
-    while (lo < hi) {
-      const mid = (lo + hi) >>> 1;
-      if (reverse ? vector[mid]! >= sourceFrame : vector[mid]! < sourceFrame) lo = mid + 1;
-      else hi = mid;
+    // Scene evidence stays on the asset grid. Edit at the first project frame
+    // on or after the cut, and preserve the original frame in the receipt.
+    const timelineSourceFrame = assetFrameBoundaryInTimeline(sourceFrame, timeline.fps, 'ceil');
+    let offsetFrames = timelineSourceFrame - clip.sourceInFrame;
+    if (vector) {
+      let lo = 0, hi = vector.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >>> 1;
+        if (reverse ? vector[mid]! >= timelineSourceFrame : vector[mid]! < timelineSourceFrame) lo = mid + 1;
+        else hi = mid;
+      }
+      offsetFrames = lo;
     }
-    if (lo > 0 && lo < vector.length && !byOffset.has(lo)) byOffset.set(lo, {sourceFrame, offsetFrames: lo});
+    if (offsetFrames > 0 && offsetFrames < clip.durationFrames && !byOffset.has(offsetFrames)) {
+      byOffset.set(offsetFrames, {sourceFrame, timelineSourceFrame, offsetFrames});
+    }
   }
   return [...byOffset.values()].sort((left, right) => left.offsetFrames - right.offsetFrames);
 }
@@ -422,7 +435,7 @@ function planSceneSplit(context: SyncContext, envelope: SequenceEditEnvelope,
       const projected = new Map(projections.map(clip => [clip.id, {sourceInFrame: clip.sourceInFrame,
         ...(clip.sourceSpanFrames === undefined ? {} : {sourceSpanFrames: clip.sourceSpanFrames})}]));
       const plan = planChainSync(state, {kind: 'track', edit: {kind: 'split', clipId: current,
-        offsetFrames, rightClipId: pair.rightClipId, rightSourceInFrame: cut.sourceFrame}}, isStill, projected);
+        offsetFrames, rightClipId: pair.rightClipId, rightSourceInFrame: cut.timelineSourceFrame}}, isStill, projected);
       if (plan.ok === false) return planFailure(plan);
       mergeChanges(changes, plan.changes);
       warnings.push(...plan.warnings);
@@ -471,7 +484,7 @@ function applyOtherTrackSceneSplits(timeline: Format5Timeline, context: SyncCont
         continue;
       }
       const right = {...piece, id: own[pairCursor++]!.rightClipId,
-        startFrame: rightStart, durationFrames: rightDuration, sourceInFrame: cut.sourceFrame,
+        startFrame: rightStart, durationFrames: rightDuration, sourceInFrame: cut.timelineSourceFrame,
         ...(Object.hasOwn(piece, 'fadeInFrames') ? {fadeInFrames: 0} : {}),
         ...(Object.hasOwn(piece, 'fadeOutFrames')
           ? {fadeOutFrames: Math.min(Number(piece.fadeOutFrames), rightDuration)} : {}),
@@ -504,7 +517,7 @@ function planGeneratePlaceholder(context: SyncContext, envelope: SequenceEditEnv
     const owner = context.timeline.clips.find(clip => clip.trackId === context.timeline.mainTrack.trackId
       && clip.startFrame <= startFrame && startFrame < clip.startFrame + clip.durationFrames);
     if (!owner) return failure('SEQUENCE_EDIT_ANCHOR_CONFLICT', [placement.trackId], 'MAIN_TRACK_CLIP_REQUIRED');
-    const durationFrames = operation.settings.duration * 30;
+    const durationFrames = operation.settings.duration * context.timeline.fps;
     const clip: Format5Clip = {id: operation.clipId, trackId: track.id, name: operation.title,
       startFrame, durationFrames, sourceInFrame: 0,
       rect: {x: 0, y: 0, width: context.timeline.width, height: context.timeline.height}, gain: 1,
@@ -544,7 +557,7 @@ function planGeneratePlaceholder(context: SyncContext, envelope: SequenceEditEnv
   const edges = context.board.edges.filter(edge => !affected.has(edge.fromId));
   let fromId = context.rootNodeId;
   for (const toId of nextChain) { edges.push({fromId, toId}); fromId = toId; }
-  const durationFrames = operation.settings.duration * 30;
+  const durationFrames = operation.settings.duration * context.timeline.fps;
   const shot: Row = {id: operation.shotId, projectId: context.projectId, title: operation.title,
     prompt: operation.settings.prompt, duration: operation.settings.duration, aspectRatio: operation.settings.aspectRatio,
     parameters: operation.settings.parameters ?? {}, selectedVersionId: null, referenceAssetIds: [],
@@ -572,7 +585,7 @@ function planGenerateResize(context: SyncContext, envelope: SequenceEditEnvelope
   const clip = target[0]!;
   const existing = context.timeline.clips.find(item => item.id === clip.id);
   if (!existing || existing.sourceState !== 'placeholder') return failure('SEQUENCE_EDIT_GENERATION_INVALID', [clip.id]);
-  const durationFrames = operation.duration * 30;
+  const durationFrames = operation.duration * context.timeline.fps;
   if (durationFrames === clip.durationFrames) return failure('SEQUENCE_EDIT_NOOP', [clip.id]);
   const delta = durationFrames - clip.durationFrames;
   const start = clip.startFrame, end = start + clip.durationFrames;
@@ -626,8 +639,8 @@ function assetKindOf(asset: Row): 'image' | 'video' | 'audio' | null {
   const mime = typeof asset.mimeType === 'string' ? asset.mimeType : '';
   return mime.startsWith('image/') ? 'image' : mime.startsWith('video/') ? 'video' : mime.startsWith('audio/') ? 'audio' : null;
 }
-function assetFrames(asset: Row, kind: 'image' | 'video' | 'audio'): number | null {
-  return kind === 'image' ? 90 : sourceFrameCount(asset.duration);
+function assetFrames(asset: Row, kind: 'image' | 'video' | 'audio', fps: number): number | null {
+  return kind === 'image' ? 3 * fps : sourceFrameCount(asset.duration, fps);
 }
 function assetName(asset: Row, fallback: string): string {
   return typeof asset.name === 'string' && asset.name ? asset.name.slice(0, 200) : fallback;
@@ -744,7 +757,7 @@ function expandedAddPlan(context: SyncContext, envelope: SequenceEditEnvelope,
     if (kind !== 'image' && kind !== 'video') return failure('INVALID_MEDIA', [edit.nodeAssetId], 'ASSET_KIND_UNSUPPORTED');
     const media = kind === 'image'
       ? {nodeId: edit.clip.nodeId, selectedVersion: {id: edit.nodeAssetId, sourceFrames: null as null}, durationFrames: edit.clip.durationFrames}
-      : (() => {const frames = sourceFrameCount(asset.duration); return frames === null ? null :
+      : (() => {const frames = sourceFrameCount(asset.duration, context.timeline.fps); return frames === null ? null :
         {nodeId: edit.clip.nodeId, selectedVersion: {id: edit.nodeAssetId!, sourceFrames: frames}, durationFrames: frames};})();
     if (!media) return failure('INVALID_MEDIA', [edit.nodeAssetId]);
     const nodeRow = {id: edit.clip.nodeId, projectId: context.projectId, type: kind, assetId: edit.nodeAssetId,
@@ -778,7 +791,7 @@ function expandedAddPlan(context: SyncContext, envelope: SequenceEditEnvelope,
       const adoptionRow = version === undefined ? undefined : {id: randomUUID(), projectId: context.projectId,
         shotId: edit.clip.nodeId, versionId: selected!, createdAt: now()};
       const mediaCopy = {nodeId: edit.clip.nodeId, selectedVersion: version
-        ? versionFromAsset(version.id, context.assets.get(version.assetId)) : null,
+        ? versionFromAsset(version.id, context.assets.get(version.assetId), context.timeline.fps) : null,
         durationFrames: media.durationFrames};
       return planMainInsert(context, {nodeId: edit.clip.nodeId, clipId: edit.clip.id, beforeClipId: edit.beforeClipId,
         kind: 'shot', media: mediaCopy, shotRow, ...(adoptionRow ? {adoptionRow} : {}),
@@ -831,7 +844,7 @@ function expandedOverlayPlan(context: SyncContext, edit: Extract<TrackSyncEdit, 
     if (kind === null) return failure('INVALID_MEDIA', [edit.assetId!], 'ASSET_KIND_UNSUPPORTED');
     if (track.kind === 'audio' ? kind !== 'audio' : kind === 'audio') return failure('INVALID_TRACK_TARGET', [edit.trackId], 'TRACK_KIND_MISMATCH');
     // Commit validates the expanded envelope against the current asset again.
-    const frames = assetFrames(asset, kind);
+    const frames = assetFrames(asset, kind, context.timeline.fps);
     if (kind === 'image' ? edit.sourceInFrame !== 0 : frames === null || edit.sourceInFrame > frames - edit.durationFrames)
       return failure('SOURCE_BOUNDS', [edit.assetId!]);
     clip = overlayClipForAsset(context, asset, kind, edit.clipId, edit.trackId, edit.startFrame,
@@ -860,13 +873,17 @@ function expandMinimalSequenceSync(context: SyncContext, envelope: SequenceEditE
     const main = targetTrackId === mainTrackId;
     if (main ? kind === 'audio' : track.kind !== (kind === 'audio' ? 'audio' : 'video'))
       return failure('INVALID_TRACK_TARGET', [targetTrackId], 'TRACK_KIND_MISMATCH');
-    let frames = assetFrames(asset, kind), sourceInFrame = 0;
+    let frames = assetFrames(asset, kind, context.timeline.fps), sourceInFrame = 0;
     if (edit.assetRange !== undefined) {
+      if (!allowsAssetRange(context)) return {ok: false, code: 'SEQUENCE_EDIT_CONTRACT_INVALID', ids: [edit.assetId], reason: 'FORMAT_REQUIRED'};
       const range = assetRangeOnSourceGridSchema.safeParse(edit.assetRange);
-      if (kind === 'image' || !range.success) return failure('INVALID_CLIP_FRAMES', [edit.assetId]);
-      if (frames === null || range.data.outFrame > frames) return failure('SOURCE_BOUNDS', [edit.assetId]);
-      sourceInFrame = range.data.inFrame;
-      frames = range.data.outFrame - sourceInFrame;
+      if (!range.success || kind === 'image') return failure('INVALID_CLIP_FRAMES', [edit.assetId]);
+      const sourceFrames = sourceFrameCount(asset.duration);
+      if (sourceFrames === null || range.data.outFrame > sourceFrames) return failure('SOURCE_BOUNDS', [edit.assetId]);
+      const projected = assetRangeInTimeline(range.data, context.timeline.fps);
+      if (!projected || frames === null || projected.outFrame > frames) return failure('INVALID_CLIP_FRAMES', [edit.assetId]);
+      sourceInFrame = projected.inFrame;
+      frames = projected.outFrame - projected.inFrame;
     }
     if (frames === null || frames < 1 || frames > 18000) return failure('INVALID_CLIP_FRAMES', [edit.assetId]);
     if (main) {
@@ -1753,6 +1770,9 @@ function applyTimelineDelta(store: ProjectStore, delta: SequenceEditTimelineDelt
       ...(current.subtitles.basisPresetId !== undefined ? {basisPresetId: current.subtitles.basisPresetId} : {})} : null)
     : subtitleChange.kind === 'absent' ? null : subtitleChange.value;
   const header = delta.header?.kind === 'set' ? delta.header.value : null;
+  if (header && header.fps !== current.fps) {
+    throw new AppError('SEQUENCE_EDIT_PATCH_INVALID', '现有项目的时间线帧率不能更改。', 409, {});
+  }
   const next: Format5Timeline = {...current, revision: current.revision + 1, updatedAt: now(), durationFrames,
     ...(header ? {fps: header.fps, width: header.width, height: header.height} : {}),
     tracks: delta.tracks ? [...delta.tracks] : current.tracks,
@@ -1764,7 +1784,7 @@ function applyTimelineDelta(store: ProjectStore, delta: SequenceEditTimelineDelt
     ? {...state, header: {...state.header, raw: headerRaw}}
     : state;
   const update = planFormat5TimelineEntityUpdate(planState, {clips: delta.clips, cues: delta.cues,
-    removedClipIds: delta.removedClipIds, removedCueIds: delta.removedCueIds});
+    removedClipIds: delta.removedClipIds, removedCueIds: delta.removedCueIds}, projectFormat(store));
   const headerChanged = state.header?.raw !== headerRaw;
   const rowChanges = update.changed || update.clipDeletes.length > 0 || update.cueDeletes.length > 0;
   const changed = rowChanges || headerChanged;

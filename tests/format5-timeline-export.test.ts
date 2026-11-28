@@ -15,6 +15,8 @@ import {CLIP_TRANSITION_PROFILE} from '../packages/contracts/src/timeline-clip-t
 import {timelineCrossfadeEnvelopes} from '../packages/contracts/src/timeline-crossfade.ts';
 import {canRenderTimelineClipAtIdentity} from '../packages/contracts/src/timeline-speed-render.ts';
 import type {ClipTiming} from '../packages/contracts/src/timeline-speed.ts';
+import {TIMELINE_FPS, type TimelineFps} from '../packages/contracts/src/timeline-fps.ts';
+import {TIMELINE_FPS_READER_FEATURE} from '../packages/contracts/src/project-reader-requirements.ts';
 import {
   assertFormat5ExportAdmissible, createFormat5ExportTicket, recheckFormat5ExportTicket,
 } from '../packages/business/src/format5-timeline-export.ts';
@@ -244,12 +246,18 @@ interface RealSoundFixture {
   readonly timelineId: string;
 }
 
-/** Generate one real video with the requested audio codec, import it through the
- * production media reference and mount it on a format-5 main track. */
-async function realSoundFixture(t: test.TestContext, codec: 'aac' | 'mp3', {seconds = 2}: {seconds?: number} = {}): Promise<RealSoundFixture> {
-  const durationFrames = seconds * 30;
+/** Generate one real video with the requested codec, import it through the
+ * production media reference and mount it on the requested project clock. */
+async function realSoundFixture(t: test.TestContext, codec: 'aac' | 'mp3', {seconds = 2, projectFps, clipRange}: {
+  seconds?: number; projectFps?: TimelineFps; clipRange?: {startSeconds: number; durationSeconds: number};
+} = {}): Promise<RealSoundFixture> {
+  const fps = projectFps ?? 30;
+  const durationFrames = (clipRange?.durationSeconds ?? seconds) * fps;
+  const sourceInFrame = (clipRange?.startSeconds ?? 0) * fps;
   const directory = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-clip-audio-real-'));
-  const store = createProjectStore({projectId: id(1), projectFile: path.join(directory, 'project.mioon'), targetFormat: 5,
+  const store = createProjectStore({projectId: id(1), projectFile: path.join(directory, 'project.mioon'),
+    targetFormat: projectFps === undefined ? 5 : FORMAT6_PROJECT_SCHEMA_VERSION,
+    ...(projectFps === undefined ? {} : {allowFormat6: true as const}),
     locate: () => ({localDir: path.join(directory, 'records'), cacheDir: path.join(directory, 'cache'),
       tempDir: path.join(directory, 'temp')})});
   const release = registerProjectMediaStore(store);
@@ -258,25 +266,29 @@ async function realSoundFixture(t: test.TestContext, codec: 'aac' | 'mp3', {seco
   mkdirSync(path.join(directory, 'media'), {recursive: true, mode: 0o700});
   chmodSync(path.join(directory, 'media'), 0o700);
   const sourcePath = path.join(directory, 'media', `sound-${codec}.mp4`);
+  const audio = clipRange
+    ? `aevalsrc=0.12*sin(2*PI*if(lt(t\\,1)\\,220\\,if(lt(t\\,2)\\,660\\,440))*t):s=48000:d=${seconds}`
+    : `sine=frequency=660:sample_rate=48000:duration=${seconds}`;
   await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y',
     '-f', 'lavfi', '-i', `color=c=0x205080:s=320x180:r=30:d=${seconds}`,
-    '-f', 'lavfi', '-i', `sine=frequency=660:sample_rate=48000:duration=${seconds}`,
+    '-f', 'lavfi', '-i', audio,
     '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p',
     '-c:a', codec, ...(codec === 'aac' ? ['-b:a', '128k'] : []), '-shortest', sourcePath],
     {timeout: 60000, maxStdoutBytes: 0, maxStderrBytes: 65536});
   chmodSync(sourcePath, 0o600);
   const sourceSha = mediaSha(sourcePath);
   const published = await referenceForPublishedMedia(store, sourcePath, {sha256: sourceSha});
-  const timeline = {id: timelineId, projectId, revision: 1, width: 720, height: 1280, fps: 30, durationFrames,
+  const timeline = {id: timelineId, projectId, revision: 1, width: 720, height: 1280, fps, durationFrames,
     createdAt: at, updatedAt: at, mainTrack: {trackId: track, sequenceNodeId: root},
     tracks: [{id: track, name: 'V1', kind: 'video', orderIndex: 0, hidden: false, muted: false}],
-    clips: [{id: clipA, trackId: track, name: 'Shot A', startFrame: 0, durationFrames, sourceInFrame: 0,
+    clips: [{id: clipA, trackId: track, name: 'Shot A', startFrame: 0, durationFrames, sourceInFrame,
       rect: {x: 0, y: 0, width: 720, height: 1280}, gain: 1, assetId: assetA, versionId: versionA, shotId: shotA,
       sourceState: 'ready', sequenceSource: {kind: 'shot', nodeId: shotA, segmentGroupId: groupA, versionMode: 'follow'}}]};
   const baseline = {version: 1, board: [{nodeId: shotA, kind: 'shot', selectedVersionId: versionA}],
     track: [{nodeId: shotA, segmentGroupId: groupA, clipId: clipA, kind: 'shot', versionMode: 'follow', appliedVersionId: versionA}]};
   store.tx(() => {
-    store.put('projects', {id: projectId, name: 'Real clip sound', createdAt: at, updatedAt: at, revision: 1});
+    store.put('projects', {id: projectId, name: 'Real clip sound', createdAt: at, updatedAt: at, revision: 1,
+      ...(fps === 30 ? {} : {requiredReaderFeatures: [TIMELINE_FPS_READER_FEATURE]})});
     store.put('assets', {id: assetA, projectId, name: `sound-${codec}.mp4`, mimeType: 'video/mp4', duration: seconds,
       sha256: published.sha256, sizeBytes: published.sizeBytes, hasAudio: true, hasVideo: true,
       reference: published.reference, referenceRevision: 1});
@@ -423,6 +435,46 @@ test('clip audio export transcodes non-AAC sound with the export audio settings'
   assert.equal(Number(audio?.sample_rate), 48000);
   assert.equal(Number(audio?.channels), 2);
   assert.equal((asset.clipAudioSource as {mode: string}).mode, 'transcode');
+});
+
+test('format 6 clip audio export freezes the project clock for the exact source seek and duration', {timeout: 180000}, async t => {
+  const prior = process.env.MIOON_FORMAT6_DEV;
+  process.env.MIOON_FORMAT6_DEV = '1';
+  t.after(() => {
+    if (prior === undefined) delete process.env.MIOON_FORMAT6_DEV;
+    else process.env.MIOON_FORMAT6_DEV = prior;
+  });
+  for (const fps of TIMELINE_FPS) await t.test(`${fps} fps`, async scenario => {
+    const codec = fps === 24 || fps === 30 ? 'aac' : 'mp3';
+    const f = await realSoundFixture(scenario, codec, {seconds: 3, projectFps: fps, clipRange: {startSeconds: 1, durationSeconds: 1}});
+    const requestId = randomUUID();
+    const exportId = await runAcceptedClipAudio(f, requestId);
+    const record = exportLatest(f.store, exportId);
+    assert.ok(record.status === 'succeeded', JSON.stringify(record.error));
+    assert.deepEqual([record.source.sourceInFrame, record.source.durationFrames, record.source.fps], [fps, fps, fps]);
+    assert.equal(record.output.mode, codec === 'aac' ? 'copy' : 'transcode');
+    assert.ok(Math.abs(record.output.durationSeconds - 1) < 0.05, String(record.output.durationSeconds));
+    const asset = f.store.get('assets', record.assetId) as Record<string, unknown>;
+    assert.deepEqual(asset.clipAudioSource, {clipId: f.clipId, sourceAssetId: f.sourceAssetId, sourceHash: f.sourceSha,
+      sourceInFrame: fps, durationFrames: fps, fps, taskId: exportId, mode: record.output.mode});
+    const file = path.join(f.store.projectDir, String((asset.reference as {path?: string}).path));
+    const pcm = await decodeOutputPcm(file);
+    assert.ok(toneAmplitude(pcm, 0.07, 0.14, 660) > 0.05, 'seek reached the middle one-second tone');
+    assert.ok(toneAmplitude(pcm, 0.07, 0.14, 220) < 0.015, 'seek excluded the first tone');
+    assert.ok(toneAmplitude(pcm, 0.84, 0.91, 440) < 0.015, 'trim excluded the last tone');
+    assert.deepEqual(startClipAudioExport(f.store, {projectId: f.projectId, requestId, clipId: f.clipId}), record);
+    if (fps !== 30) {
+      f.store.db.exec('SAVEPOINT clip_audio_clock');
+      try {
+        f.store.db.prepare("UPDATE exports SET data=json_set(data,'$.source.fps',30) WHERE id=?").run(exportId);
+        assert.throws(() => getClipAudioExport(f.store, {projectId: f.projectId, exportId}), {code: 'INVALID_MEDIA'});
+        assert.throws(() => startClipAudioExport(f.store, {projectId: f.projectId, requestId, clipId: f.clipId}), {code: 'INVALID_MEDIA'});
+      } finally {f.store.db.exec('ROLLBACK TO clip_audio_clock; RELEASE clip_audio_clock');}
+      delete process.env.MIOON_FORMAT6_DEV;
+      try {assert.throws(() => getClipAudioExport(f.store, {projectId: f.projectId, exportId}), {code: 'PROJECT_READER_UPDATE_REQUIRED'});}
+      finally {process.env.MIOON_FORMAT6_DEV = '1';}
+    }
+  });
 });
 
 test('separated sound renders the muted source silent and the clip sound exactly once', {timeout: 240000}, async t => {

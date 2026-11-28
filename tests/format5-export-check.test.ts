@@ -1,9 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
+import {DatabaseSync} from 'node:sqlite';
 import {createBoardUiWireFixture, BOARD_IDS} from './helpers/board-ui-wire-fixture.ts';
 import {freezeFormat5RenderSnapshot, readFormat5AudioProjection, readFormat5RenderProjection} from '../packages/business/src/format5-timeline-render.ts';
 import {prepareTimelineReferenceHashes} from '../packages/business/src/timeline-reference-prepare.ts';
+import {validateTimelineVolumeEnvelopeRows} from '../packages/business/src/timeline-retained-volume-envelope.ts';
+import {VOLUME_ENVELOPE_PROFILE} from '../packages/contracts/src/timeline-volume-envelope.ts';
 
 /** WT-1-05: a saved Format-5 timeline whose native rows are not a legacy
  * TimelineRecord must still reach the export capability/preflight boundary.
@@ -80,6 +83,14 @@ import {referenceForPublishedMedia} from '../packages/business/src/project-media
 import {startWorker} from '../packages/business/src/jobs.ts';
 import {testEnv} from './helpers/test-env.ts';
 import {readOwnedTimelineAsset} from '../packages/business/src/timeline-sources.ts';
+import {allowsFrozenProjectFps} from '../packages/business/src/timeline-record-format.ts';
+import {FORMAT6_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import {TIMELINE_FPS_READER_FEATURE} from '../packages/contracts/src/project-reader-requirements.ts';
+import {TIMELINE_FPS} from '../packages/contracts/src/timeline-fps.ts';
+import {exportPreflightResponseSchema,isExportPreflightResponse} from '../packages/contracts/src/export-preflight.ts';
+import {timelineExportCapabilitiesResponseSchema} from '../packages/contracts/src/timeline-export-profile.ts';
+import {timelineExportAudioCheckSchema} from '../packages/contracts/src/timeline-export-float.ts';
+import {isTimelineRenderRecord} from '../packages/contracts/src/timeline-acknowledgement.ts';
 
 const sha256=(bytes:Buffer)=>createHash('sha256').update(bytes).digest('hex');
 const fixedAt='2026-01-01T00:00:00.000Z';
@@ -170,4 +181,112 @@ test('format-5 capabilities, preflight and real render complete through the expo
   assert.ok(probe.streams.some((stream:any)=>stream.codec_type==='video'));
   assert.ok(probe.streams.some((stream:any)=>stream.codec_type==='audio'));
   assert.ok(Number(probe.format.duration)>3,'output duration follows the frozen 4s timeline');
+});
+
+test('format-6 project clocks bind preflight, frozen approval and actual ranged float export', {timeout: 180000}, async t => {
+  const savedFlag=process.env.MIOON_FORMAT6_DEV;
+  process.env.MIOON_FORMAT6_DEV='1';
+  t.after(()=>{if(savedFlag===undefined)delete process.env.MIOON_FORMAT6_DEV;else process.env.MIOON_FORMAT6_DEV=savedFlag;});
+  const ffmpeg=process.env.MIOON_FFMPEG_PATH??'ffmpeg',ffprobe=process.env.MIOON_FFPROBE_PATH??'ffprobe';
+  for(const fps of TIMELINE_FPS)await t.test(`${fps} fps`,async subtest=>{
+    const root=mkdtempSync(path.join(realpathSync(tmpdir()),'mioon-format6-fps-export-'));
+    const store=createProjectStore({projectId:fid(1),projectFile:path.join(root,'project.mioon'),
+      targetFormat:FORMAT6_PROJECT_SCHEMA_VERSION,allowFormat6:true,
+      locate:()=>({localDir:path.join(root,'records'),cacheDir:path.join(root,'cache'),tempDir:path.join(root,'temp')})});
+    const library=openAppLibrary({dataDir:path.join(root,'app')});
+    const services=createServices(store,new Map(),{env:{},application:createProjectServiceApplication(library,undefined,{})});
+    let closed=false;
+    subtest.after(async()=>{if(!closed){await services.drain();store.close();}library.close();rmSync(root,{recursive:true,force:true});});
+    const projectId=store.projectId, sourceFile=path.join(root,'source.mp4');
+    execFile(ffmpeg,['-v','error','-y','-f','lavfi','-i','testsrc2=size=64x64:rate=30:duration=2',
+      '-f','lavfi','-i','sine=frequency=440:sample_rate=48000:duration=2','-c:v','libx264','-pix_fmt','yuv420p',
+      '-c:a','aac',sourceFile],{env:testEnv()});
+    const assetId=fid(10),videoTrack=fid(70),audioTrack=fid(71),clipId=fid(30),rootNode=fid(2),mediaNode=fid(4),timelineId=fid(50);
+    const reference=await referenceForPublishedMedia(store,sourceFile);
+    const rect={x:0,y:0,width:720,height:720};
+    const sequenceSource={kind:'media',nodeId:mediaNode,segmentGroupId:fid(40)};
+    store.tx(()=>{
+      store.put('projects',{id:projectId,name:`Format 6 ${fps} fps`,createdAt:fixedAt,updatedAt:fixedAt,revision:1,
+        ...(fps===30?{}:{requiredReaderFeatures:[TIMELINE_FPS_READER_FEATURE]})});
+      store.put('assets',{id:assetId,projectId,name:'source.mp4',mimeType:'video/mp4',duration:2,
+        ...reference,hasVideo:true,hasAudio:true,createdAt:fixedAt});
+      store.put('nodes',{id:rootNode,projectId,type:'sequence_root',name:'成片',position:{x:0,y:0},createdAt:fixedAt});
+      store.put('nodes',{id:mediaNode,projectId,type:'video',assetId,name:'素材',position:{x:0,y:0},createdAt:fixedAt});
+      store.put('edges',{id:fid(95),projectId,kind:'sequence',source:rootNode,target:mediaNode,createdAt:fixedAt});
+      store.put('timelines',{id:timelineId,projectId,revision:1,width:720,height:720,fps,durationFrames:fps,
+        createdAt:fixedAt,updatedAt:fixedAt,mainTrack:{trackId:videoTrack,sequenceNodeId:rootNode},
+        tracks:[{id:videoTrack,name:'V1',kind:'video',orderIndex:0,hidden:false,muted:false},
+          {id:audioTrack,name:'A1',kind:'audio',orderIndex:1,hidden:false,muted:false}],
+        clips:[
+          {id:clipId,trackId:videoTrack,name:'素材',startFrame:0,durationFrames:fps,sourceInFrame:3,rect,gain:1,
+            assetId,sourceState:'ready',sequenceSource,volumeEnvelope:{profileId:VOLUME_ENVELOPE_PROFILE,
+              points:[{frame:0,multiplier:0.5},{frame:fps,multiplier:0.75}]}},
+          {id:fid(31),trackId:audioTrack,name:'声音',startFrame:3,durationFrames:2,sourceInFrame:1,rect,gain:0.5,
+            assetId,sourceState:'ready',soundOnly:true,anchor:{clipId,offsetFrames:3}},
+        ]});
+      const baseline={version:1,board:[{nodeId:mediaNode,kind:'media',assetId}],
+        track:[{nodeId:mediaNode,segmentGroupId:fid(40),clipId,kind:'media',assetId}]};
+      store.db.prepare('INSERT INTO project.sequence_sync_state(timelineId,projectId,sequenceNodeId,revision,baseline) VALUES(?,?,?,?,?)')
+        .run(timelineId,projectId,rootNode,1,JSON.stringify(baseline));
+    });
+    assert.equal(allowsFrozenProjectFps(store.db,fps),fps!==30);
+    assert.throws(()=>allowsFrozenProjectFps(store.db,fps===30?24:30),{code:'INVALID_TIMELINE_SNAPSHOT'});
+    const exportSettings={profileId:'mp4_h264_float_checked_v2',resolution:'short_360',rateControl:{mode:'crf',quality:'standard'}};
+    const exportRange={startFrame:1,endFrame:fps-1};
+    const input={projectId,expectedRevision:1,exportSettings,exportRange};
+    const capability=timelineExportCapabilitiesResponseSchema.parse(
+      await services.call('timeline.export.capabilities',{projectId,expectedRevision:1,exportSettings}));
+    assert.equal(capability.status,'available',JSON.stringify(capability));
+    assert.equal(capability.delivery?.effective.fps,fps);
+    const preflight=exportPreflightResponseSchema.parse(await services.call('timeline.export.preflight',input));
+    assert.equal(preflight.status,'ready',JSON.stringify(preflight));
+    assert.equal(isExportPreflightResponse(preflight,input),fps===30);
+    assert.ok(isExportPreflightResponse(preflight,input,{projectFps:fps}));
+    assert.equal(preflight.summary?.fps,fps);
+    assert.ok(preflight.snapshotHash);
+    const request={...input,requestId:`format6-fps-export-${fps}`,purpose:'export',preflightSnapshotHash:preflight.snapshotHash};
+    await assert.rejects(async()=>services.call('timeline.render',{...request,preflightSnapshotHash:'0'.repeat(64)}),{code:'PREFLIGHT_STALE'});
+    const accepted=await services.call('timeline.render',request) as {id:string;status:string;
+      snapshot:{timeline:{fps:number};delivery:{effective:{fps:number}}}};
+    assert.equal(accepted.status,'queued');
+    assert.equal(accepted.snapshot.timeline.fps,fps);
+    assert.equal(accepted.snapshot.delivery.effective.fps,fps);
+    assert.ok(isTimelineRenderRecord(accepted,request,{format:FORMAT6_PROJECT_SCHEMA_VERSION}));
+    const worker=startWorker(store,services,new Map());
+    let output: {status:string;assetId:string|null;audioCheck?:unknown;error?:unknown}|undefined;
+    try{
+      for(let attempt=0;attempt<120;attempt++){
+        await worker.tick();
+        output=await services.call('export.get',{exportId:accepted.id}) as typeof output;
+        assert.ok(output);
+        if(['succeeded','failed'].includes(output.status))break;
+        await new Promise(resolve=>setTimeout(resolve,50));
+      }
+    }finally{await worker.stop();}
+    assert.ok(output);
+    assert.equal(output.status,'succeeded',JSON.stringify(output.error));
+    const audioCheck=timelineExportAudioCheckSchema.parse(output.audioCheck);
+    assert.equal(audioCheck.fps,fps===30?undefined:fps);
+    assert.ok(audioCheck.status==='complete');
+    const outputFrames=fps-2;
+    assert.equal(audioCheck.measurement.sampleFrames,outputFrames*48000/fps);
+    assert.ok(isTimelineRenderRecord(output,request,{format:FORMAT6_PROJECT_SCHEMA_VERSION}));
+    assert.deepEqual(await services.call('timeline.render',request),accepted);
+    assert.ok(output.assetId);
+    const asset=store.get('assets',output.assetId) as {reference:{path:string}};
+    const media=JSON.parse(execFile(ffprobe,['-v','error','-show_entries',
+      'stream=codec_type,avg_frame_rate,r_frame_rate,nb_frames,duration_ts,time_base,sample_rate','-of','json',
+      path.join(store.projectDir,asset.reference.path)],{encoding:'utf8',env:testEnv()})) as {streams:Record<string,unknown>[]};
+    const video=media.streams.find(stream=>stream.codec_type==='video');
+    assert.ok(video);
+    assert.deepEqual([video.r_frame_rate,video.avg_frame_rate,Number(video.nb_frames),video.duration_ts,video.time_base],
+      [`${fps}/1`,`${fps}/1`,outputFrames,outputFrames*30000/fps,'1/30000']);
+    assert.equal(media.streams.find(stream=>stream.codec_type==='audio')?.sample_rate,'48000');
+    await services.drain();
+    store.close();
+    closed=true;
+    const persisted=new DatabaseSync(store.projectFile,{readOnly:true});
+    try {assert.doesNotThrow(()=>validateTimelineVolumeEnvelopeRows(persisted));}
+    finally {persisted.close();}
+  });
 });

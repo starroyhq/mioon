@@ -11,6 +11,8 @@ import type {DatabaseSync} from 'node:sqlite';
 import {isSequenceTimelineFormat, isTimelineRecord, isTimelineReplacementResponse,
   type TimelineRecordOptions} from '../../contracts/src/timeline-replacement.ts';
 import {isTimelineMutationResponse, isTimelineRenderRecord} from '../../contracts/src/timeline-acknowledgement.ts';
+import {assertProjectReaderRequirements} from './project-file/reader-requirements.ts';
+import {FORMAT6_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
 import {timelineStorageFormat, timelineStorageSchema} from './project-file/timeline-storage.ts';
 
 type PreparedDatabase = Pick<DatabaseSync, 'prepare'>;
@@ -28,6 +30,18 @@ export function timelineRecordFormatOf(db: PreparedDatabase): number {
   const format = isSequenceTimelineFormat(stored) ? stored : 4;
   formatCache.set(db as object, format);
   return format;
+}
+
+/** Bind a frozen export to the clock of its authoritative project file. A
+ * project may edit its timeline after enqueue, but cannot change this clock. */
+export function allowsFrozenProjectFps(db: DatabaseSync, fps: unknown): boolean {
+  const format = timelineRecordFormatOf(db);
+  if (format !== FORMAT6_PROJECT_SCHEMA_VERSION && fps === 30) return false;
+  if (format === FORMAT6_PROJECT_SCHEMA_VERSION) {
+    const saved = assertProjectReaderRequirements(db, timelineStorageSchema(db), format);
+    if (saved !== undefined && saved === fps) return saved !== 30;
+  }
+  throw Object.assign(new Error('Frozen timeline clock does not match the project file'), {code: 'INVALID_TIMELINE_SNAPSHOT'});
 }
 
 export function timelineFormatOptions(db: PreparedDatabase, options: TimelineRecordOptions = {}): TimelineRecordOptions {

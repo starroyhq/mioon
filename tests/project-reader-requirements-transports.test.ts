@@ -12,9 +12,11 @@ import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {projectLocation, serverAppDirectories} from '../apps/server/src/project-host/directories.ts';
 import {FORMAT6_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {projectEntryOpenFailure} from '../packages/contracts/src/project-entry-open-failure.ts';
-import {PROJECT_READER_UPDATE_REQUIRED, TIMELINE_FPS_READER_FEATURE} from '../packages/contracts/src/project-reader-requirements.ts';
+import {PROJECT_READER_UPDATE_REQUIRED} from '../packages/contracts/src/project-reader-requirements.ts';
 import {testEnv} from './helpers/test-env.ts';
 import {startServer, type InspectApplication} from './helpers/test-server.ts';
+
+const futureFeature = 'future-timeline-reader-v1';
 
 function fileTree(root: string): unknown {
   const info = lstatSync(root, {throwIfNoEntry: false});
@@ -46,7 +48,7 @@ test('a future format-6 project is rejected before open, import, copy, history a
   let sourceStamp: {contentSequence: number; contentToken: string};
   try {
     assert.equal(raw.prepare('PRAGMA user_version').get()?.user_version, FORMAT6_PROJECT_SCHEMA_VERSION);
-    assert.equal(raw.prepare("UPDATE projects SET data=json_set(data,'$.requiredReaderFeatures',json_array(?))").run(TIMELINE_FPS_READER_FEATURE).changes, 1);
+    assert.equal(raw.prepare("UPDATE projects SET data=json_set(data,'$.requiredReaderFeatures',json_array(?))").run(futureFeature).changes, 1);
     assert.equal(raw.prepare("UPDATE timelines SET data=json_set(data,'$.fps',24)").run().changes, 1);
     const stamp = raw.prepare('SELECT contentSequence,contentToken FROM project_file WHERE singleton=1').get();
     assert.ok(typeof stamp?.contentSequence === 'number' && typeof stamp.contentToken === 'string');
@@ -64,7 +66,7 @@ test('a future format-6 project is rejected before open, import, copy, history a
     receipts: db.prepare('SELECT * FROM app_operation_receipts ORDER BY operation, requestId').all(),
   }));
   const beforeFiles = files(), beforeRecords = records();
-  const details = {database: 'project', formatVersion: FORMAT6_PROJECT_SCHEMA_VERSION, unsupportedFeatures: [TIMELINE_FPS_READER_FEATURE]};
+  const details = {database: 'project', formatVersion: FORMAT6_PROJECT_SCHEMA_VERSION, unsupportedFeatures: [futureFeature]};
   const entries = server.projectEntries;
   for (const file of [projectFile, sourceFile]) {
     await assert.rejects(entries.openPath({projectFile: file, windowId: randomUUID()}), {code: PROJECT_READER_UPDATE_REQUIRED, details});

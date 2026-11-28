@@ -224,28 +224,15 @@ test('Mio sends native clip and cue counts frozen at the start of a format-5 run
   }
 });
 
-test('Mio reports a foreign unadopted source version without editing the project', async t => {
-  const store = fixture(t, {withMioRuntime: true});
-  const foreignAsset = id(12), foreignVersion = id(21), foreignJob = id(72);
-  store.tx(() => {
-    store.put('assets', {id: foreignAsset, projectId, name: 'b.mp4', mimeType: 'video/mp4', duration: 4,
-      sha256: sha('b'), sizeBytes: 10});
-    store.put('jobs', {id: foreignJob, projectId, status: 'succeeded', phase: 'done',
-      providerId: 'mock', model: 'mock', shotId: shotB, versionId: foreignVersion, createdAt: at, updatedAt: at});
-    store.put('versions', {id: foreignVersion, projectId, jobId: foreignJob, shotId: shotB,
-      number: 1, assetId: foreignAsset, sha256: sha('b'), createdAt: at});
-  });
+async function rejectedMioSequencePreview(store: ProjectStore, action: AgentTaskToolCall) {
   const settings = await createTestAgentSettings({persistence: {load: async () => null, save: async () => {}}});
   const services = createServices(store, new Map());
   const journal = createMioJournal(store, mioTestPolicy);
   const tools = createAgentTaskTools({store, services, journal});
   const authorizations = createTestAuthorizations(store, settings);
-  const toolName = 'mioon_sequence_clip_edit';
-  const replacement: AgentTaskToolCall = {id: 'switch_source', name: toolName,
-    arguments: {kind: 'replace-source', clipId: clipA, assetId: foreignAsset, versionId: foreignVersion}};
   const rounds: AgentTaskToolCall[][] = [
-    [{id: 'load_clip_tool', name: 'mioon_tools_load', arguments: {names: [toolName]}}],
-    [replacement],
+    [{id: 'load_sequence_tool', name: 'mioon_tools_load', arguments: {names: [action.name]}}],
+    [action],
   ];
   const gateway: TaskGateway = async function* (request) {
     request.beforeSubmit?.();
@@ -273,15 +260,13 @@ test('Mio reports a foreign unadopted source version without editing the project
     assert.equal(snapshot.run.status, 'failed', JSON.stringify({
       reason: snapshot.run.pauseReason, steps: snapshot.steps.map(({kind, status, error}) => ({kind, status, error})),
     }));
-    const step = snapshot.steps.find(candidate => candidate.toolCall?.id === replacement.id);
+    const step = snapshot.steps.find(candidate => candidate.toolCall?.id === action.id);
     assert.ok(step);
-    const error = {code: 'INVALID_MEDIA', message: '这个版本不属于该镜头，也没有被采纳。'};
-    assert.deepEqual(step.error, error);
-    assert.deepEqual(step.result, {error});
     assert.equal(step.status, 'failed');
     assert.deepEqual(snapshot.changes, []);
     assert.deepEqual(store.get('timelines', timelineId), timeline);
     assert.deepEqual(readSequenceEditHistory(store, 'mio'), history);
+    return step;
   } finally {
     runtime.close();
     await runtime.drain();
@@ -289,6 +274,39 @@ test('Mio reports a foreign unadopted source version without editing the project
     await services.drain();
     await settings.close();
   }
+}
+
+test('Mio reports a foreign unadopted source version without editing the project', async t => {
+  const store = fixture(t, {withMioRuntime: true});
+  const foreignAsset = id(12), foreignVersion = id(21), foreignJob = id(72);
+  store.tx(() => {
+    store.put('assets', {id: foreignAsset, projectId, name: 'b.mp4', mimeType: 'video/mp4', duration: 4,
+      sha256: sha('b'), sizeBytes: 10});
+    store.put('jobs', {id: foreignJob, projectId, status: 'succeeded', phase: 'done',
+      providerId: 'mock', model: 'mock', shotId: shotB, versionId: foreignVersion, createdAt: at, updatedAt: at});
+    store.put('versions', {id: foreignVersion, projectId, jobId: foreignJob, shotId: shotB,
+      number: 1, assetId: foreignAsset, sha256: sha('b'), createdAt: at});
+  });
+  const step = await rejectedMioSequencePreview(store, {id: 'switch_source', name: 'mioon_sequence_clip_edit',
+    arguments: {kind: 'replace-source', clipId: clipA, assetId: foreignAsset, versionId: foreignVersion}});
+  const error = {code: 'INVALID_MEDIA', message: '这个版本不属于该镜头，也没有被采纳。'};
+  assert.deepEqual(step.error, error);
+  assert.deepEqual(step.result, {error: {...error, details: {reason: 'VERSION_NOT_OWNED_OR_ADOPTED'}}});
+});
+
+test('Mio preserves the format 6 clock lock reason without editing the timeline', async t => {
+  const previous = process.env.MIOON_FORMAT6_DEV;
+  process.env.MIOON_FORMAT6_DEV = '1';
+  t.after(() => {
+    if (previous === undefined) delete process.env.MIOON_FORMAT6_DEV;
+    else process.env.MIOON_FORMAT6_DEV = previous;
+  });
+  const store = fixture(t, {withMioRuntime: true, format6: true});
+  const step = await rejectedMioSequencePreview(store, {id: 'change_clock', name: 'mioon_sequence_timeline_edit',
+    arguments: {kind: 'fps-set', fps: 25}});
+  const error = {code: 'TIMELINE_FPS_LOCKED', message: '有片段或字幕的时间线不能修改帧率。'};
+  assert.deepEqual(step.error, error);
+  assert.deepEqual(step.result, {error: {...error, details: {reason: 'TIMELINE_NOT_EMPTY'}}});
 });
 
 test('Mio write actions preview and commit the server-built envelope with origin mio', t => {

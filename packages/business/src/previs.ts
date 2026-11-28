@@ -12,8 +12,8 @@ import type {PrevisNodeRecord,PrevisScene,PrevisThumbnailGetResponse,PrevisThumb
 import {usesPrevisSchema} from './store-capabilities.ts';
 import {validateImageConsumption} from './image-consumption.ts';
 import {ownsStoreLock} from './store-runtime.ts';
-import {FORMAT4_PROJECT_SCHEMA_VERSION, isSequenceProjectFormat} from './project-file/schema/databases.ts';
-import {readTimelineHeaderStorage} from './project-file/timeline-storage.ts';
+import {FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT6_PROJECT_SCHEMA_VERSION, isSequenceProjectFormat} from './project-file/schema/databases.ts';
+import {readTimelineHeaderStorage,timelineStorageFormat} from './project-file/timeline-storage.ts';
 import {DEFAULT_TIMELINE_OUTPUT_PRESET,timelineOutputPreset} from '../../contracts/src/timeline-output-geometry.ts';
 
 // Camera previs nodes (schema64). A node's scene is saved whole under scene
@@ -155,7 +155,9 @@ function thumbnailFrame(db: DatabaseSync,projectId: string): string {
  const snapshot=readTimelineHeaderStorage(db,projectId,{schema:'project'});
  if(!snapshot)return DEFAULT_TIMELINE_OUTPUT_PRESET;
  const header=snapshot.header as Record<string,unknown>|null;
- const preset=timelineOutputPreset(header);
+ const allowProjectFps=snapshot.format5&&header?.fps!==30&&process.env.MIOON_FORMAT6_DEV==='1'&&
+  timelineStorageFormat(db,'project')===FORMAT6_PROJECT_SCHEMA_VERSION;
+ const preset=timelineOutputPreset(header,{allowProjectFps});
  if(!preset)return invalid();
  return preset.id;
 }

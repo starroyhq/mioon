@@ -55,7 +55,7 @@ test('every Mio format-5 tool has one CLI/MCP operation, including new tools', (
 });
 
 test('action wrappers reuse the exact Mio action branches; only host projectId/requestId differ', () => {
-  for (const tool of listAgentTaskTools(false,true)) {
+  for (const tool of listAgentTaskTools(false,true,true)) {
     const publicOperation = MIO_TO_PUBLIC[tool.operation];
     if (!publicOperation || !tool.operation.startsWith('sequence.tool.') || tool.operation==='sequence.tool.undo') continue;
     const publicSchema = operationDefinition(publicOperation).inputSchema;
@@ -70,6 +70,19 @@ test('action wrappers reuse the exact Mio action branches; only host projectId/r
       assert.deepEqual(required(match), required(branch), `${tool.operation}:${String(kind)}`);
     }
   }
+});
+
+test('Mio exposes saved asset ranges in both formats and gates project FPS editing', () => {
+  const timeline = (format6Development: boolean) => listAgentTaskTools(false, true, format6Development)
+    .find(tool => tool.operation === 'sequence.tool.timeline');
+  const branch = (format6Development: boolean) => branches(timeline(format6Development)?.parameters)
+    .find(item => (item.properties as {kind?: {const?: unknown}} | undefined)?.kind?.const === 'insert-asset');
+  assert.equal(properties(branch(false)).includes('assetRange'), true);
+  assert.equal(properties(branch(true)).includes('assetRange'), true);
+  assert.match(timeline(false)!.description, /assetRange/u);
+  assert.match(timeline(true)!.description, /assetRange/u);
+  assert.doesNotMatch(timeline(false)!.description, /fps-set/u);
+  assert.match(timeline(true)!.description, /fps-set/u);
 });
 
 test('public undo and redo require a named action and exact cursor; Mio supplies its own cursor', () => {

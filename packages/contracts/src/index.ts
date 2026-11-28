@@ -36,6 +36,7 @@ export * from './timeline-delivery.ts';
 import {timelineExportSettingsSchema,timelineExportCapabilitySchemas} from './timeline-export-profile.ts';
 export * from './timeline-export-profile.ts';
 import {z} from 'zod';
+import {timelineFpsSchema} from './timeline-fps.ts';
 import {projectBackupSchemas,projectBackupDescriptions} from './project-backups.ts';
 import {projectVersionSchemas,projectVersionDescriptions} from './project-version-operations.ts';
 import {timelineSubtitleSchemas} from './timeline-subtitles.ts';
@@ -204,7 +205,7 @@ export const schemas={
 ...audioPreviewSchemas,
 ...continuousAudioSchemas,
 ...timelineExportCapabilitySchemas,
-'project.create':z.object({name:z.string().min(1).max(150),description:z.string().max(2000).optional(),timelinePresetId:z.enum(['portrait_1080','landscape_1080','square_1080']).optional()}).strict(),
+'project.create':z.object({name:z.string().min(1).max(150),description:z.string().max(2000).optional(),timelinePresetId:z.enum(['portrait_1080','landscape_1080','square_1080']).optional(),timelineFps:timelineFpsSchema.optional()}).strict(),
 'project.list':z.object({}).strict(),
 'project.get':z.object({projectId:id}).strict(),
 'asset.import':z.object({projectId:id,name:z.string().min(1).max(200),mimeType:z.enum(['image/png','image/jpeg','image/webp','video/mp4','video/webm','audio/wav','audio/mpeg','audio/mp4']),dataBase64:z.string().max(40*1024*1024)}).strict(),

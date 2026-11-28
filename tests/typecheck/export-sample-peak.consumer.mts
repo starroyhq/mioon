@@ -19,8 +19,9 @@ type StatesExact = Expect<Equal<ExportSamplePeakResponse['status'], 'ready' | 'u
 type StereoExact = Expect<Equal<ExportSamplePeakMeasurement['channels'], 2>>;
 type FrameRateExact = Expect<Equal<ExportSamplePeakMeasurement['sampleRate'], 48000>>;
 type ChannelOrderExact = Expect<Equal<ExportSamplePeakMeasurement['channelPeaks'][0]['channel'], 0>>;
-type ArtifactExact = Expect<Equal<keyof ExportSamplePeakArtifact, 'assetId' | 'sha256' | 'sizeBytes' | 'timelineRevision' | 'deliveryName' | 'exportRange'>>;
-type FrameCompatibilityInput = Expect<Equal<Parameters<typeof isExportSamplePeakFrameCountCompatible>, [sampleFrames: number, outputFrames: number]>>;
+type ArtifactExact = Expect<Equal<keyof ExportSamplePeakArtifact, 'assetId' | 'sha256' | 'sizeBytes' | 'timelineRevision' | 'deliveryName' | 'exportRange' | 'fps'>>;
+type ArtifactClock = Expect<Equal<ExportSamplePeakArtifact['fps'], 24 | 25 | 60 | undefined>>;
+type FrameCompatibilityInput = Expect<Equal<Parameters<typeof isExportSamplePeakFrameCountCompatible>, [sampleFrames: number, outputFrames: number, fps?: 24 | 25 | 30 | 60]>>;
 export function consume(candidate: unknown, input: ExportSamplePeakInput): void {
   // @ts-expect-error Public sample-peak input cannot accept mutation request IDs.
   const invalidInput: ExportSamplePeakInput = {...input, requestId: 'not-a-mutation'};

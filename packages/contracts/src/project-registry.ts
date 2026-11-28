@@ -1,5 +1,6 @@
 import {FCP_EXPORT_TASK_KIND as FCPXML_EXPORT_TASK_KIND, fcpExportStartInputSchema} from './fcp-export.ts';
 import {z} from 'zod';
+import {timelineFpsSchema} from './timeline-fps.ts';
 import {projectIdSchema} from './project-file.ts';
 import {isNormalizedAbsolutePath} from './media-reference.ts';
 /** Records the app database keeps on this computer (project file v1,
@@ -21,7 +22,7 @@ export type ProjectFileIdentity = z.infer<typeof projectFileIdentitySchema>;
  * project is open and when it closes; the server builds the cover URL. */
 export const recentProjectSummarySchema = z.object({
   description: z.string().max(2000), revision: z.number().int().positive().max(Number.MAX_SAFE_INTEGER), createdAt: date, updatedAt: date,
-  fps: z.literal(30), width: z.number().int().positive(), height: z.number().int().positive(), presetId: z.string().min(1).max(100),
+  fps: timelineFpsSchema, width: z.number().int().positive(), height: z.number().int().positive(), presetId: z.string().min(1).max(100),
   shotCount: count, durationFrames: count,
   cover: z.object({assetId: id, mimeType: z.enum(['image/png', 'image/jpeg', 'image/webp', 'video/mp4', 'video/webm'])}).strict().nullable(),
 }).strict();

@@ -53,6 +53,7 @@ export function format5ChainSyncBaseline(value:Format5SyncBaseline):ChainSyncBas
 
 export interface Format5SequenceGraphInput {
   readonly projectId:string;
+  readonly formatVersion?:number | undefined;
   readonly shots:readonly unknown[];
   /** Identity-only projection, including archived shots retained by versions. */
   readonly retainedShots?:readonly unknown[];
@@ -236,7 +237,7 @@ export function validateFormat5SequenceGraph(input:Format5SequenceGraphInput):Fo
   const derived=deriveFilmChains(board);
   if(derived.issues.length)return fail(derived.issues[0]!.code,derived.issues[0]!.nodeIds);
   if(input.timeline!==undefined){
-    assertFormat5Timeline(input.timeline,{projectId:input.projectId});
+    assertFormat5Timeline(input.timeline,{projectId:input.projectId,formatVersion:input.formatVersion});
     validateBoundTimeline(input.timeline,derived,kinds,rows);
     validateSourcesAndDialogue(input.timeline,input,versions,adoptions,assets,dialogueByShot,retainedShots);
   }
@@ -265,12 +266,12 @@ function validateSourcesAndDialogue(
         // «Separate sound» is the only legal way for an audio track to reference
         // a video asset: it must really be a video source that carries audio.
         if(typeof mime!=='string'||!mime.startsWith('video/')||facts.hasAudio!==true)fail('FORMAT5_NODE_SOURCE_INVALID',[clip.id]);
-        if(clipSourceEndFrame(clip)>(facts.frames??=(sourceFrameCount(asset.duration)??0)))fail('SOURCE_BOUNDS',[clip.id]);
+        if(clipSourceEndFrame(clip)>(facts.frames??=(sourceFrameCount(asset.duration,timeline.fps)??0)))fail('SOURCE_BOUNDS',[clip.id]);
       }else{
         const supported=kind==='video'?videoSourceMimes:audioSourceMimes;
         if(typeof mime!=='string'||!supported.has(mime))fail('FORMAT5_NODE_SOURCE_INVALID',[clip.id]);
         if(mime.startsWith('image/')?clip.sourceInFrame!==0||clip.timing!==undefined:
-            clipSourceEndFrame(clip)>(facts.frames??=(sourceFrameCount(asset.duration)??0)))fail('SOURCE_BOUNDS',[clip.id]);
+            clipSourceEndFrame(clip)>(facts.frames??=(sourceFrameCount(asset.duration,timeline.fps)??0)))fail('SOURCE_BOUNDS',[clip.id]);
       }
     }
     if(clip.versionId!==undefined&&input.versions!==undefined){

@@ -63,13 +63,13 @@ const literal=(value: number): string=>{
  return value<0?`(${text})`:text;
 };
 /** Piecewise-linear value of one keyframe channel at clip-local frame
- * offset+round(t*30), holding the first and last values outside the keyframes.
+ * offset+round(t*fps), holding the first and last values outside the keyframes.
  * The segment frame comes from the timestamp: scale and overlay count n from
  * their already advanced link counter, one ahead of the frame they draw. */
-export function keyframeExpression(keyframes: readonly ClipTransformKeyframe[],pick: (point: ClipTransformKeyframe)=>number,offset: number): string {
+export function keyframeExpression(keyframes: readonly ClipTransformKeyframe[],pick: (point: ClipTransformKeyframe)=>number,offset: number,fps=30): string {
  const values=keyframes.map(pick);
  if(values.every(value=>value===values[0]))return literal(values[0]!);
- const frame=`(${literal(offset)}+round(t*30))`;
+ const frame=`(${literal(offset)}+round(t*${fps}))`;
  let expression=literal(values.at(-1)!);
  for(let index=keyframes.length-1;index>=1;index--){
   const left=keyframes[index-1]!,right=keyframes[index]!,from=values[index-1]!,to=values[index]!;
@@ -95,21 +95,21 @@ export function clipTransformCropFilter(plan: ClipTransformRenderPlan|null,exact
 
 /** Runs after the layer is trimmed and retimed to the segment's frames: a
  * static rotation, then the per-frame scale relative to the layer. */
-export function clipTransformLayerFilters(plan: ClipTransformRenderPlan,offset: number): string {
+export function clipTransformLayerFilters(plan: ClipTransformRenderPlan,offset: number,fps=30): string {
  const rotation=plan.transform.rotation,filters: string[]=[];
  if(rotation!==0){
   const radians=literal(rotation*Math.PI/180);
   filters.push(`rotate=a=${radians}:ow=rotw(${radians}):oh=roth(${radians}):c=none`);
  }
- const scale=keyframeExpression(plan.transform.keyframes,point=>point.scale/plan.factor,offset);
+ const scale=keyframeExpression(plan.transform.keyframes,point=>point.scale/plan.factor,offset,fps);
  filters.push(`scale=w='max(2,2*round(iw*(${scale})/2))':h='max(2,2*round(ih*(${scale})/2))'${plan.animated?':eval=frame':''}`);
  return filters.join(',');
 }
 
 /** Overlay options placing the layer's centre at the rectangle centre plus the
  * keyframed offset; the layer may leave the frame. */
-export function clipTransformOverlayPosition(plan: ClipTransformRenderPlan,rect: {x: number;y: number;width: number;height: number},offset: number,shift?: string): string {
- const x=keyframeExpression(plan.transform.keyframes,point=>point.x,offset),y=keyframeExpression(plan.transform.keyframes,point=>point.y,offset);
+export function clipTransformOverlayPosition(plan: ClipTransformRenderPlan,rect: {x: number;y: number;width: number;height: number},offset: number,shift?: string,fps=30): string {
+ const x=keyframeExpression(plan.transform.keyframes,point=>point.x,offset,fps),y=keyframeExpression(plan.transform.keyframes,point=>point.y,offset,fps);
  // A push transition moves the placed content horizontally per frame.
  return `x='${literal(rect.x+rect.width/2)}+${x}-overlay_w/2${shift?`+${shift}`:''}':y='${literal(rect.y+rect.height/2)}+${y}-overlay_h/2'${plan.animated||shift?':eval=frame':''}`;
 }

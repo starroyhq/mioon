@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import {timelineFpsSchema} from './timeline-fps.ts';
 import {TIMELINE_FORMAT_WRITE_PRESETS,TIMELINE_OUTPUT_PRESETS,DEFAULT_TIMELINE_OUTPUT_PRESET,timelineOutputPreset} from './timeline-output-geometry.ts';
 export {TIMELINE_OUTPUT_PRESETS,TIMELINE_CURRENT_OUTPUT_PRESETS,TIMELINE_LEGACY_OUTPUT_PRESETS,DEFAULT_TIMELINE_OUTPUT_PRESET,timelineOutputPreset} from './timeline-output-geometry.ts';
 // Closed timeline-output presets. Source/generation and the editing timebase
@@ -18,12 +19,12 @@ export const timelineFrameSetSchema=timelineFormatSchemas['timeline.format.set']
 });
 export const timelineFormatResponseSchema=z.object({projectId:z.string().uuid(),projectRevision:revision,
   timelineId:z.string().uuid().nullable(),timelineRevision:z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
-  presetId:z.enum(TIMELINE_OUTPUT_PRESETS.map(item=>item.id) as [string, ...string[]]),fps:z.literal(30),width:z.number(),height:z.number(),
+  presetId:z.enum(TIMELINE_OUTPUT_PRESETS.map(item=>item.id) as [string, ...string[]]),fps:timelineFpsSchema,width:z.number(),height:z.number(),
   eligible:z.boolean(),blockedReasons:z.array(z.enum(TIMELINE_FORMAT_BLOCKED_REASONS)).max(TIMELINE_FORMAT_BLOCKED_REASONS.length)
 }).strict().superRefine((value,context)=>{
-  if(timelineOutputPreset(value)?.id!==value.presetId || (value.timelineId===null)!==(value.timelineRevision===0) ||
+  if(timelineOutputPreset(value,{allowProjectFps:true})?.id!==value.presetId || (value.timelineId===null)!==(value.timelineRevision===0) ||
      value.eligible!==(value.blockedReasons.length===0) || new Set(value.blockedReasons).size!==value.blockedReasons.length ||
-     value.timelineId===null&&value.presetId!==DEFAULT_TIMELINE_OUTPUT_PRESET)
+     value.timelineId===null&&(value.presetId!==DEFAULT_TIMELINE_OUTPUT_PRESET||value.fps!==30))
     context.addIssue({code:'custom',message:'Invalid timeline format metadata'});
 });
 export type TimelineFormatResponse = z.infer<typeof timelineFormatResponseSchema>;

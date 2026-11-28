@@ -1,3 +1,4 @@
+import {isTimelineFps} from '../../contracts/src/timeline-fps.ts';
 import {mediaLocatorFields} from './asset-reference-record.ts';
 import type {MediaReference} from '../../contracts/src/media-reference.ts';
 import {validateTimelineVolumeEnvelopeClip} from './timeline-volume-envelope-admission.ts';
@@ -39,9 +40,10 @@ function invalid(message: string): never{throw Object.assign(Error(message),{cod
 
 // Defense in depth for recovered, persisted jobs. The service performs the same
 // public validation, but the renderer must never interpret arbitrary effects.
-export function validateTimeline(timeline: TimelineRecord,assets: ReadonlyMap<string, ManagedAssetRecord>,{structureOnly=false}: {structureOnly?: boolean}={}): Map<string, TimelineTrackRecord>{
+export function validateTimeline(timeline: TimelineRecord,assets: ReadonlyMap<string, ManagedAssetRecord>,{structureOnly=false,allowProjectFps=false}: {structureOnly?: boolean;allowProjectFps?: boolean}={}): Map<string, TimelineTrackRecord>{
  // Keep the accepted geometry closed, including readable legacy 720 records.
- if(!timelineOutputPreset(timeline))invalid('Timeline output must match a supported 720 or 1080 preset at 30 fps');
+ const fps=timeline.fps;
+ if(!isTimelineFps(fps)||!timelineOutputPreset(timeline,{allowProjectFps}))invalid(allowProjectFps?'Timeline output must match a supported 720 or 1080 preset and clock':'Timeline output must match a supported 720 or 1080 preset at 30 fps');
  if(!Array.isArray(timeline.tracks)||timeline.tracks.length>12||!Array.isArray(timeline.clips)||!timeline.clips.length||timeline.clips.length>100)invalid('Timeline requires 1–100 clips and at most 12 tracks');
  const tracks=new Map<string, TimelineTrackRecord>();
  for(const t of timeline.tracks){if(!t||!t.id||tracks.has(t.id)||!['video','audio'].includes(t.kind)||!Number.isInteger(t.orderIndex)||typeof t.hidden!=='boolean'||typeof t.muted!=='boolean'||(t.kind==='audio'&&t.hidden))invalid('Invalid timeline track');tracks.set(t.id,t);}
@@ -66,7 +68,7 @@ export function validateTimeline(timeline: TimelineRecord,assets: ReadonlyMap<st
   if(t.kind==='video'?(soundOnly||!isImage&&!isVideo):!(soundOnly?isVideo&&a.hasAudio===true:isAudio))invalid('Asset is not supported on this track');
   if(Object.hasOwn(c,'muted')&&c.muted!==true)invalid('Invalid clip mute flag');
   if(!structureOnly&&(t.kind==='video'&&!a.hasVideo||t.kind==='audio'&&!a.hasAudio))invalid('Asset has no required media stream');
-  if(isImage?c.sourceInFrame!==0:(!structureOnly&&c.sourceInFrame+c.durationFrames>(sourceFrameCount(a.duration)??0)))invalid('Clip exceeds source duration');
+  if(isImage?c.sourceInFrame!==0:(!structureOnly&&c.sourceInFrame+c.durationFrames>(sourceFrameCount(a.duration, fps)??0)))invalid('Clip exceeds source duration');
   for(const effect of ['transition','transitions','effects','speed','rate','opacity','blendMode'])if((c as unknown as Record<string, unknown>)[effect]!==undefined)invalid(`Unsupported timeline effect: ${effect}`);
   duration=Math.max(duration,c.startFrame+c.durationFrames);
  }
@@ -119,8 +121,8 @@ export function validateSavedTimeline(timeline: TimelineRecord,{track,asset}: {t
     if(item.sourceInFrame!==0)throw new AppError('SOURCE_BOUNDS','图片的素材入点必须为0',400,{clipId:item.id});
    }else{
     // A fractional final frame cannot supply a complete output frame. The tiny
-    // tolerance only absorbs the binary representation of exact 30fps times.
-    const sourceFrames=sourceFrameCount(source.duration)??0;
+    // tolerance only absorbs the binary representation of exact project-frame times.
+    const sourceFrames=sourceFrameCount(source.duration,timeline.fps)??0;
     if(sourceFrames<1||item.sourceInFrame+item.durationFrames>sourceFrames)
      throw new AppError('SOURCE_BOUNDS','素材入点和片段时长超出素材范围',400,{clipId:item.id,assetId:source.id,availableFrames:sourceFrames});
    }

@@ -3,7 +3,8 @@ type StrictIntersection<T> = (T extends unknown ? (value: T)=>void : never) exte
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {compileVolumeEnvelopeFilterCandidate as compile,VOLUME_ENVELOPE_FILTER_BYTE_CAP} from '../packages/business/src/timeline-volume-envelope-filter-candidate.ts';
-import {VOLUME_ENVELOPE_PROFILE,createVolumeEnvelopeEvaluator} from '../packages/contracts/src/timeline-volume-envelope.ts';
+import {VOLUME_ENVELOPE_PROFILE,createVolumeEnvelopeEvaluator,type VolumeEnvelope} from '../packages/contracts/src/timeline-volume-envelope.ts';
+import {compileTimelineVolumeEnvelopeFilter,createTimelineVolumeEnvelopeSampler} from '../packages/business/src/timeline-volume-envelope-clock.ts';
 const clip=(points: readonly (readonly [number,number])[],durationFrames: number|undefined=18000)=>({durationFrames,volumeEnvelope:{profileId:VOLUME_ENVELOPE_PROFILE,points:points.map(([frame,multiplier])=>({frame,multiplier}))}});
 
 // Independent restricted grammar reader/interpreter, not JS eval and not FFmpeg.
@@ -48,6 +49,21 @@ test('nearest holds, exact anchors, sample boundaries and detached output',()=>{
   for(const n of ([0,1,3199,3200,3201,6399,6400,6401,11199,11200,11201,14399,14400,19199] as const))assert.equal(evaluate(n),reference.atSample(n));
   for(const p of c.volumeEnvelope.points)assert.equal(evaluate(p.frame*1600),p.multiplier);
   c.volumeEnvelope.points[0].multiplier=0;assert.equal(evaluate(0),0.8);
+});
+
+test('project-clock envelope sampler and filter agree at interior cuts for all integer rates',()=>{
+  const c=clip([[2,0.8],[4,0.1],[7,1],[9,0]],12);
+  const saved={...c,startFrame:111,volumeEnvelope:{...c.volumeEnvelope,profileId:VOLUME_ENVELOPE_PROFILE} satisfies VolumeEnvelope};
+  for(const [fps,frameSamples] of [[24,2000],[25,1920],[30,1600],[60,800]] as const){
+    const offset=3*frameSamples+1,count=12*frameSamples-offset;
+    const filter=compileTimelineVolumeEnvelopeFilter(saved,offset,count,fps), evaluate=parseFilter(filter);
+    const reference=createTimelineVolumeEnvelopeSampler(saved,fps);
+    for(const sample of [offset,4*frameSamples-1,4*frameSamples,4*frameSamples+1,7*frameSamples,12*frameSamples-1])
+      assert.equal(evaluate(sample-offset),reference.atSample(sample));
+    assert.equal(reference.atSample(12*frameSamples),0);
+    assert.equal(reference.atSample(4*frameSamples),0.1);
+    if(fps===30)assert.equal(filter,compile(saved,offset,count));
+  }
 });
 test('original sample offset, seek inside ramp, segment and frame boundaries',()=>{
   const c=clip([[0,0],[4,1],[9,0.2]],12), reference=createVolumeEnvelopeEvaluator(((c) as unknown as Parameters<typeof createVolumeEnvelopeEvaluator>[0]));

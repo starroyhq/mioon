@@ -1,4 +1,8 @@
 import path from 'node:path';
+import {timelineAudioSampleSpan} from '../../contracts/src/timeline-audio-clock.ts';
+import {timelineFpsSchema} from '../../contracts/src/timeline-fps.ts';
+import type {TimelineFps} from '../../contracts/src/timeline-fps.ts';
+
 
 /** The service owns file identity, byte hashes, saved-revision authorization,
  * whole-attempt admission and the response lifetime. This adapter only owns
@@ -35,6 +39,7 @@ export interface TimelineAudioPreviewDecodeRequest {
   readonly sourceInFrame: number;
   readonly frameCount: number;
   readonly segments: readonly TimelineAudioPreviewDecodeSegment[];
+  readonly fps?: TimelineFps;
 }
 export interface TimelineAudioPreviewSourceProbe {
   readonly streamIndex: number;
@@ -136,10 +141,11 @@ export function parseTimelineAudioPreviewProbe(output: unknown): TimelineAudioPr
 }
 
 function validateRequest(request: TimelineAudioPreviewDecodeRequest): TimelineAudioPreviewDecodeRequest {
-  if (!object(request) || Object.keys(request).length !== 3 || !Object.hasOwn(request, 'sourceInFrame') || !Object.hasOwn(request, 'frameCount') || !Object.hasOwn(request, 'segments') ||
+  const fps = request?.fps ?? 30;
+  if (!object(request) || !timelineFpsSchema.safeParse(fps).success || Object.keys(request).length !== (Object.hasOwn(request, 'fps') ? 4 : 3) || !Object.hasOwn(request, 'sourceInFrame') || !Object.hasOwn(request, 'frameCount') || !Object.hasOwn(request, 'segments') ||
       !Number.isSafeInteger(request.sourceInFrame) || request.sourceInFrame < 0 ||
-      !Number.isSafeInteger(request.frameCount) || request.frameCount < 1 || request.frameCount > LIMITS.maxFrames ||
-      request.sourceInFrame + request.frameCount > LIMITS.sourceSeconds * 30 ||
+      !Number.isSafeInteger(request.frameCount) || request.frameCount < 1 || request.frameCount > LIMITS.maxFrames / 30 * fps ||
+      request.sourceInFrame + request.frameCount > LIMITS.sourceSeconds * fps ||
       !Array.isArray(request.segments) || request.segments.length < 1 || request.segments.length > LIMITS.maxSegments) throw configuration();
   let outputFrames = 0, originalEnd = 0, workFrames = 0;
   const segments: TimelineAudioPreviewDecodeSegment[] = [];
@@ -147,8 +153,8 @@ function validateRequest(request: TimelineAudioPreviewDecodeRequest): TimelineAu
     if (!object(segment) || Object.keys(segment).length !== 4 ||
         !['sourceInFrame', 'frameCount', 'trimStartFrame', 'outputFrames'].every(key => Object.hasOwn(segment, key) && typeof segment[key] === 'number' && Number.isSafeInteger(segment[key])) ||
         typeof segment.sourceInFrame !== 'number' || typeof segment.frameCount !== 'number' || typeof segment.trimStartFrame !== 'number' || typeof segment.outputFrames !== 'number' ||
-        segment.sourceInFrame < originalEnd || segment.frameCount < 1 || segment.frameCount > LIMITS.sourceSeconds * 30 ||
-        segment.sourceInFrame + segment.frameCount > LIMITS.sourceSeconds * 30 || segment.trimStartFrame < 0 || segment.outputFrames < 1 ||
+        segment.sourceInFrame < originalEnd || segment.frameCount < 1 || segment.frameCount > LIMITS.sourceSeconds * fps ||
+        segment.sourceInFrame + segment.frameCount > LIMITS.sourceSeconds * fps || segment.trimStartFrame < 0 || segment.outputFrames < 1 ||
         segment.trimStartFrame + segment.outputFrames > segment.frameCount ||
         segment.sourceInFrame + segment.trimStartFrame !== request.sourceInFrame + outputFrames) throw configuration();
     workFrames += segment.frameCount + 1;
@@ -160,9 +166,9 @@ function validateRequest(request: TimelineAudioPreviewDecodeRequest): TimelineAu
       trimStartFrame: segment.trimStartFrame, outputFrames: segment.outputFrames}));
   }
   if (outputFrames !== request.frameCount) throw configuration();
-  return Object.freeze({sourceInFrame: request.sourceInFrame, frameCount: request.frameCount, segments: Object.freeze(segments)});
+  return Object.freeze({sourceInFrame: request.sourceInFrame, frameCount: request.frameCount, segments: Object.freeze(segments), fps});
 }
-const seconds = (frames: number): string => (frames / 30).toFixed(9);
+const seconds = (frames: number, fps: TimelineFps): string => (frames / fps).toFixed(9);
 const localInputArgs = (file: string, container?: string): string[] => [
   '-protocol_whitelist', 'file,pipe', '-format_whitelist', container ?? FORMAT_WHITELIST,
   // MOV references stay disabled even when its actual container was discovered
@@ -182,7 +188,8 @@ export function createTimelineAudioPreviewDecoder(runtime: TimelineAudioPreviewD
   return async function decodeTimelineAudioPreview(file, request, options) {
     if (typeof file !== 'string' || !file || file.includes('\0') || !path.isAbsolute(file) ||
         !options || typeof options.beforeEffect !== 'function' || typeof options.remainingMs !== 'function') throw configuration();
-    const {sourceInFrame, frameCount, segments} = validateRequest(request), sampleFrames = frameCount * LIMITS.samplesPerFrame, expectedBytes = sampleFrames * FRAME_BYTES;
+    const {sourceInFrame, frameCount, segments, fps = 30} = validateRequest(request);
+    const sampleFrames = timelineAudioSampleSpan(sourceInFrame, sourceInFrame + frameCount, fps), expectedBytes = sampleFrames * FRAME_BYTES;
     let callbackFailure: unknown;
     const remaining = (): number => {
       const value = options.remainingMs();
@@ -209,8 +216,8 @@ export function createTimelineAudioPreviewDecoder(runtime: TimelineAudioPreviewD
       fence();
       // Match sourceFrameCount's whole-frame rule, allowing arithmetic noise
       // only. A short audio stream inside a longer video remains admissible.
-      if (sourceInFrame + frameCount > Math.floor(source.durationSeconds * 30 + 1e-6) ||
-          segments.some(segment => segment.sourceInFrame + segment.frameCount > Math.floor(source.durationSeconds * 30 + 1e-6)))
+      if (sourceInFrame + frameCount > Math.floor(source.durationSeconds * fps + 1e-6) ||
+          segments.some(segment => segment.sourceInFrame + segment.frameCount > Math.floor(source.durationSeconds * fps + 1e-6)))
         throw failure('AUDIO_PREVIEW_SOURCE_BOUNDS', 'The requested interval exceeds the available source duration.');
       const pcm = Buffer.allocUnsafe(expectedBytes);
       runtime.onPcmAllocation?.(pcm.byteLength);
@@ -218,9 +225,10 @@ export function createTimelineAudioPreviewDecoder(runtime: TimelineAudioPreviewD
       let bytesSeen = 0, checkedBytes = 0;
       for (const segment of segments) {
         fence();
-        const originalSamples = segment.frameCount * LIMITS.samplesPerFrame;
-        const trimStart = segment.trimStartFrame * LIMITS.samplesPerFrame;
-        const partSamples = segment.outputFrames * LIMITS.samplesPerFrame, partBytes = partSamples * FRAME_BYTES;
+        const from = segment.sourceInFrame, trimFrom = from + segment.trimStartFrame;
+        const originalSamples = timelineAudioSampleSpan(from, from + segment.frameCount, fps);
+        const trimStart = timelineAudioSampleSpan(from, trimFrom, fps);
+        const partSamples = timelineAudioSampleSpan(trimFrom, trimFrom + segment.outputFrames, fps), partBytes = partSamples * FRAME_BYTES;
         const partOffset = bytesSeen;
         const filters = [
           `anullsrc=r=48000:cl=stereo,atrim=end_sample=${originalSamples},asetpts=N/SR/TB[silence]`,
@@ -229,7 +237,7 @@ export function createTimelineAudioPreviewDecoder(runtime: TimelineAudioPreviewD
         ];
         const decoded = await runtime.runStreaming('ffmpeg', [
           '-hide_banner', '-loglevel', 'error', '-nostdin', '-xerror', '-threads', '1', '-filter_complex_threads', '1', '-reinit_filter', '0',
-          '-ss', seconds(segment.sourceInFrame), '-t', seconds(segment.frameCount + 1), ...localInputArgs(file, source.container),
+          '-ss', seconds(segment.sourceInFrame, fps), '-t', seconds(segment.frameCount + 1, fps), ...localInputArgs(file, source.container),
           '-filter_complex', filters.join(';'), '-map', '[out]', '-vn', '-sn', '-dn', '-threads', '1',
           '-c:a', 'pcm_f32le', '-ar', '48000', '-ac', '2', '-f', 'f32le', 'pipe:1',
         ], {...runOptions(partBytes), onStdout(chunk: Buffer): void {

@@ -18,7 +18,7 @@ import {requiresPreparedTimelineExportIdentity,hasSelectedTimelineExportRange,ti
 import {timelineRenderDeliveryFields,hasTimelineDeliveryIdentity,TIMELINE_DELIVERY_RECEIPT_SQL} from '@mioon/contracts/timeline-delivery';
 import {createOwnedMediaGraphReader} from './inspection.ts';
 import {isTimelineExportSnapshot} from '@mioon/contracts';
-import {isTimelineRenderRecordFor} from './timeline-record-format.ts';
+import {allowsFrozenProjectFps,isTimelineRenderRecordFor} from './timeline-record-format.ts';
 import {lstatSync} from 'node:fs';
 import {createHash,randomUUID} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
@@ -620,6 +620,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
    beforeEffect?.();
    const outputGeometry=e.mode==='timeline'?property(e.snapshot,'timeline'):storyboardOutputGeometry(e);
    if(e.mode==='timeline')assertTimelineSpeedRenderable(outputGeometry);
+   const allowProjectFps=e.mode==='timeline'&&allowsFrozenProjectFps(store.db,property(outputGeometry,'fps'));
    // Every cancellable export owns its staging inode, including legacy
    // delivery without an opt-in profile. A late cancel may land after link.
    if(writerOwner){artifact=readOutputArtifact(writerOwner,outputOwner,'export',outputOwner.inputHash);part=artifact?outputArtifactStage(writerOwner,artifact):createOutputArtifactStage(writerOwner,outputOwner,'export');artifactComplete=Boolean(artifact);resumedArtifact=Boolean(artifact);}
@@ -627,15 +628,15 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
    if(!artifact){
    outputHandle=await open(part,'wx',writerOwner?0o600:0o666);outputIdentity=await outputHandle.stat();beforeEffect?.();
    if(e.mode==='timeline') {
-    if(!isTimelineExportSnapshot(e.snapshot,{purpose:e.purpose}))throw Object.assign(Error('Invalid timeline export delivery profile'),{code:'INVALID_TIMELINE_SNAPSHOT'});
-    const assets=await prepareTimelineInputs(e.snapshot as never,{root,projectId:e.projectId,signal,
+    if(!isTimelineExportSnapshot(e.snapshot,{purpose:e.purpose,allowProjectFps}))throw Object.assign(Error('Invalid timeline export delivery profile'),{code:'INVALID_TIMELINE_SNAPSHOT'});
+    const assets=await prepareTimelineInputs(e.snapshot as never,{root,projectId:e.projectId,signal,allowProjectFps,
      beforeEffect,readLut:readLut as never,readAsset:(id: string)=>{beforeEffect?.();return readOwnedTimelineAsset(store.db,e.projectId,id) as never;},validateLinks:(timeline: unknown)=>{beforeEffect?.();return validateFrozenTimelineSourceGraph(store.db,e.projectId,timeline as never);}});checkpoint(signal);
     if(currentOwnedExport(e)?.status!=='running')return;
     preparedAssets=assets as unknown as Map<string, unknown>;
     validateSources=()=>validatePreparedTimelineSources(store.db,e.projectId,e.snapshot as never,preparedAssets as never,{root});
     exportStage(store,e.id,'encoding');
     const rendered=await renderTimeline(e.snapshot as never,assets as never,part,{
-     signal,beforeEffect,...(agentBound?{beforeStart}:{}),readLut:readLut as never,
+     signal,beforeEffect,allowProjectFps,...(agentBound?{beforeStart}:{}),readLut:readLut as never,
      onSegmentProgress:(completed,total)=>exportEncodingProgress(store,e.id,completed,total),
      ...(customExport(e)?{beforeEncode:()=>{if(currentOwnedExport(e)?.status!=='running')throw Object.assign(Error('The frozen export changed during local capability checking.'),{code:'INVALID_TIMELINE_SNAPSHOT'});checkCustomSources();}}:{}),
     });checkpoint(signal);
@@ -710,7 +711,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     const published=await publishProjectOutput(writerOwner,{owner:outputOwner,assetId:completed.assetId,publicationId:completed.publicationId,targetKind:'exports',stageFile:part,mimeType:'video/mp4',sha256:info.sha256,sizeBytes:info.sizeBytes,...(displayName===undefined?{}:{displayName})},publicationOptions,published=>{
      beforeEffect();if(!resumedArtifact)checkCustomSources();
      const {relativePath:_publishedPath,...locator}=published;
-     const asset={id:completed.assetId,projectId:e.projectId,name:exportAssetName(store.db,e,outputGeometry),mimeType:'video/mp4',...info,...locator,producer:{kind:'export',id:e.id},provenance:'export',createdAt:completed.createdAt,url:`/media/${completed.assetId}`};
+     const asset={id:completed.assetId,projectId:e.projectId,name:exportAssetName(store.db,e,outputGeometry,allowProjectFps),mimeType:'video/mp4',...info,...locator,producer:{kind:'export',id:e.id},provenance:'export',createdAt:completed.createdAt,url:`/media/${completed.assetId}`};
      put('assets',asset);put('exports',{...e,status:'succeeded',assetId:asset.id,url:asset.url,error:null,...(audioCheck?{audioCheck}:{}),updatedAt:now()});
     }).catch(error=>{
      if(property(error,'code')==='INVALID_MEDIA'&&property(property(error,'details'),'point')==='registration')throw effectError();
@@ -727,7 +728,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
    await unlink(part);checkpoint(signal);beforeEffect?.();
    const projectOwner=registeredProjectStore(root),publishedReference=projectOwner?await referenceForPublishedMedia(projectOwner,file,{sha256:info.sha256,signal,beforeEffect}):null;
    tx(()=>{beforeEffect?.();if(currentOwnedExport(e)?.status!=='running')throw Object.assign(Error('Invalid local export record.'),{code:'INVALID_TIMELINE_SNAPSHOT'});checkCustomSources();
-    const a: Record<string, unknown>&{url: string}={id:randomUUID(),projectId:e.projectId,name:exportAssetName(store.db,e,outputGeometry),mimeType:'video/mp4',...info,...(publishedReference?{...publishedReference,producer:{kind:'export',id:e.id}}:{relativePath}),provenance:'export',createdAt:now(),url:''};a.url=`/media/${String(a.id)}`;put('assets',a);put('exports',{...e,status:'succeeded',assetId:a.id,url:a.url,error:null,...(floatExport&&floatMeasurement?{audioCheck:bindFloatTimelineMeasurement(e as never,floatMeasurement,now(),{assetId:String(a.id),sha256:info.sha256})}:{}),updatedAt:now()});});
+    const a: Record<string, unknown>&{url: string}={id:randomUUID(),projectId:e.projectId,name:exportAssetName(store.db,e,outputGeometry,allowProjectFps),mimeType:'video/mp4',...info,...(publishedReference?{...publishedReference,producer:{kind:'export',id:e.id}}:{relativePath}),provenance:'export',createdAt:now(),url:''};a.url=`/media/${String(a.id)}`;put('assets',a);put('exports',{...e,status:'succeeded',assetId:a.id,url:a.url,error:null,...(floatExport&&floatMeasurement?{audioCheck:bindFloatTimelineMeasurement(e as never,floatMeasurement,now(),{assetId:String(a.id),sha256:info.sha256})}:{}),updatedAt:now()});});
    publicationAccepted=true;
   } catch(error) {
    terminationUnconfirmed=Boolean(property(error,'terminationUnconfirmed')||hasUnconfirmedMediaProcesses({signal}));

@@ -1,3 +1,5 @@
+import {timelineAudioSampleSpan} from '../../contracts/src/timeline-audio-clock.ts';
+import type {TimelineFps} from '../../contracts/src/timeline-fps.ts';
 import {timelineCompositionSegments} from '@mioon/contracts/timeline-segments';
 import {timelineExportOutputFrames} from '@mioon/contracts/timeline-export-range';
 import type {TimelineExportRange} from '@mioon/contracts/timeline-export-range';
@@ -31,9 +33,9 @@ export interface TimelineExportRangePlan {
 
 /** No defaults are written to the snapshot. In particular, absent-range and
  * explicit full-span plans retain the original graph's exact argument strings. */
-export function planTimelineExportRange(snapshot: TimelineExportRangePlanInput): TimelineExportRangePlan {
-  const outputFrames = timelineExportOutputFrames(snapshot);
-  const {timeline} = snapshot;
+export function planTimelineExportRange(snapshot: TimelineExportRangePlanInput,{allowProjectFps=false}: {allowProjectFps?: boolean} = {}): TimelineExportRangePlan {
+  const outputFrames = timelineExportOutputFrames(snapshot,{allowProjectFps});
+  const {timeline} = snapshot, fps = timeline.fps as TimelineFps;
   const start = snapshot.exportRange?.startFrame ?? 0;
   const end = snapshot.exportRange?.endFrame ?? timeline.durationFrames;
   const segments: TimelineExportRangeSegment[] = [];
@@ -44,7 +46,7 @@ export function planTimelineExportRange(snapshot: TimelineExportRangePlanInput):
     const clipped = first !== 0 || last !== endFrame - beginFrame;
     segments.push(Object.freeze({beginFrame, endFrame, outputFrames: to - from,
       videoOutputTrim: clipped ? `trim=start_frame=${first}:end_frame=${last},` : '',
-      audioOutputTrim: clipped ? `atrim=start_sample=${first * 1600}:end_sample=${last * 1600},` : '',
+      audioOutputTrim: clipped ? `atrim=start_sample=${timelineAudioSampleSpan(beginFrame, from, fps)}:end_sample=${timelineAudioSampleSpan(beginFrame, to, fps)},` : '',
     }));
   }
   return Object.freeze({selected: Object.hasOwn(snapshot, 'exportRange'), outputFrames,

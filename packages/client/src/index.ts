@@ -19,7 +19,8 @@ import {readTimelineLoudnessApplyEnvelope,TIMELINE_LOUDNESS_APPLY_CLIENT_MS} fro
 import {isAudioPreviewPlan} from '@mioon/contracts/timeline-audio-preview';
 import {isContinuousAudioPlan} from '@mioon/contracts/timeline-audio-continuous';
 import {isTimelineExportFloatReadResponse} from '@mioon/contracts/timeline-export-float';
-import {isTimelineRenderRecord} from '@mioon/contracts';
+import {FORMAT6_TIMELINE_FORMAT, isTimelineRenderRecord} from '@mioon/contracts';
+import {isTimelineFps} from '../../contracts/src/timeline-fps.ts';
 import {isImageReviewResponse,isImageReviewPreparationResponse,isImageReviewListResponse} from '@mioon/contracts';
 import {setTimeout as pause} from 'node:timers/promises';
 import {createHash} from 'node:crypto';
@@ -175,6 +176,13 @@ export function validateDiscovery(name: string, input: unknown): {operation?: st
   if (!result.success) throw new ClientError('VALIDATION_ERROR', 'Invalid discovery arguments.', {details: {issues: result.error.issues.map(issue => ({path: issue.path, message: issue.message}))}});
   return result.data as {operation?: string};
 }
+// The authenticated host owns the native project; the public render receipt
+// has no file-format field. A non-30 project clock uses the format-6 validator.
+function timelineRenderWireOptions(value: unknown): {format?: typeof FORMAT6_TIMELINE_FORMAT} {
+  const fps = (value as {snapshot?: {timeline?: {fps?: unknown}}} | null | undefined)?.snapshot?.timeline?.fps;
+  return isTimelineFps(fps) && fps !== 30 ? {format: FORMAT6_TIMELINE_FORMAT} : {};
+}
+
 function interrupted(): ClientError { return new ClientError('INTERRUPTED', 'Stopped waiting locally. No remote job was cancelled.'); }
 function checkSignal(signal: AbortSignal | undefined): void { if (signal?.aborted) throw interrupted(); }
 const sequenceCommitOperations = new Set(['sequence.commit', 'sequence.action.commit']);
@@ -467,7 +475,7 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid mutation acknowledgement.', {details: {...uncertainRequestDetails(body), submissionMayHaveSucceeded: true}});
     if (Object.hasOwn(fcpExportSchemas, operation) && !fcpExportSchemas[operation as FcpExportOperation].output.safeParse(result).success)
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid Final Cut Pro export response.', {details: uncertainRequestDetails(body)});
-    if ((TIMELINE_MUTATION_OPERATIONS as readonly string[]).includes(operation) && !isTimelineMutationResponse(operation, parsed, result))
+    if ((TIMELINE_MUTATION_OPERATIONS as readonly string[]).includes(operation) && !isTimelineMutationResponse(operation, parsed, result, operation === 'timeline.render' ? timelineRenderWireOptions(result) : undefined))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid timeline acknowledgement.', {details: {...uncertainRequestDetails(body), submissionMayHaveSucceeded: true}});
     if ((REFERENCE_MUTATION_OPERATIONS as readonly string[]).includes(operation) && !isReferenceMutationResponse(operation, parsed, result))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid reference acknowledgement.', {details: {...uncertainRequestDetails(body), submissionMayHaveSucceeded: true}});
@@ -509,7 +517,8 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
       :operation==='image.request.get'?isImageRequestResponse(result)&&(result===null||resultRecord?.projectId===parsed.projectId&&resultRecord?.requestId===parsed.requestId)
       :['image.task.list','image.group.list','image.version.list'].includes(operation)?isImageListResponse(operation,parsed,result):true;
     if(!imageReadValid)throw new ClientError('BACKEND_PROTOCOL_ERROR','The backend returned an invalid image record.');
-    if (operation === 'export.get' && !isTimelineExportFloatReadResponse(result, parsed.exportId as string, isTimelineRenderRecord))
+    if (operation === 'export.get' && !isTimelineExportFloatReadResponse(result, parsed.exportId as string,
+      (record, input) => isTimelineRenderRecord(record, input, timelineRenderWireOptions(record))))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid float export report.');
     if (operation === 'timeline.colour.jpeg.inspect' && !isTimelineJpegSourceInspection(result, parsed))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The JPEG source inspection reply does not match the request.');
@@ -519,8 +528,19 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid source colour inspection.', {details:{operation}});
     if (operation === 'timeline.format.get' && !isTimelineFormatReadResponse(result, parsed))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid timeline format record.');
-    if (operation === 'timeline.export.preflight' && !isExportPreflightResponse(result, parsed))
-      throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid export preflight report.');
+    if (operation === 'timeline.export.preflight') {
+      const report = result as {summary?: {fps?: unknown}; timelineId?: unknown} | null | undefined;
+      const fps = report?.summary?.fps;
+      const projectFps = isTimelineFps(fps) ? fps : 30;
+      if (!isExportPreflightResponse(result, parsed, {projectFps}))
+        throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid export preflight report.');
+      if (projectFps !== 30) {
+        // Clock and timeline identity are fixed for this native project.
+        const saved = await rpc<{fps: unknown; timelineId: unknown}>('timeline.format.get', {projectId: parsed.projectId}, options);
+        if (saved.fps !== projectFps || saved.timelineId !== report?.timelineId)
+          throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The export preflight report does not match the saved timeline clock.');
+      }
+    }
     if(operation==='lut.look.inspect'&&!isLookPackInspectResponse(result,parsed))
       throw new ClientError('BACKEND_PROTOCOL_ERROR','The backend returned an invalid Look Pack inspection.',{details:{operation}});
     if (['lut.import','lut.list','lut.inspect'].includes(operation) && !isLutRpcResponse(operation,parsed,result))

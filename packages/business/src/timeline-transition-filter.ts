@@ -4,9 +4,8 @@ import {assertTimelineImageCompositorInputCount} from '../../contracts/src/timel
 
 // Graph pieces for two-clip transitions, used by timeline-media.ts for preview
 // and export alike. A timeline without transitions never reaches them.
-const FPS=30;
 interface RenderClip {readonly id: string;readonly trackId: string;readonly assetId: string;readonly startFrame: number;readonly durationFrames: number;readonly sourceInFrame: number;readonly transitionIn?: unknown}
-interface RenderTimeline {readonly durationFrames: number;readonly clips: readonly RenderClip[]}
+interface RenderTimeline {readonly durationFrames: number;readonly fps?: number;readonly clips: readonly RenderClip[]}
 /** A clip's prepared layer: its label, its overlay position (optionally moved
  * horizontally by a per-frame expression) and the rest of its overlay options. */
 export interface TransitionLayer {readonly label: string;readonly position: (shift?: string)=>string;readonly placement: string}
@@ -18,7 +17,7 @@ export function timelineTransitionRegions(timeline: RenderTimeline,assets: Reado
  try{
   return clipTransitionRegions(timeline,assetId=>{
    const asset=assets.get(assetId);if(!asset)return null;
-   const image=asset.mimeType.startsWith('image/');return {image,frames:image?0:sourceFrameCount(asset.duration)??0};
+   const image=asset.mimeType.startsWith('image/');return {image,frames:image?0:sourceFrameCount(asset.duration,timeline.fps)??0};
   });
  }catch{throw Object.assign(Error('A saved transition does not fit its cut.'),{code:'INVALID_TIMELINE_SNAPSHOT'});}
 }
@@ -55,11 +54,11 @@ export function assertTransitionImageBudget(snapshot: {
 export function segmentTransition(regions: readonly ClipTransitionRegion[],trackId: string,begin: number,end: number): ClipTransitionRegion|null{
  return regions.find(region=>region.trackId===trackId&&region.startFrame<=begin&&end<=region.endFrame)??null;
 }
-const seconds=(frames: number): string=>String(Number((frames/FPS).toFixed(6)));
+const seconds=(frames: number,fps: number): string=>String(Number((frames/fps).toFixed(6)));
 /** Progress at each frame of a segment that starts `into` frames after the
  * transition starts, as xfade counts it: transition frame k is k/D of the way. */
-export function transitionProgress(into: number,durationFrames: number): string{
- return `(${into}+round(t*${FPS}))/${durationFrames}`;
+export function transitionProgress(into: number,durationFrames: number,fps=30): string{
+ return `(${into}+round(t*${fps}))/${durationFrames}`;
 }
 /** Both clips over the composition below them for one segment, ending at `out`.
  * Dissolve and wipes mix two complete compositions, so layers under the clips
@@ -68,19 +67,19 @@ export function transitionProgress(into: number,durationFrames: number): string{
  * from black in the second; the push moves both. A segment that starts inside
  * the transition pads its streams with `into` frames, so the transition
  * advances from where it is. */
-export function transitionFilters(region: ClipTransitionRegion,{begin,width,below,outgoing,incoming,out}: {
- begin: number;width: number;below: string;outgoing: TransitionLayer;incoming: TransitionLayer;out: string;
+export function transitionFilters(region: ClipTransitionRegion,{begin,fps=30,width,below,outgoing,incoming,out}: {
+ begin: number;fps?: number;width: number;below: string;outgoing: TransitionLayer;incoming: TransitionLayer;out: string;
 }): string[]{
  const into=begin-region.startFrame,duration=region.durationFrames;
  if(region.kind==='pushLeft'||region.kind==='pushRight'){
-  const progress=transitionProgress(into,duration),away=region.kind==='pushLeft'?-width:width;
+  const progress=transitionProgress(into,duration,fps),away=region.kind==='pushLeft'?-width:width;
   return [`[${below}][${outgoing.label}]overlay=${outgoing.position(`(${away}*${progress})`)}${outgoing.placement}[${out}a]`,
    `[${out}a][${incoming.label}]overlay=${incoming.position(`(${-away}*(1-${progress}))`)}${incoming.placement}[${out}]`];
  }
- const trim=into?`,trim=start_frame=${into},setpts=N/(${FPS}*TB)`:'';
+ const trim=into?`,trim=start_frame=${into},setpts=N/(${fps}*TB)`:'';
  if(region.kind==='dipToBlack'){
   // Planar RGB: fade scales packed RGBA's alpha too, but a plane format's colour only.
-  const half=seconds(duration/2),progress=transitionProgress(into,duration),pad=into?`fps=${FPS},tpad=start=${into}:start_mode=clone,`:'';
+  const half=seconds(duration/2,fps),progress=transitionProgress(into,duration,fps),pad=into?`fps=${fps},tpad=start=${into}:start_mode=clone,`:'';
   return [`[${outgoing.label}]${pad}format=gbrap,fade=t=out:st=0:d=${half}:color=black${trim}[${out}a]`,
    `[${incoming.label}]${pad}format=gbrap,fade=t=in:st=${half}:d=${half}:color=black${trim}[${out}b]`,
    `[${below}][${out}a]overlay=${outgoing.position()}${outgoing.placement}:enable='lt(${progress},0.5)'[${out}c]`,
@@ -92,8 +91,8 @@ export function transitionFilters(region: ClipTransitionRegion,{begin,width,belo
  const kind={dissolve:'fade',wipeLeft:'wipeleft',wipeRight:'wiperight'}[region.kind];
  // xfade and tpad need a declared constant rate, which setpts upstream leaves
  // unknown in FFmpeg 7.
- const lead=`fps=${FPS}${into?`,tpad=start=${into}:start_mode=clone`:''}`;
+ const lead=`fps=${fps}${into?`,tpad=start=${into}:start_mode=clone`:''}`;
  filters.push(`[${out}a1]${lead}[${out}a2]`,`[${out}b1]${lead}[${out}b2]`,
-  `[${out}a2][${out}b2]xfade=transition=${kind}:duration=${seconds(duration)}:offset=0${trim}[${out}]`);
+  `[${out}a2][${out}b2]xfade=transition=${kind}:duration=${seconds(duration,fps)}:offset=0${trim}[${out}]`);
  return filters;
 }

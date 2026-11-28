@@ -142,8 +142,8 @@ export const exportLoudnessResponseSchema = z.discriminatedUnion('status', [
     if (JSON.stringify(v.suggestion) !== JSON.stringify(exportLoudnessSuggestion(v.measurement, v.target)))
       fail('Suggestion must exactly bind the measured signal and explicit target.');
     if (v.artifact.exportRange && !isExportSamplePeakFrameCountCompatible(v.measurement.sampleFrames,
-        v.artifact.exportRange.endFrame - v.artifact.exportRange.startFrame)) fail('Measurement must match the delivered range.');
-    for (const key of ['deliveryName', 'exportRange'] as const)
+        v.artifact.exportRange.endFrame - v.artifact.exportRange.startFrame, v.artifact.fps)) fail('Measurement must match the delivered range.');
+    for (const key of ['deliveryName', 'exportRange', 'fps'] as const)
       if (Object.hasOwn(v.artifact, key) && v.artifact[key] === undefined) fail('Frozen optional fields must remain absent or valid.');
   } else {
     const allowed = v.status === 'unsupported' ? ['NO_AUDIO','UNSUPPORTED_FORMAT','INPUT_TOO_LARGE','DURATION_LIMIT'] :

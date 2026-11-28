@@ -1,4 +1,5 @@
 import { interruptedMediaError, throwIfMediaAborted } from './media-processes.ts';
+import {assetVideoFrameRateSchema, type AssetVideoFrameRate} from '../../contracts/src/asset-video-frame-rate.ts';
 
 // Resource limits, not a codec/product allowlist. 8K in either orientation is
 // supported; unusually large stills (>64 Mi pixels) fail before subsequent full
@@ -37,6 +38,8 @@ const object = (value: unknown): value is Record<string, unknown> => value !== n
 // This is not a decoder allowlist or a guarantee that the entire stream decodes.
 const identifiedCodec = (stream: ProbeStream): boolean => typeof stream.codec_name === 'string' && stream.codec_name.length > 0 && stream.codec_name !== 'unknown';
 const attachedPicture = (stream: ProbeStream): unknown => object(stream.disposition) ? stream.disposition.attached_pic : undefined;
+const playableVideo = (stream: ProbeStream): boolean =>
+  stream.codec_type === 'video' && identifiedCodec(stream) && !attachedPicture(stream) && Boolean(stream.width && stream.height);
 const numberValue = (value: unknown): number => typeof value === 'number' && Number.isFinite(value) ? value : 0;
 const integerValue = (value: unknown): number | undefined => Number.isSafeInteger(value) ? value as number : undefined;
 
@@ -63,12 +66,22 @@ export function parseProbeOutput(output: string): ProbeResult {
   }
   const format = p.format as Record<string, unknown> | undefined;
   const formatDuration = duration(format?.duration);
-  const v = streams.find(stream => stream.codec_type === 'video' && identifiedCodec(stream) && !attachedPicture(stream) && stream.width && stream.height);
+  const v = streams.find(playableVideo);
   const a = streams.find(stream => stream.codec_type === 'audio' && identifiedCodec(stream));
   if (!v && !a) throw Object.assign(new Error('No decodable image/video/audio stream'), { code: 'MEDIA_NO_STREAM' });
   const probe = Object.assign(p, {streams}) as ProbeOutput;
   return { width: numberValue(v?.width), height: numberValue(v?.height), duration: formatDuration || duration(v?.duration) || duration(a?.duration),
     hasVideo: Boolean(v), hasAudio: Boolean(a), videoStreamIndex: integerValue(v?.index), audioStreamIndex: integerValue(a?.index), codec: (v?.codec_name || a?.codec_name) as string | undefined, probe };
+}
+
+export function originalVideoFrameRate(metadata: ProbeResult): AssetVideoFrameRate | null {
+  const rate = metadata.probe.streams.find(playableVideo)?.avg_frame_rate;
+  // r_frame_rate is a guessed base rate, so it cannot fill an unknown average.
+  const ratio = typeof rate === 'string' && /^(\d{1,10})\/(\d{1,10})$/u.exec(rate);
+  if (!ratio) return null;
+  const numerator = Number(ratio[1]), denominator = Number(ratio[2]);
+  const parsed = assetVideoFrameRateSchema.safeParse({numerator, denominator, nearestInteger: Math.round(numerator / denominator)});
+  return parsed.success ? parsed.data : null;
 }
 
 let running = 0;

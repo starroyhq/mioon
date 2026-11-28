@@ -7,6 +7,9 @@ import {isExportSamplePeakFrameCountCompatible} from '@mioon/contracts/export-sa
 import type {ExportLoudnessInput, ExportLoudnessResponse, ExportLoudnessArtifact,
   ExportLoudnessMeasurement, ExportLoudnessReasonCode} from '@mioon/contracts/export-loudness';
 import {timelineExportOutputFrames, timelineExportRangeFields} from '@mioon/contracts/timeline-export-range';
+import {timelineAudioFpsFields} from '../../contracts/src/timeline-audio-clock.ts';
+import {isTimelineFps, type TimelineFps} from '../../contracts/src/timeline-fps.ts';
+import {allowsFrozenProjectFps} from './timeline-record-format.ts';
 import {timelineDeliveryNameFields} from '@mioon/contracts/timeline-delivery';
 import {readTimelineExportOutput} from './timeline-delivery-read.ts';
 import type {TimelineDeliveryReadGuards, TimelineExportOutput} from './timeline-delivery-read.ts';
@@ -60,22 +63,27 @@ interface Descriptor {
   readonly artifact: ExportLoudnessArtifact;
   readonly durationSeconds: number;
   readonly outputFrames: number;
+  readonly fps: TimelineFps;
 }
 const sameFile = (left: ExportLoudnessFileIdentity, right: ExportLoudnessFileIdentity): boolean =>
   left.dev === right.dev && left.ino === right.ino && left.size === right.size && left.mtimeMs === right.mtimeMs && left.ctimeMs === right.ctimeMs;
 function fileIdentity(value: unknown): value is ExportLoudnessFileIdentity {
   return object(value) && ['dev', 'ino', 'size', 'mtimeMs', 'ctimeMs'].every(key => typeof value[key] === 'number' && Number.isFinite(value[key]));
 }
-function descriptor(output: TimelineExportOutput): Descriptor {
+function descriptor(db: DatabaseSync, output: TimelineExportOutput): Descriptor {
   const {asset, record} = output;
   if (typeof asset.sha256 !== 'string' || !/^[a-f0-9]{64}$/u.test(asset.sha256) ||
       typeof asset.sizeBytes !== 'number' || !Number.isSafeInteger(asset.sizeBytes) || asset.sizeBytes < 1 ||
       typeof record.timelineRevision !== 'number' || !Number.isSafeInteger(record.timelineRevision) || record.timelineRevision < 1) unavailable();
+  const {timeline} = output.snapshot;
+  if (!object(timeline) || !isTimelineFps(timeline.fps)) return unavailable();
+  const {fps} = timeline;
+  const outputFrames = timelineExportOutputFrames(output.snapshot, {allowProjectFps: allowsFrozenProjectFps(db, fps)});
   const artifact = {assetId: output.assetId, sha256: asset.sha256, sizeBytes: asset.sizeBytes, snapshotSha256: floatSnapshotSha256(output.snapshot),
-    timelineRevision: record.timelineRevision, ...timelineDeliveryNameFields(output.snapshot), ...timelineExportRangeFields(output.snapshot)};
-  const outputFrames = timelineExportOutputFrames(output.snapshot);
+    timelineRevision: record.timelineRevision, ...timelineDeliveryNameFields(output.snapshot), ...timelineExportRangeFields(output.snapshot),
+    ...timelineAudioFpsFields(fps)};
   return freeze({identity: output, asset: {id:output.assetId,projectId:output.projectId,...mediaLocatorFields(asset), sha256: asset.sha256, sizeBytes: asset.sizeBytes},
-    artifact, outputFrames, durationSeconds: outputFrames / 30});
+    artifact, outputFrames, fps, durationSeconds: outputFrames / fps});
 }
 function observe<T>(task: Promise<T>, signal: AbortSignal): Promise<T> {
   checkpoint(signal);
@@ -118,7 +126,7 @@ export function createExportLoudnessServices(store: ExportLoudnessStore,
     assertOwner();
     const value = readTimelineExportOutput(store.db, input, runtime);
     if (!value) unavailable();
-    try {return descriptor(value);} catch {return unavailable();}
+    try {return descriptor(store.db, value);} catch {return unavailable();}
   }
   const stop = (): void => {state.stopped = true; state.active?.controller.abort();};
   ownerSignal?.addEventListener('abort', stop, {once: true});
@@ -209,7 +217,7 @@ export function createExportLoudnessServices(store: ExportLoudnessStore,
       // An injected decoder is no authority. Validate every mathematical and
       // format relationship independently before running the second byte pass.
       const measurement = exportLoudnessMeasurementSchema.safeParse(decoded);
-      if (!measurement.success || !isExportSamplePeakFrameCountCompatible(measurement.data.sampleFrames, initial.outputFrames))
+      if (!measurement.success || !isExportSamplePeakFrameCountCompatible(measurement.data.sampleFrames, initial.outputFrames, initial.fps))
         throw fault('LOUDNESS_INVALID_PCM');
       const second = await hash(); fence();
       if (second.sha256 !== first.sha256 || !sameFile(second.info, first.info) || bytesHashed !== initial.asset.sizeBytes * 2)

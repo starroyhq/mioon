@@ -46,6 +46,18 @@ function fixture({ ctx = context(), submit }: {ctx?:ReturnType<typeof context>;s
 }
 const taskFor = (intent: subtitles.SubtitleIntent, status: string|undefined = 'applied', patch: { input?: { patch: { text: string; }; projectId: string|null; expectedRevision: number|null; requestId: string; cueId?: string|null; text?: unknown; startFrame?: number; durationFrames?: number; }; }|undefined = {}) => ({ operation: intent.operation, projectId: intent.projectId, requestId: intent.input.requestId, input: structuredClone(intent.input), status, ...patch });
 
+test('new subtitle drafts use three seconds on the project clock, clipped to the next cue', () => {
+  for (const fps of [24, 25, 30, 60]) {
+    const saved = {...timeline({durationFrames: 600, subtitles: {profileId: 'bottom_cjk_v1', cues: [cue({startFrame: 250})]}}), fps};
+    const h = fixture({ctx: {...context(), timeline: saved}});
+    assert.equal(h.controller.begin(10), true);
+    assert.equal(h.controller.getState().draft?.durationFrames, fps * 3);
+    h.controller.discardDraft();
+    assert.equal(h.controller.begin(230), true);
+    assert.equal(h.controller.getState().draft?.durationFrames, 20);
+  }
+});
+
 test('new cue chooses exact integer frame and bounded duration, then sends literal text without IDs or style fields', async () => {
   const h = fixture(); assert.equal(h.controller.begin(120), true);
   h.controller.edit('text', '  中文，标点！\n{a}:\\path%');
@@ -288,6 +300,33 @@ test('native subtitle selection validates a detached cue beside projected dialog
   assert.equal(controller.getState().uncertain, null);
   assert.equal(controller.getState().dirty, false);
   assert.equal(readback.subtitles!.cues.find(cue => cue.id === detached.id)?.anchor, null);
+});
+
+test('a format 6 subtitle save accepts a 24 fps native acknowledgement', async () => {
+  const {timeline: native} = format5SequenceFixture();
+  const timeline = {...native, fps: 24 as const};
+  const cue = {id: format5FixtureId(21), text: 'Saved', startFrame: 5, durationFrames: 3, anchor: null};
+  const saved = {...timeline, revision: timeline.revision + 1,
+    subtitles: {...timeline.subtitles!, cues: [...timeline.subtitles!.cues, cue]}};
+  let submitted: subtitles.SubtitleIntent | undefined;
+  const controller = subtitles.createSubtitleController({
+    createRequestId: () => 'format6-subtitle-request',
+    submit: async intent => {
+      submitted = intent;
+      return {status: 'applied', timeline: saved};
+    },
+  });
+  controller.setContext({projectId: timeline.projectId, timeline, formatVersion: 6, connected: true});
+  controller.setVisible(true);
+  assert.equal(controller.begin(cue.startFrame), true);
+  controller.edit('text', cue.text);
+  controller.edit('durationFrames', cue.durationFrames);
+
+  assert.equal(await controller.save(), saved);
+  assert.equal(controller.getState().uncertain, null);
+  assert.equal(controller.getState().dirty, false);
+  assert.ok(submitted);
+  assert.equal(subtitles.subtitleAcknowledged(submitted, saved, true, 5), false);
 });
 
 test('native subtitle drafts use native cue and duration limits', () => {

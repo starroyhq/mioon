@@ -199,7 +199,7 @@ export function isTimelineRenderRecord(value: unknown, input: unknown, options: 
       !['queued', 'running', 'succeeded', 'failed'].includes((value as Rec).status as string) || !timestamp((value as Rec).createdAt) || !timestamp((value as Rec).updatedAt)) return false;
   const render = value as Rec;
   const snapshot = render.snapshot;
-  if (!fields(snapshot, snapshotFields, snapshotOptionalFields) || !isTimelineExportSnapshot(snapshot,{purpose:request.purpose,exportSettings:request.exportSettings,input}) || !isTimelineSubtitleSnapshotProfile(snapshot) || !isVolumeEnvelopeProcessingSnapshot(snapshot)) return false;
+  if (!fields(snapshot, snapshotFields, snapshotOptionalFields) || !isTimelineExportSnapshot(snapshot,{purpose:request.purpose,exportSettings:request.exportSettings,input,allowProjectFps:options.format===FORMAT6_TIMELINE_FORMAT}) || !isTimelineSubtitleSnapshotProfile(snapshot) || !isVolumeEnvelopeProcessingSnapshot(snapshot)) return false;
   const snapshotRecord = snapshot as Rec;
   const timeline = snapshotRecord.timeline as TimelineRecord;
   if (!isTimelineRecord(timeline, {...options, projectId: request.projectId}) ||
@@ -236,7 +236,7 @@ export function isTimelineRenderRecord(value: unknown, input: unknown, options: 
       ? soundOnly ? !(asset.mimeType as string).startsWith('video/') || asset.hasAudio !== true
         : !audioTypes.includes(asset.mimeType as string)
       : !visualTypes.includes(asset.mimeType as string))) return false;
-    if ((asset.mimeType as string).startsWith('image/') ? clip.sourceInFrame !== 0 : clip.sourceInFrame + clip.durationFrames > (sourceFrameCount(asset.duration) ?? 0)) return false;
+    if ((asset.mimeType as string).startsWith('image/') ? clip.sourceInFrame !== 0 : clip.sourceInFrame + clip.durationFrames > (sourceFrameCount(asset.duration,timeline.fps) ?? 0)) return false;
     if (clip.volumeEnvelope != null && ((asset.mimeType as string).startsWith('image/') || asset.hasAudio === false)) return false;
     if ((clip.fadeInFrames ?? 0) + (clip.fadeOutFrames ?? 0) > 0 && ((asset.mimeType as string).startsWith('image/') || asset.hasAudio === false)) return false;
     used.add(asset.id as string);

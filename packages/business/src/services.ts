@@ -11,6 +11,7 @@ import {currentProjectRecord,mutateProjectRecord} from './project-record-mutatio
 import {testProjectServiceApplication} from './project-service-application.ts';
 import {registerProjectMediaStore, registeredProjectAssetReferences} from './project-media-storage.ts';
 import {createAssetMediaServices} from './asset-media-services.ts';
+import {projectAssetFrameRateView} from './project-asset-frame-rate.ts';
 import {isS1PublicOperation,s1PublicOperationSchemas} from '../../contracts/src/asset-generation.ts';
 import {mediaUnavailableError} from '../../contracts/src/media-reference-errors.ts';
 import {isAssetMediaOperation, assetMediaEffects} from '../../contracts/src/asset-media.ts';
@@ -692,9 +693,13 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
     const plan=previewMioSequenceAction(store as ProjectStore,projectId,randomUUID(),parsed.data as MioSequenceAction,{origin:'user'});
     return {projectId,envelope:plan.envelope,planDigest:plan.planDigest,summary:plan.summary};
   };
-  const assertExternalSpeedOrigin=(envelope: unknown):void=>{
-    if(property(envelope,'speedIntent')&&property(envelope,'origin')==='mio'){
+  const assertExternalSequenceOrigin=(envelope: unknown):void=>{
+    if(property(envelope,'origin')!=='mio')return;
+    if(property(envelope,'speedIntent')){
       throw new AppError('SEQUENCE_EDIT_CONTRACT_INVALID','外部变速编辑必须从用户动作提交。',409);
+    }
+    if(property(property(property(envelope,'formatIntent'),'operation'),'kind')==='timeline-fps'){
+      throw new AppError('SEQUENCE_EDIT_CONTRACT_INVALID','外部帧率编辑必须从用户动作提交。',409);
     }
   };
  const sequenceInspection=createSequenceInspectionService(store);
@@ -865,7 +870,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   'export.fcpxml.cancel':fcpExport.cancel,
   'clip.audio.export.get':(input: ServiceRow)=>getClipAudioExport(store,input),
   'sequence.preview':(input: ServiceRow)=>{
-    assertExternalSpeedOrigin(input);
+    assertExternalSequenceOrigin(input);
     return sequenceEdit.preview((input.speedIntent?{...input,origin:'user'}:input) as never);
   },
   'sequence.action.edit':previewSequenceAction('sequence.tool.edit'),
@@ -881,14 +886,14 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
     if(projectId!==store.projectId)throw new AppError('PROJECT_ID_MISMATCH','项目地址与请求不一致。',409);
     const envelope=input.envelope as {projectId?:unknown};
     if(!envelope||envelope.projectId!==store.projectId)throw new AppError('PROJECT_ID_MISMATCH','项目地址与序列动作不一致。',409);
-    assertExternalSpeedOrigin(envelope);
+    assertExternalSequenceOrigin(envelope);
     const plan={envelope:input.envelope,planDigest:stringValue(input.expectedPlanDigest),summary:{action:'commit',affected:[],counts:{nodes:0,edges:0,clips:0,other:0},warnings:0}} as MioSequencePlan;
     const receipt=commitMioSequenceAction(store,plan,{generationSubmit:(generationInput:unknown)=>createGenerationJobInside(generationInput as GenerationSubmitInput)});
     const message=receipt.status==='not_applied'&&receipt.code?sequenceEditFailureMessage(receipt.code,receipt.failure?.reason):undefined;
     return message?{...receipt,message}:receipt;
   },
   'sequence.commit':(input: ServiceRow)=>{
-    assertExternalSpeedOrigin(input.envelope);
+    assertExternalSequenceOrigin(input.envelope);
     return sequenceEdit.commit(input as never);
   },
   'sequence.board.get':(input: ServiceRow)=>sequenceEdit.board(input as never),
@@ -935,7 +940,10 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
    const contents=['assets','shots','nodes','edges','jobs','versions','exports'].map(t=>{
     if(t==='exports')return [t,exportValues(projectId).sort((a,b)=>String(a.createdAt??'').localeCompare(String(b.createdAt??'')))];
     const values=t==='shots'||t==='nodes'||t==='edges'?liveCanvas(t,projectId):list(t,projectId);
-    const disclosed=values.map(value=>subjectDisclosure(t,value as ServiceRow,projectId));
+    const disclosed=values.map(value=>{
+     const row=value as ServiceRow;
+     return subjectDisclosure(t,t==='assets'?projectAssetFrameRateView(db,row):row,projectId);
+    });
     return [t,disclosed.sort(t==='shots'?(a: ServiceRow,b: ServiceRow)=>(Number(a.orderIndex)||0)-(Number(b.orderIndex)||0):(a: ServiceRow,b: ServiceRow)=>String(a.createdAt??'').localeCompare(String(b.createdAt??'')))];
    });
    const values=Object.fromEntries(contents);
@@ -955,7 +963,11 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
    return {project,timelineFrameTransaction:usesTimelineFrameTransaction(db),timeline:currentTimeline,timelineHistory,...values,...(canvasEditBase?{canvasEditBase}:{})};
   }),
   'asset.import':createManagedAssetImportHandler(inputStore,{required,now,signal:ownerSignal,outsidePaths:application.outsidePaths,beforeEffect:()=>{assertApplicationMutationAllowed();assertMutationAllowed?.();}}) as ServiceHandler,
-  'asset.list':(input: ServiceRow)=>{required('projects',stringValue(input.projectId) as string);return list('assets',stringValue(input.projectId));},
+  'asset.list':(input: ServiceRow)=>{
+   const projectId=stringValue(input.projectId) as string;
+   required('projects',projectId);
+   return list('assets',projectId).map(asset=>projectAssetFrameRateView(db,asset as ServiceRow));
+  },
   'edge.create':(input: ServiceRow)=>tx(()=>{
    if(isProjectStore(store))assertLegacyCanvasWriteAllowed(store,'edge');
    const projectId=stringValue(input.projectId) as string;

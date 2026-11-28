@@ -4,7 +4,7 @@ import {isDeepStrictEqual} from 'node:util';
 import {createHash} from 'node:crypto';
 import path from 'node:path';
 import {isClipAudioExportRecord,exportPreflightResponseSchema} from '@mioon/contracts';
-import {isTimelineRecordFor,isTimelineRenderRecordFor} from '../timeline-record-format.ts';
+import {allowsFrozenProjectFps,isTimelineRecordFor,isTimelineRenderRecordFor} from '../timeline-record-format.ts';
 import {agentTaskChecksSchema,AGENT_TASK_CHECK_BASIS_LIMIT} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskCheck,AgentTaskChecks,AgentTaskCheckValues,AgentTaskCheckGroup,AgentTaskCheckReason} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskSnapshot,AgentTaskStep} from '@mioon/contracts/agent-tasks-v2';
@@ -230,7 +230,11 @@ export async function readAgentTaskChecks(store:Store,snapshot:AgentTaskSnapshot
     // This is the accepted output interval, not a probe of encoded frame
     // count. Reuse the same domain range calculation as the render worker;
     // do not alter H3's historical expected/current groups.
-    try{goalExportValues.set(origin.step.id,{durationFrames:timelineExportOutputFrames(value.snapshot)});}
+    try{
+     const frozen=object(value.snapshot)&&object(value.snapshot.timeline)?value.snapshot.timeline:undefined;
+     const allowProjectFps=allowsFrozenProjectFps(store.db,frozen?.fps);
+     goalExportValues.set(origin.step.id,{durationFrames:timelineExportOutputFrames(value.snapshot,{allowProjectFps})});
+    }
     catch(error){if(!knownObservationFailure(error))throw error;}
    }
    add('export_render','export_parameters',target,artifactProof,!matches?reason('failed','PARAMETERS_MISMATCH'):result.status==='pending'?reason('pending','TASK_PENDING'):result.status==='passed'&&!published?reason('failed','ARTIFACT_UNAVAILABLE'):result.status!=='passed'?reason('not_applicable','TASK_FAILED'):{status:'passed'},{expected,current:observed});
@@ -272,10 +276,16 @@ export async function readAgentTaskChecks(store:Store,snapshot:AgentTaskSnapshot
   else if(!preflight||!integer(timeline?.revision)||timeline.revision<1)add('timeline','timeline_preflight',timelineTarget,timelineProof,reason('pending','PREFLIGHT_UNAVAILABLE'));
   else{
    const input={projectId,expectedRevision:timeline.revision};let report:ReturnType<typeof exportPreflightResponseSchema.safeParse>|undefined;
-   try{report=exportPreflightResponseSchema.safeParse(await preflight(input,{signal}));}catch(error){signal?.throwIfAborted();if(!knownObservationFailure(error))throw error;/* Known local media refusal leaves the read available. */}
+   try{
+    report=exportPreflightResponseSchema.safeParse(await preflight(input,{signal}));
+    const fps=report.success?report.data.summary?.fps:undefined;
+    if(fps!==undefined&&fps!==30)allowsFrozenProjectFps(store.db,fps);
+   }catch(error){signal?.throwIfAborted();if(!knownObservationFailure(error))throw error;report=undefined;}
    signal?.throwIfAborted();
    const latest=timelineObservation(store,projectId)?.timeline;
-   if(!report?.success||report.data.projectId!==projectId||report.data.expectedRevision!==input.expectedRevision)add('timeline','timeline_preflight',timelineTarget,timelineProof,reason('pending','PREFLIGHT_UNAVAILABLE'));
+   if(!report?.success||report.data.projectId!==projectId||report.data.expectedRevision!==input.expectedRevision||
+    report.data.summary&&report.data.summary.fps!==(timeline.fps??30))
+    add('timeline','timeline_preflight',timelineTarget,timelineProof,reason('pending','PREFLIGHT_UNAVAILABLE'));
    else if(report.data.status==='stale'||!isDeepStrictEqual(latest,timeline)||report.data.timelineId!==timeline.id||report.data.timelineRevision!==input.expectedRevision)add('timeline','timeline_preflight',timelineTarget,timelineProof,reason('pending','PREFLIGHT_STALE'));
    else{
     const value=report.data,blockingCount=value.issues.filter(issue=>issue.severity==='error').length,params={blockingCount,issueCodes:value.issues.map(issue=>issue.code)};

@@ -134,6 +134,10 @@ test('syntax projection never checks the current timeline, while output length r
     {timeline: {fps: 30, durationFrames: 18}, ...value}]) {
     assert.throws(() => timelineExportOutputFrames(snapshot), {code: 'INVALID_TIMELINE_SNAPSHOT'});
   }
+  const projectSnapshot = {timeline: {fps: 60, durationFrames: 60}, ...value};
+  assert.equal(isTimelineExportRangeSnapshot(projectSnapshot), false);
+  assert.equal(isTimelineExportRangeSnapshot(projectSnapshot, {allowProjectFps:true}), true);
+  assert.equal(timelineExportOutputFrames(projectSnapshot, {allowProjectFps:true}), value.exportRange.endFrame - value.exportRange.startFrame);
   assert.equal(JSON.stringify(value), before);
 });
 

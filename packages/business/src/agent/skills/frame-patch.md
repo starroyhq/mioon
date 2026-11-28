@@ -1,6 +1,6 @@
 ---
 name: frame-patch
-version: 1
+version: 2
 title: 首尾帧补镜
 summary.zh-Hans: 成片里只有一小段不满意时，切出这一段，用前后两侧的画面作首帧和尾帧生成一段补上，不用整段重做。
 summary.zh-Hant: 成片裡只有一小段不滿意時，切出這一段，用前後兩側的畫面作首幀和尾幀生成一段補上，不用整段重做。
@@ -13,14 +13,15 @@ summary.ja: クリップの一部だけがよくないとき、その区間を�
 
 ## 先确认
 
-- 先用 mioon_tools_load 的 names 按需加载 mioon_provider_list、mioon_frame_extract、mioon_shot_create、mioon_generation_submit、mioon_timeline_clip_split、mioon_timeline_clip_remove 和 mioon_timeline_clip_add。用 timeline.inspect 找到这个片段，记下轨道、startFrame、durationFrames、sourceInFrame 和素材 ID。时间线固定 30fps，下面的帧号都按 30fps 算。
+- 以下步骤用于提供旧片段编辑工具的 30 fps 项目。先用 `timeline.inspect` 核对项目帧率和片段。格式 5/6 的序列剪辑有独立的操作入口，按项目帧率计算剪辑帧号。`frame.extract` 和 `asset.range.get` 的独立素材帧号始终按 30 fps 计算。
+- 用 mioon_tools_load 的 names 按需加载 mioon_provider_list、mioon_frame_extract、mioon_shot_create、mioon_generation_submit、mioon_timeline_clip_split、mioon_timeline_clip_remove 和 mioon_timeline_clip_add。记下目标片段的轨道、startFrame、durationFrames、sourceInFrame 和素材 ID。
 - 用 provider.list 选模型：inputModes 里要有 frames，才能同时用首帧和尾帧。没有这样的模型时告诉用户，不要改用只有首帧的生成。
 - 用 mioon_ask 确认要补的范围（从第几秒到第几秒）和所用模型，选项写成具体的值。
 - 有对白的段落不适合这样补：这一段原来的声音会和画面一起被换掉。
 
 ## 定补镜范围
 
-- Mioon 不能变速，补上的长度必须是所选模型 durations 里的某个值。取不短于要补范围的最小值，换成帧数记为 N（秒数乘以 30）。
+- 这套补镜流程按模型提供的固定时长接回。取 durations 里不短于要补范围的最小值，换成帧数记为 N（秒数乘以 30）。
 - 在片段里放一个长 N 帧的范围，从时间线帧 P 开始，盖住要补的部分；P 的前一帧和 P+N 都要留在这个片段里。
 - 首帧取时间线帧 P−1，尾帧取时间线帧 P+N。时间线帧 t 对应的源帧是 sourceInFrame + (t − startFrame)。
 - 首帧和尾帧最好来自原片同一个镜头内部，不要跨过原片里的剪切点。

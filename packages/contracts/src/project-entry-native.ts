@@ -10,6 +10,7 @@ import type {ProjectCopyInput, ProjectCopyResponse, ProjectCopyToInput, ProjectT
 import type {ProjectDeleteInput, ProjectDeleteResponse} from './project-lifecycle.ts';
 import type {z as Zod} from 'zod';
 import type {NativeAssetMediaPort} from './asset-media-native.ts';
+import {timelineFpsSchema} from './timeline-fps.ts';
 import type {NativeFcpExportControlPort} from './project-entry-control.ts';
 export type {NativeFcpExportControlPort} from './project-entry-control.ts';
 import {projectFormatReadOnlyViewSchema, projectFormatUpgradePreviewSchema} from './project-format-upgrade.ts';
@@ -24,6 +25,7 @@ export const projectEntryCreateInputSchema = z.object({
   name: z.string().min(1).max(PROJECT_NAME_MAX_LENGTH).refine(name => projectNameProblem(name) === null, 'Invalid project name.'),
   description: z.string().max(2000).optional(),
   timelinePresetId: z.enum(['portrait_1080', 'landscape_1080', 'square_1080']).optional(),
+  timelineFps: timelineFpsSchema.optional(),
   parentDir: absolutePath.optional(),
   projectFile: absolutePath.refine(file => file.endsWith(PROJECT_FILE_EXTENSION), 'Choose a .mioon file.').optional(),
 }).strict().refine(value => value.parentDir === undefined || value.projectFile === undefined, 'Choose one project location.');

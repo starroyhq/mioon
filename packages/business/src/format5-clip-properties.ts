@@ -60,7 +60,7 @@ export interface ClipPropertiesPlan {
 }
 
 interface ClipAsset {readonly mimeType: string; readonly duration: number | null; readonly hasAudio: boolean; readonly frames: number}
-function assetReader(db: DatabaseSync, projectId: string): (assetId: string) => ClipAsset | null {
+function assetReader(db: DatabaseSync, projectId: string, fps: number): (assetId: string) => ClipAsset | null {
   const cache = new Map<string, ClipAsset | null>();
   const select = db.prepare('SELECT data FROM project.assets WHERE id=? AND projectId=?');
   return assetId => {
@@ -72,7 +72,7 @@ function assetReader(db: DatabaseSync, projectId: string): (assetId: string) => 
           if (data.id !== assetId || data.projectId !== projectId) {cache.set(assetId, null); return null;}
           const duration = typeof data.duration === 'number' && Number.isFinite(data.duration) ? data.duration : null;
           cache.set(assetId, {mimeType: String(data.mimeType ?? ''), duration,
-            hasAudio: data.hasAudio === true, frames: sourceFrameCount(duration) ?? 0});
+            hasAudio: data.hasAudio === true, frames: sourceFrameCount(duration, fps) ?? 0});
         } catch {cache.set(assetId, null);}
       }
     }
@@ -225,7 +225,7 @@ export function planClipProperties(store: ProjectStore, intent: SequenceEditClip
   if (!isSequenceProjectFormat(formatVersion)) throw new AppError('SEQUENCE_EDIT_CONTRACT_INVALID', '这个操作只适用于格式 5 项目。', 409, {reason: 'FORMAT_REQUIRED'});
   const record = readFormat5TimelineRecord(store.db, 'project');
   if (!record) invalid('项目没有格式 5 时间线');
-  const asset = assetReader(store.db, store.projectId);
+  const asset = assetReader(store.db, store.projectId, record.fps);
   const clips = new Map(record.clips.map(clip => [clip.id, clip]));
   const tracks = new Map(record.tracks.map(track => [track.id, track]));
   const seen = new Set<string>();

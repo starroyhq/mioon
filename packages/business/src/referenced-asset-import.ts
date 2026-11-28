@@ -28,6 +28,7 @@ import type {ManagedAssetImportOptions} from './managed-asset-import.ts';
 import {readMioTargetRevision} from './agent/mio-target-revisions.ts';
 import type {MediaFile} from './media-reference/index.ts';
 import type {ProbeResult} from './media-probe.ts';
+import {measuredProjectAssetFrameRate} from './project-asset-frame-rate.ts';
 
 type Row = Record<string, unknown>;
 const object = (v: unknown): v is Row => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -200,6 +201,7 @@ export function createReferencedAssetImportHandler(store: ProjectStore, options:
           reference: prepared.reference, referenceRevision: 1, sizeBytes: prepared.reference.sizeBytes, sha256: prepared.reference.fullSha256,
           ...(publication?{publication:publication.publication}:{}),
           width: metadata.width, height: metadata.height, duration: metadata.duration, hasVideo: metadata.hasVideo, hasAudio: metadata.hasAudio,
+          ...measuredProjectAssetFrameRate(store.db, prepared.type.mimeType, metadata),
           url: projectMediaPath(store.projectId, assetId), provenance: 'user-import', createdAt: options.now()};
         receipt.asset = asset; receipt.phase = 'prepared';
         writePrivateFileAtomic(receiptFile, JSON.stringify(receipt), {root: receipts, maxBytes: 32 * 1024});

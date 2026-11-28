@@ -130,6 +130,7 @@ export async function admitProjectAssetSource(root: string, assetId: string, opt
 
 interface ProjectAssetHashOptions {
   signal?: AbortSignal; beforeEffect?: () => void; maxBytes?: number; onBytes?: (bytes: number) => void;
+  expectedFile?: string;
 }
 export function isProjectAssetHashPreparing(store: ProjectStore, assetId: string): boolean {
   return hashPreparations.get(store)?.has(assetId) ?? false;
@@ -160,6 +161,7 @@ export async function prepareProjectAssetHash(root: string, assetId: string,
     };
     const expectedSource = initial ? {file: initial.file, stats: sourceStat(initial.file)} : undefined;
     const prepared = await references.prepareFullHash(assetId, {...options, expectedSource});
+    if (options.expectedFile !== undefined && prepared.file !== options.expectedFile) throw mediaUnavailableError('MEDIA_CHANGED_DURING_READ', assetId);
     const beforeCommit = (): void => {
       options.signal?.throwIfAborted(); options.beforeEffect?.();
       if (registeredProjectStore(root) !== store) throw new TypeError('The project owner is no longer live');

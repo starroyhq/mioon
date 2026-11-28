@@ -113,7 +113,7 @@ export function format5ExportBlockersFromTimeline(db: ProjectStore['db'], timeli
     if (selected === null || selected === clip.versionId) continue;
     const version = versions.get(selected);
     const asset = version && typeof version.assetId === 'string' ? assets.get(version.assetId) : undefined;
-    const sourceFrames = sourceFrameCount(asset?.duration);
+    const sourceFrames = sourceFrameCount(asset?.duration, timeline.fps);
     const needed = clip.sourceInFrame + clip.durationFrames;
     if (sourceFrames !== null && sourceFrames < needed) {
       blockers.push({code: 'VERSION_TOO_SHORT', clipId: clip.id, nodeId: source.nodeId, versionId: selected,
@@ -136,7 +136,7 @@ export function createFormat5ExportTicket(store: ProjectStore, range: Format5Exp
     const revisions = {contentRevision: stamp.contentSequence, timelineRevision: timeline.revision,
       syncRevision: readSyncRevision(store), range};
     const snapshotHash = sha256({projectId: store.projectId, timelineId: timeline.id, ...revisions,
-      clips: timeline.clips, subtitles: timeline.subtitles});
+      clips: timeline.clips, subtitles: timeline.subtitles, ...(timeline.fps === 30 ? {} : {fps: timeline.fps})});
     return {version: FORMAT5_EXPORT_TICKET_VERSION, projectId: store.projectId, timelineId: timeline.id,
       contentRevision: revisions.contentRevision, timelineRevision: revisions.timelineRevision,
       syncRevision: revisions.syncRevision, range, snapshotHash, blockers, createdAt: new Date().toISOString()};
@@ -157,7 +157,7 @@ export function recheckFormat5ExportTicket(store: ProjectStore, ticket: Format5E
     const syncRevision = readSyncRevision(store);
     const snapshotHash = timeline === null ? null : sha256({projectId: store.projectId, timelineId: timeline.id,
       contentRevision: stamp.contentSequence, timelineRevision: timeline.revision, syncRevision, range: ticket.range,
-      clips: timeline.clips, subtitles: timeline.subtitles});
+      clips: timeline.clips, subtitles: timeline.subtitles, ...(timeline.fps === 30 ? {} : {fps: timeline.fps})});
     if (!timeline || timeline.id !== ticket.timelineId || timeline.projectId !== ticket.projectId
       || stamp.contentSequence !== ticket.contentRevision || timeline.revision !== ticket.timelineRevision
       || syncRevision !== ticket.syncRevision || snapshotHash !== ticket.snapshotHash) {

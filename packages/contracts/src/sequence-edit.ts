@@ -8,6 +8,7 @@ import {isTimelineClipColour} from './timeline-colour.ts';
 import {isClipAudioRole} from './timeline-audio-role.ts';
 import {isVolumeEnvelope} from './timeline-volume-envelope-processing.ts';
 import {TIMELINE_FORMAT_WRITE_PRESETS} from './timeline-output-geometry.ts';
+import {timelineFpsSchema, type TimelineFps} from './timeline-fps.ts';
 import type {
   Format5Clip, Format5Cue, Format5ErrorCode, Format5SubjectBinding, Format5SyncBaseline, Format5Timeline,
 } from './project-format5.ts';
@@ -110,6 +111,7 @@ export const SEQUENCE_EDIT_OPERATIONS = Object.freeze([
   'subject.card.create', 'subject.card.delete',
   'previs.create', 'previs.scene.set',
   'reference.attach', 'reference.role.set', 'reference.detach', 'reference.reorder',
+  'timeline.fps.set',
 ] as const);
 export type SequenceEditOperationName = (typeof SEQUENCE_EDIT_OPERATIONS)[number];
 
@@ -301,15 +303,20 @@ export interface SequenceEditClipPropertiesIntent {
 }
 /** FR-B2: one output-preset change. All clips without an explicit layout freeze
  * their current frame as their layout basis; the header moves to the new preset. */
+export const sequenceEditTimelineFormatOperationSchema = z.object({kind: z.literal('timeline-format'),
+  presetId: z.enum(TIMELINE_FORMAT_WRITE_PRESETS.map(item => item.id) as [string, ...string[]])}).strict();
 export const sequenceEditFormatIntentSchema = z.object({
   side: z.literal('timeline'),
-  operation: z.object({kind: z.literal('timeline-format'),
-    presetId: z.enum(TIMELINE_FORMAT_WRITE_PRESETS.map(item => item.id) as [string, ...string[]])}).strict(),
+  operation: z.discriminatedUnion('kind', [
+    sequenceEditTimelineFormatOperationSchema,
+    z.object({kind: z.literal('timeline-fps'), fps: timelineFpsSchema}).strict(),
+  ]),
 }).strict();
 export interface SequenceEditFormatIntent {
   readonly side: 'timeline';
-  readonly operation: {readonly kind: 'timeline-format';
-    readonly presetId: typeof TIMELINE_FORMAT_WRITE_PRESETS[number]['id']};
+  readonly operation:
+    | {readonly kind: 'timeline-format'; readonly presetId: typeof TIMELINE_FORMAT_WRITE_PRESETS[number]['id']}
+    | {readonly kind: 'timeline-fps'; readonly fps: TimelineFps};
 }
 
 /** FR-D track management: add a track or change its name/visibility/mute/order.
@@ -538,7 +545,7 @@ export function sequenceEditEnvelopeOperationName(envelope: Pick<SequenceEditEnv
   if (envelope.subtitlesIntent) return 'timeline.subtitle.edit';
   if (envelope.dialogueIntent) return sequenceEditDialogueOperationName(envelope.dialogueIntent.operation);
   if (envelope.previsIntent) return sequenceEditPrevisOperationName(envelope.previsIntent.operation);
-  if (envelope.formatIntent) return 'timeline.format.set';
+  if (envelope.formatIntent) return envelope.formatIntent.operation.kind === 'timeline-fps' ? 'timeline.fps.set' : 'timeline.format.set';
   if (envelope.generateIntent) return envelope.generateIntent.operation.kind === 'generate-placeholder'
     ? 'timeline.generate.placeholder' : 'timeline.generate.resize';
   return sequenceEditOperationName(envelope.intents);
@@ -1268,7 +1275,7 @@ export interface SequenceEditTimelineDelta {
 }
 export type SequenceEditTimelineHeaderChange =
   | {readonly kind: 'unchanged'}
-  | {readonly kind: 'set'; readonly value: {readonly fps: 30; readonly width: number; readonly height: number}};
+  | {readonly kind: 'set'; readonly value: {readonly fps: TimelineFps; readonly width: number; readonly height: number}};
 
 /** Everything one action wrote or reverted: exactly one `editor_history_entries`
  * patch direction. Reading and writing remain owned by CS/TS services. */
@@ -1321,7 +1328,7 @@ const baselineChangeSchema = z.discriminatedUnion('kind', [
 ]);
 const timelineHeaderChangeSchema = z.discriminatedUnion('kind', [
   z.object({kind: z.literal('unchanged')}).strict(),
-  z.object({kind: z.literal('set'), value: z.object({fps: z.literal(30), width: z.number().int().min(2).max(100000),
+  z.object({kind: z.literal('set'), value: z.object({fps: timelineFpsSchema, width: z.number().int().min(2).max(100000),
     height: z.number().int().min(2).max(100000)}).strict()}).strict(),
 ]);
 const timelineDeltaSchema = z.object({
@@ -1708,7 +1715,7 @@ export const SEQUENCE_EDIT_NEW_ERROR_CODES = Object.freeze([
   'SEQUENCE_EDIT_REFERENCE_INVALID', 'SEQUENCE_EDIT_TRACK_INVALID', 'SEQUENCE_EDIT_DIALOGUE_INVALID',
   'SEQUENCE_EDIT_DIALOGUE_CONFLICT', 'SEQUENCE_EDIT_SOUND_INVALID', 'SEQUENCE_EDIT_SCENE_RESULT_CONFLICT', 'SEQUENCE_EDIT_SCENE_RESULT_STALE',
   'TIMELINE_FORMAT_TIER_MISMATCH', 'NOTHING_TO_SPLIT', 'SEQUENCE_EDIT_GENERATION_INVALID',
-  'SPEED_NOT_SUPPORTED', 'SPEED_SOURCE_NOT_READY', ...TIMELINE_TIME_MAP_ERROR_CODES] as const);
+  'SPEED_NOT_SUPPORTED', 'SPEED_SOURCE_NOT_READY', ...TIMELINE_TIME_MAP_ERROR_CODES, 'TIMELINE_FPS_LOCKED'] as const);
 export type SequenceEditNewErrorCode = (typeof SEQUENCE_EDIT_NEW_ERROR_CODES)[number];
 export type SequenceEditPlanFailureCode = Extract<ChainSyncPlan, {readonly ok: false}>['code'];
 export type SequenceEditErrorCode = Format5ErrorCode | SequenceEditPlanFailureCode | SequenceEditNewErrorCode;

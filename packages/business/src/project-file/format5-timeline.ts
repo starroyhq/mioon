@@ -170,11 +170,12 @@ export function assertFormat5TimelineRows(db: DatabaseSync, schema: ProjectSchem
     return null;
   }
   const header = parseRaw(state.header.raw);
-  const headerProblem = getFormat5TimelineHeaderIssue(header, {projectId: state.header.projectId});
+  const formatVersion = storageVersion(db, schema);
+  const headerProblem = getFormat5TimelineHeaderIssue(header, {projectId: state.header.projectId, formatVersion});
   if (headerProblem) throw entityError(headerProblem);
   const timeline = assembleFormat5Timeline(state);
   if (!timeline) return invalidFormat5Timeline();
-  const problem = getFormat5TimelineIssue(timeline, {projectId: state.header.projectId, formatVersion: storageVersion(db, schema)});
+  const problem = getFormat5TimelineIssue(timeline, {projectId: state.header.projectId, formatVersion});
   if (problem) throw entityError(problem);
   if (storedBytes(state) > FORMAT5_LIMITS.timelineBytes) return invalidFormat5Timeline();
   return timeline;
@@ -201,10 +202,10 @@ function cueRaw(value: unknown, header: Format5TimelineHeader): string {
   if (problem) throw entityError(problem);
   return JSON.stringify(value);
 }
-function headerOf(state: Format5TimelineState): Format5TimelineHeader {
+function headerOf(state: Format5TimelineState, formatVersion?: number): Format5TimelineHeader {
   if (!state.header) return invalidFormat5Timeline();
   const header = parseRaw(state.header.raw);
-  const problem = getFormat5TimelineHeaderIssue(header, {projectId: state.header.projectId});
+  const problem = getFormat5TimelineHeaderIssue(header, {projectId: state.header.projectId, formatVersion});
   if (problem) throw entityError(problem);
   return header as unknown as Format5TimelineHeader;
 }
@@ -295,12 +296,12 @@ function withColumns(entity: Omit<Format5TimelineEntityChange, 'setColumns'>, pr
 
 /** Validate and diff the deltas a caller wants to persist. Reading is the
  * caller's step so a sync service can time read and validate separately. */
-export function planFormat5TimelineEntityUpdate(state: Format5TimelineState, patch: Format5TimelineEntityPatch): Format5TimelineEntityUpdatePlan {
-  const header = headerOf(state);
+export function planFormat5TimelineEntityUpdate(state: Format5TimelineState, patch: Format5TimelineEntityPatch, formatVersion?: number): Format5TimelineEntityUpdatePlan {
+  const header = headerOf(state, formatVersion);
   const clipOld = new Map(state.clips.map(row => [row.id, row])), cueOld = new Map(state.cues.map(row => [row.id, row]));
   const seen = new Set<string>(), clipWrites: Format5TimelineEntityChange[] = [], cueWrites: Format5TimelineEntityChange[] = [];
   for (const clip of patch.clips ?? []) {
-    const entity = withColumns(clipEntity(clip, header), clipOld.get(clip.id));
+    const entity = withColumns(clipEntity(clip, header, formatVersion), clipOld.get(clip.id));
     if (seen.has(entity.id)) throw entityError({code: 'FORMAT5_CLIP_INVALID', message: 'Duplicate clip identity'});
     seen.add(entity.id);
     if (clipOld.get(entity.id)?.raw !== entity.raw) clipWrites.push(entity);
@@ -424,7 +425,7 @@ export function applyFormat5TimelineEntities(store: Format5TimelineEntityWriter,
   return store.tx(() => {
     const state = readFormat5TimelineState(store.db, 'project');
     if (!state.header || state.header.projectId !== store.projectId) return invalidFormat5Timeline();
-    const plan = planFormat5TimelineEntityUpdate(state, patch);
+    const plan = planFormat5TimelineEntityUpdate(state, patch, storageVersion(store.db, 'project'));
     if (plan.changed) {
       applyFormat5TimelineEntityUpdateInside(store.db, 'project', plan);
       bumpFormat5ContentStampInside(store.db, 'project');
@@ -477,10 +478,10 @@ export function fenceFormat5TimelineRows(db: DatabaseSync, schema: ProjectSchema
     return {header: null};
   }
   const raw = parseRaw(headerRow.data as string);
-  const headerProblem = getFormat5TimelineHeaderIssue(raw, {projectId: headerRow.projectId as string});
+  const formatVersion = storageVersion(db, schema);
+  const headerProblem = getFormat5TimelineHeaderIssue(raw, {projectId: headerRow.projectId as string, formatVersion});
   if (headerProblem) return invalidFormat5Timeline();
   const header = raw as unknown as Format5TimelineHeader;
-  const formatVersion = storageVersion(db, schema);
   const timedClips = prepared(db, `SELECT c.data, a.data AS asset FROM ${clips} c LEFT JOIN ${schema}.assets a
     ON json_extract(c.data,'$.timing.profile')='timeline-freeze-v1' AND a.id=c.assetId AND a.projectId=c.projectId
     WHERE json_type(c.data,'$.timing') IS NOT NULL OR json_type(c.data,'$.sourceSpanFrames') IS NOT NULL`);
@@ -564,7 +565,7 @@ export function fenceFormat5TimelineRows(db: DatabaseSync, schema: ProjectSchema
       ${timingSourceIssue}
       (a.mime LIKE 'image/%' AND c.sourceInFrame<>0) OR
       (a.mime NOT LIKE 'image/%' AND (typeof(a.duration) NOT IN ('integer','real') OR
-        c.sourceInFrame+${sourceSpan}>CAST(a.duration*30+0.000001 AS INTEGER))))`, [timelineId]);
+        c.sourceInFrame+${sourceSpan}>CAST(a.duration*?+0.000001 AS INTEGER))))`, [timelineId, header.fps]);
   // Versioned rows prove the same ownership evidence the write path and the
   // full validator use.
   expectNone(db, `WITH version_facts AS (SELECT v.id,v.projectId,json_extract(v.data,'$.assetId') assetId,

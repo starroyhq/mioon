@@ -1,10 +1,14 @@
 import path from 'node:path';
+import {timelineAudioSampleSpan} from '../../contracts/src/timeline-audio-clock.ts';
+import {timelineFpsSchema} from '../../contracts/src/timeline-fps.ts';
+import type {TimelineFps} from '../../contracts/src/timeline-fps.ts';
+
 import {parseTimelineAudioPreviewProbe} from './timeline-audio-preview-decoder.ts';
 import type {TimelineAudioPreviewSourceProbe} from './timeline-audio-preview-decoder.ts';
 
-const BLOCK_BYTES = 60 * 1600 * 8;
+const BLOCK_BYTES = 2 * 48000 * 8;
 const fail = (code: string): Error & {code: string} => Object.assign(new Error('Continuous audio source is unavailable.'), {code});
-const seconds = (frames: number): string => (frames / 30).toFixed(9);
+const seconds = (frames: number, fps: TimelineFps): string => (frames / fps).toFixed(9);
 const localInput = (file: string, container?: string): string[] => [
   '-protocol_whitelist', 'file,pipe', '-format_whitelist', container ?? 'mov,matroska,mp3,wav',
   ...(container === undefined || container === 'mov' ? ['-enable_drefs', '0', '-use_absolute_path', '0'] : []),
@@ -23,7 +27,7 @@ export interface ContinuousDecoderRuntime {
 }
 export interface ContinuousDecodeOptions {signal: AbortSignal; beforeEffect: () => void; onDecodedBytes?: (bytes: number) => void}
 export interface ContinuousDecodeUnit {
-  sourceInFrame: number; frameCount: number; trimStartFrame: number;
+  sourceInFrame: number; frameCount: number; trimStartFrame: number; fps?: TimelineFps;
 }
 export interface ContinuousDecodeCursor {
   read(sampleFrames: number): Promise<Buffer>;
@@ -58,11 +62,13 @@ export function createTimelineAudioContinuousDecoder(runtime: ContinuousDecoderR
     },
     open(file, source, unit, options) {
       checkFile(file);
-      if (![unit.sourceInFrame, unit.frameCount, unit.trimStartFrame].every(Number.isSafeInteger) || unit.sourceInFrame < 0 ||
+      const fps = unit.fps ?? 30;
+      if (!timelineFpsSchema.safeParse(fps).success || ![unit.sourceInFrame, unit.frameCount, unit.trimStartFrame].every(Number.isSafeInteger) || unit.sourceInFrame < 0 ||
           unit.frameCount < 1 || unit.frameCount > 18000 || unit.trimStartFrame < 0 || unit.trimStartFrame >= unit.frameCount ||
-          unit.sourceInFrame + unit.frameCount > Math.floor(source.durationSeconds * 30 + 1e-6)) throw fail('AUDIO_PREVIEW_SOURCE_BOUNDS');
+          unit.sourceInFrame + unit.frameCount > Math.floor(source.durationSeconds * fps + 1e-6)) throw fail('AUDIO_PREVIEW_SOURCE_BOUNDS');
       const controller = new AbortController(), signal = AbortSignal.any([controller.signal, options.signal]);
-      const originalSamples = unit.frameCount * 1600, trimSamples = unit.trimStartFrame * 1600;
+      const originalSamples = timelineAudioSampleSpan(unit.sourceInFrame, unit.sourceInFrame + unit.frameCount, fps);
+      const trimSamples = timelineAudioSampleSpan(unit.sourceInFrame, unit.sourceInFrame + unit.trimStartFrame, fps);
       const expectedBytes = (originalSamples - trimSamples) * 8;
       let emittedBytes = 0, deliveredBytes = 0, ended = false, failure: unknown;
       let pending: {buffer: Buffer; offset: number; resolve: (buffer: Buffer) => void; reject: (error: unknown) => void} | undefined;
@@ -83,7 +89,7 @@ export function createTimelineAudioContinuousDecoder(runtime: ContinuousDecoderR
       ];
       const work = runtime.runStreamingWithBackpressure('ffmpeg', [
         '-hide_banner', '-loglevel', 'error', '-nostdin', '-xerror', '-threads', '1', '-filter_complex_threads', '1', '-reinit_filter', '0',
-        '-ss', seconds(unit.sourceInFrame), '-t', seconds(unit.frameCount + 1), ...localInput(file, source.container),
+        '-ss', seconds(unit.sourceInFrame, fps), '-t', seconds(unit.frameCount + 1, fps), ...localInput(file, source.container),
         '-filter_complex', filters.join(';'), '-map', '[out]', '-vn', '-sn', '-dn', '-threads', '1',
         '-c:a', 'pcm_f32le', '-ar', '48000', '-ac', '2', '-f', 'f32le', 'pipe:1',
       ], {signal, timeout: 120000, maxStdoutBytes: expectedBytes, maxStderrBytes: 64 * 1024, beforeSpawn: fence, beforeEffect: fence,

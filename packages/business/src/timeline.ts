@@ -148,7 +148,8 @@ export function restoreTimelineFrameSubtitles(timeline: TimelineRecord,profile: 
  * LUT, subtitle, geometry, byte-budget and history boundaries as normal edits. */
 export function restoreProjectTimelineInside(store: ProjectStore, desired: TimelineRecord | null, {requestId,now}: {requestId:string;now:string}): void {
  if(!isProjectStore(store)||!store.db.isTransaction)throw new TypeError('Timeline restoration requires the real project transaction');
- const format5=isSequenceProjectFormat(timelineStorageFormat(store.db,timelineStorageSchema(store.db)));
+ const formatVersion=timelineStorageFormat(store.db,timelineStorageSchema(store.db));
+ const format5=isSequenceProjectFormat(formatVersion);
  const row=format5?undefined:store.db.prepare('SELECT id,data FROM project.timelines WHERE projectId=?').get(store.projectId);
  const stored=format5?readTimelineStorage(store.db,store.projectId):null;
  const current=format5?stored?.timeline as TimelineRecord|null??null:row?JSON.parse(String(row.data)) as TimelineRecord:null;
@@ -168,7 +169,7 @@ export function restoreProjectTimelineInside(store: ProjectStore, desired: Timel
   // Native rows admit placeholder clips without a managed asset; the legacy
   // media boundary would reject them. The put path and commit fence validate
   // the whole format-5 aggregate, including anchors and native row identity.
-  const issue=getFormat5TimelineIssue(timeline as unknown as Format5Timeline,{projectId:store.projectId});
+  const issue=getFormat5TimelineIssue(timeline as unknown as Format5Timeline,{projectId:store.projectId,formatVersion});
   if(issue)throw new AppError(issue.code,issue.message,422,{database:'project',reason:'metadata'});
  }else{
   const boundary=legacyRecoveryBoundary(store.db,{projectId:store.projectId,requestId});
@@ -448,6 +449,9 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
     return JSON.parse(String(previous.response));
    }
    const frozen=freezeFormat5RenderSnapshot(store as unknown as Parameters<typeof freezeFormat5RenderSnapshot>[0],input);
+   if(process.env.MIOON_FORMAT6_DEV==='1'&&input.preflightSnapshotHash!==undefined&&
+      timelineStorageFormat(db,timelineStorageSchema(db))===FORMAT6_PROJECT_SCHEMA_VERSION&&hash(frozen)!==input.preflightSnapshotHash)
+    throw new AppError('PREFLIGHT_STALE','导出检查已过期，请重新检查已保存的时间线',409);
    const createdAt=now();
    const result={id:randomUUID(),projectId:input.projectId,requestId:input.requestId,mode:'timeline',purpose:input.purpose,
      timelineRevision:(frozen as {timeline:{revision:number}}).timeline.revision,snapshot:frozen,status:'queued',

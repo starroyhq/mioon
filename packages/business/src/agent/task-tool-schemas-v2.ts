@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="653d29f449df84636e5da48f76d5c492fcf528a8ab82025570f29f27c2e1751e";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="9ca6353a714e542d94740678ddb99cec51ae8d5801828b6dc2de3488c66a9cc5";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "sequence.preview": {
   "type": "object",
@@ -980,7 +980,7 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
                 "outFrame"
                ],
                "additionalProperties": false,
-               "description": "Optional half-open range on the standalone 30 fps asset grid for placing video or audio in a format 5 sequence."
+               "description": "Optional half-open range on the standalone 30 fps asset grid for placing video or audio in a sequence."
               }
              },
              "required": [
@@ -2859,29 +2859,56 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
       "const": "timeline"
      },
      "operation": {
-      "type": "object",
-      "properties": {
-       "kind": {
-        "type": "string",
-        "const": "timeline-format"
+      "anyOf": [
+       {
+        "type": "object",
+        "properties": {
+         "kind": {
+          "type": "string",
+          "const": "timeline-format"
+         },
+         "presetId": {
+          "type": "string",
+          "enum": [
+           "portrait_1080",
+           "landscape_1080",
+           "square_1080",
+           "portrait_720",
+           "landscape_720",
+           "square_720"
+          ]
+         }
+        },
+        "required": [
+         "kind",
+         "presetId"
+        ],
+        "additionalProperties": false
        },
-       "presetId": {
-        "type": "string",
-        "enum": [
-         "portrait_1080",
-         "landscape_1080",
-         "square_1080",
-         "portrait_720",
-         "landscape_720",
-         "square_720"
-        ]
+       {
+        "type": "object",
+        "properties": {
+         "kind": {
+          "type": "string",
+          "const": "timeline-fps"
+         },
+         "fps": {
+          "type": "number",
+          "enum": [
+           24,
+           25,
+           30,
+           60
+          ]
+         }
+        },
+        "required": [
+         "kind",
+         "fps"
+        ],
+        "additionalProperties": false
        }
-      },
-      "required": [
-       "kind",
-       "presetId"
-      ],
-      "additionalProperties": false
+      ]
      }
     },
     "required": [
@@ -5066,29 +5093,56 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
         "const": "timeline"
        },
        "operation": {
-        "type": "object",
-        "properties": {
-         "kind": {
-          "type": "string",
-          "const": "timeline-format"
+        "anyOf": [
+         {
+          "type": "object",
+          "properties": {
+           "kind": {
+            "type": "string",
+            "const": "timeline-format"
+           },
+           "presetId": {
+            "type": "string",
+            "enum": [
+             "portrait_1080",
+             "landscape_1080",
+             "square_1080",
+             "portrait_720",
+             "landscape_720",
+             "square_720"
+            ]
+           }
+          },
+          "required": [
+           "kind",
+           "presetId"
+          ],
+          "additionalProperties": false
          },
-         "presetId": {
-          "type": "string",
-          "enum": [
-           "portrait_1080",
-           "landscape_1080",
-           "square_1080",
-           "portrait_720",
-           "landscape_720",
-           "square_720"
-          ]
+         {
+          "type": "object",
+          "properties": {
+           "kind": {
+            "type": "string",
+            "const": "timeline-fps"
+           },
+           "fps": {
+            "type": "number",
+            "enum": [
+             24,
+             25,
+             30,
+             60
+            ]
+           }
+          },
+          "required": [
+           "kind",
+           "fps"
+          ],
+          "additionalProperties": false
          }
-        },
-        "required": [
-         "kind",
-         "presetId"
-        ],
-        "additionalProperties": false
+        ]
        }
       },
       "required": [
@@ -7625,6 +7679,29 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     "properties": {
      "kind": {
       "type": "string",
+      "const": "fps-set"
+     },
+     "fps": {
+      "type": "number",
+      "enum": [
+       24,
+       25,
+       30,
+       60
+      ]
+     }
+    },
+    "required": [
+     "kind",
+     "fps"
+    ],
+    "additionalProperties": false
+   },
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
       "const": "split-at-scenes"
      },
      "assetId": {
@@ -8003,7 +8080,7 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
        "outFrame"
       ],
       "additionalProperties": false,
-      "description": "Optional half-open range on the standalone 30 fps asset grid for placing video or audio in a format 5 sequence."
+      "description": "Optional half-open range on the standalone 30 fps asset grid for placing video or audio in a sequence."
      }
     },
     "required": [
@@ -9882,29 +9959,56 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
         "const": "timeline"
        },
        "operation": {
-        "type": "object",
-        "properties": {
-         "kind": {
-          "type": "string",
-          "const": "timeline-format"
+        "anyOf": [
+         {
+          "type": "object",
+          "properties": {
+           "kind": {
+            "type": "string",
+            "const": "timeline-format"
+           },
+           "presetId": {
+            "type": "string",
+            "enum": [
+             "portrait_1080",
+             "landscape_1080",
+             "square_1080",
+             "portrait_720",
+             "landscape_720",
+             "square_720"
+            ]
+           }
+          },
+          "required": [
+           "kind",
+           "presetId"
+          ],
+          "additionalProperties": false
          },
-         "presetId": {
-          "type": "string",
-          "enum": [
-           "portrait_1080",
-           "landscape_1080",
-           "square_1080",
-           "portrait_720",
-           "landscape_720",
-           "square_720"
-          ]
+         {
+          "type": "object",
+          "properties": {
+           "kind": {
+            "type": "string",
+            "const": "timeline-fps"
+           },
+           "fps": {
+            "type": "number",
+            "enum": [
+             24,
+             25,
+             30,
+             60
+            ]
+           }
+          },
+          "required": [
+           "kind",
+           "fps"
+          ],
+          "additionalProperties": false
          }
-        },
-        "required": [
-         "kind",
-         "presetId"
-        ],
-        "additionalProperties": false
+        ]
        }
       },
       "required": [
@@ -14611,6 +14715,15 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
      "portrait_1080",
      "landscape_1080",
      "square_1080"
+    ]
+   },
+   "timelineFps": {
+    "type": "number",
+    "enum": [
+     24,
+     25,
+     30,
+     60
     ]
    }
   },
@@ -19390,6 +19503,29 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     "properties": {
      "kind": {
       "type": "string",
+      "const": "fps-set"
+     },
+     "fps": {
+      "type": "number",
+      "enum": [
+       24,
+       25,
+       30,
+       60
+      ]
+     }
+    },
+    "required": [
+     "kind",
+     "fps"
+    ],
+    "additionalProperties": false
+   },
+   {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
       "const": "split-at-scenes"
      },
      "assetId": {
@@ -19768,7 +19904,7 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
        "outFrame"
       ],
       "additionalProperties": false,
-      "description": "Optional half-open range on the standalone 30 fps asset grid for placing video or audio in a format 5 sequence."
+      "description": "Optional half-open range on the standalone 30 fps asset grid for placing video or audio in a sequence."
      }
     },
     "required": [

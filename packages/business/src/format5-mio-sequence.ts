@@ -256,6 +256,8 @@ export function previewMioSequenceAction(store: ProjectStore, projectId: string,
   }
   else if (action.kind === 'format-set') request.formatIntent = {side: 'timeline',
     operation: {kind: 'timeline-format', presetId: action.presetId}};
+  else if (action.kind === 'fps-set') request.formatIntent = {side: 'timeline',
+    operation: {kind: 'timeline-fps', fps: action.fps}};
   else if (action.kind === 'track-add') request.trackIntent = {side: 'timeline',
     operation: {kind: 'track-structure', edit: {kind: 'add', trackId: randomUUID(), trackKind: action.trackKind,
       ...(action.name ? {name: action.name} : {})}}} satisfies SequenceEditTrackIntent;

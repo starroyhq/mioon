@@ -67,7 +67,7 @@ export function isTimelineRecord(value: unknown, {projectId, ...options}: Timeli
   const timingFields = options.format === FORMAT6_TIMELINE_FORMAT ? ['timing', 'sourceSpanFrames'] : [];
   if (!fields(value, timelineFields, ['subtitles']) || !uuid(value.id) || !uuid(value.projectId) ||
       (projectId !== undefined && value.projectId !== projectId) || !integer(value.revision, 1, Number.MAX_SAFE_INTEGER) ||
-      !timelineOutputPreset(value) ||
+      !timelineOutputPreset(value, {allowProjectFps: options.format === FORMAT6_TIMELINE_FORMAT}) ||
       !integer(value.durationFrames, 0, 18000) || !timestamp(value.createdAt) || !timestamp(value.updatedAt) ||
       !Array.isArray(value.tracks) || value.tracks.length < 1 || value.tracks.length > 12 ||
       !Array.isArray(value.clips) || value.clips.length > 100) return false;

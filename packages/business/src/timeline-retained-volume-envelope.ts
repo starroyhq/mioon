@@ -2,6 +2,8 @@ import {retainedTimelineCatalog} from './timeline-retained-catalog.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import {validateVolumeEnvelope,VOLUME_ENVELOPE_PROFILE} from '../../contracts/src/timeline-volume-envelope.ts';
 import {isVolumeEnvelopeProcessingSnapshot} from '../../contracts/src/timeline-volume-envelope-processing.ts';
+import {isTimelineFps} from '../../contracts/src/timeline-fps.ts';
+import {FORMAT6_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
 // Historical schemas validate only a projection; no projection is persisted.
 import {timelineRetainedRuntime} from './timeline-retained-runtime.ts';
 import {createTimelineLoudnessApplyContracts} from '../../contracts/src/timeline-loudness-apply.ts';
@@ -62,7 +64,7 @@ export function validateTimelineVolumeEnvelopeRows(db:Pick<DatabaseSync,'prepare
   const rows=db.prepare("SELECT CASE WHEN typeof(projectId)='text' AND length(CAST(projectId AS BLOB))=36 THEN projectId END AS projectId FROM assets WHERE id=? LIMIT 2").all(assetId);
   if(rows.length!==1||rows[0]!.projectId!==owner)invalid();
  }
- function source(clip:Record<string,unknown>,owner:unknown,frozen:unknown[]|undefined):void {
+ function source(clip:Record<string,unknown>,owner:unknown,frozen:unknown[]|undefined,fps:number):void {
   ownership(clip.assetId,owner);
   if(clip.volumeEnvelope===null)return;
   let asset:unknown;
@@ -74,7 +76,7 @@ export function validateTimelineVolumeEnvelopeRows(db:Pick<DatabaseSync,'prepare
   // Cached metadata is not actual-source proof. Historical frozen metadata is
   // never replaced by today's cache; only id/project ownership is read above.
   if(!object(asset)||!['audio/wav','audio/mpeg','audio/mp4','video/mp4','video/webm'].includes(String(asset.mimeType)))invalid();
-  if(frozen&&(!Number.isFinite(asset.duration)||Number(asset.duration)<=0||!Number.isSafeInteger(clip.sourceInFrame)||Number(clip.sourceInFrame)<0||Number(clip.sourceInFrame)+Number(clip.durationFrames)>Math.floor(Number(asset.duration)*30+1e-6)))invalid();
+  if(frozen&&(!Number.isFinite(asset.duration)||Number(asset.duration)<=0||!Number.isSafeInteger(clip.sourceInFrame)||Number(clip.sourceInFrame)<0||Number(clip.sourceInFrame)+Number(clip.durationFrames)>Math.floor(Number(asset.duration)*fps+1e-6)))invalid();
  }
  function inspect(root:unknown,owner:unknown,table:string,operation:unknown,request:unknown,bindings:{owner:boolean;operation:boolean;request:boolean}):void {
   const loudness=table==='timeline_requests'&&operation==='timeline.loudness.apply'||object(root)&&root.operation==='timeline.loudness.apply';
@@ -177,7 +179,8 @@ export function validateTimelineVolumeEnvelopeRows(db:Pick<DatabaseSync,'prepare
    }
    if(Array.isArray(value.clips)&&Array.isArray(value.tracks)&&hasTimelineVolumeEnvelopeEvidence(value.clips)){
     if(value.clips.length>100||Buffer.byteLength(JSON.stringify(value))>SNAPSHOT_BYTES)invalid();
-    for(const clip of value.clips){if(!object(clip))invalid();if(own(clip,'volumeEnvelope')){envelope(clip,false);source(clip,project,frozen);}}
+    const fps=recordFormat===FORMAT6_PROJECT_SCHEMA_VERSION&&isTimelineFps(value.fps)?value.fps:30;
+    for(const clip of value.clips){if(!object(clip))invalid();if(own(clip,'volumeEnvelope')){envelope(clip,false);source(clip,project,frozen,fps);}}
    }
    if(own(value,'volumeEnvelopeProcessingProfile')){
     if(!historicalClipLoudness(value)&&!isTimelineMixLoudnessResponse(value))invalid();

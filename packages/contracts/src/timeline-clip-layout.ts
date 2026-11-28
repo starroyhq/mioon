@@ -33,7 +33,7 @@ function exactFields(value: unknown, keys: readonly string[]): value is Record<s
  * always uses its saved basis, including when the current frame is smaller. */
 export function clipLayoutBasis(clip: {readonly layout?: unknown}, frame: unknown): TimelineOutputPreset | null {
   const property = Object.getOwnPropertyDescriptor(clip, 'layout');
-  if (!property) return timelineOutputPreset(frame);
+  if (!property) return timelineOutputPreset(frame, {allowProjectFps: true});
   const layout: unknown = property.value;
   if (!property.enumerable || !Object.hasOwn(property, 'value') || !exactFields(layout, ['profileId', 'basisPresetId'])
       || layout.profileId !== CLIP_LAYOUT_PROFILE || typeof layout.basisPresetId !== 'string') return null;
@@ -54,7 +54,7 @@ export function isClipLayoutRect(clip: {readonly layout?: unknown; readonly rect
  * v1 limits in the basis first, then keep projected offsets at full precision. */
 export function projectClipLayout(clip: StoredClipPlacement, frame: {readonly fps: number; readonly width: number; readonly height: number}): ProjectedClipLayout {
   const basis = clipLayoutBasis(clip, frame);
-  if (!basis || !timelineOutputPreset(frame) || !isClipLayoutRect(clip, frame)) {
+  if (!basis || !timelineOutputPreset(frame, {allowProjectFps: true}) || !isClipLayoutRect(clip, frame)) {
     throw Object.assign(new Error('Invalid clip layout or rectangle.'), {code: 'INVALID_TIMELINE_SNAPSHOT'});
   }
   const scaleX = frame.width / basis.width, scaleY = frame.height / basis.height;

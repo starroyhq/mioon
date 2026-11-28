@@ -1,4 +1,6 @@
 import {z} from 'zod';
+import {isTimelineFps, type TimelineFps} from './timeline-fps.ts';
+import {timelineAudioFpsSchema, timelineAudioSampleBoundary} from './timeline-audio-clock.ts';
 import {timelineDeliveryNameSchema} from './timeline-delivery.ts';
 import {timelineExportRangeSchema} from './timeline-export-range.ts';
 
@@ -46,12 +48,12 @@ const dbfs = z.number().finite().nullable();
 const encoder = new TextEncoder();
 const consistentNumber = (actual: number, expected: number): boolean => Math.abs(actual - expected) <= 1e-9;
 
-/** Compare the exact saved 30fps delivery interval in integer PCM-frame space.
+/** Compare the exact saved project delivery interval in integer PCM-frame space.
  * No floating-point duration subtraction or widened arithmetic tolerance. */
-export function isExportSamplePeakFrameCountCompatible(sampleFrames: number, outputFrames: number): boolean {
-  if (!Number.isSafeInteger(sampleFrames) || sampleFrames < 1 || sampleFrames > EXPORT_SAMPLE_PEAK_LIMITS.sampleFrames ||
+export function isExportSamplePeakFrameCountCompatible(sampleFrames: number, outputFrames: number, fps: TimelineFps = 30): boolean {
+  if (!isTimelineFps(fps) || !Number.isSafeInteger(sampleFrames) || sampleFrames < 1 || sampleFrames > EXPORT_SAMPLE_PEAK_LIMITS.sampleFrames ||
       !Number.isSafeInteger(outputFrames) || outputFrames < 1 || outputFrames > 18000) return false;
-  return Math.abs(sampleFrames - outputFrames * 1600) <= 4800;
+  return Math.abs(sampleFrames - timelineAudioSampleBoundary(outputFrames, fps)) <= 4800;
 }
 
 export const exportSamplePeakInputSchema = z.object({projectId: id, exportId: id}).strict();
@@ -65,8 +67,9 @@ export const exportSamplePeakArtifactSchema = z.object({
   timelineRevision: positiveCount(Number.MAX_SAFE_INTEGER),
   deliveryName: timelineDeliveryNameSchema.optional(),
   exportRange: timelineExportRangeSchema.optional(),
+  fps: timelineAudioFpsSchema,
 }).strict().superRefine((value, context) => {
-  for (const key of ['deliveryName', 'exportRange'] as const)
+  for (const key of ['deliveryName', 'exportRange', 'fps'] as const)
     if (Object.hasOwn(value, key) && value[key] === undefined)
       context.addIssue({code: z.ZodIssueCode.custom, path: [key], message: 'Optional frozen fields must be absent or explicitly valid.'});
 });
@@ -139,7 +142,7 @@ export const exportSamplePeakResponseSchema = z.discriminatedUnion('status', [
     if (value.measurement.overFullScale !== (value.reason?.code === 'OVER_FULL_SCALE'))
       fail(['reason'], 'Only an over-full-scale ready measurement carries its advisory.');
     if (value.artifact.exportRange && !isExportSamplePeakFrameCountCompatible(value.measurement.sampleFrames,
-        value.artifact.exportRange.endFrame - value.artifact.exportRange.startFrame))
+        value.artifact.exportRange.endFrame - value.artifact.exportRange.startFrame, value.artifact.fps))
       fail(['measurement', 'decodedDurationSeconds'], 'Decoded duration must match the frozen delivered range.');
   }
   if (encoder.encode(JSON.stringify(value)).byteLength > EXPORT_SAMPLE_PEAK_LIMITS.responseBytes)
