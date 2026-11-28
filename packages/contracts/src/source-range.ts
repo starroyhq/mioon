@@ -14,7 +14,7 @@ const id = z.string().uuid();
 const frame = z.number().finite().int().min(0).max(Number.MAX_SAFE_INTEGER);
 export const assetRangeOnSourceGridSchema = z.object({inFrame: frame, outFrame: frame}).strict()
   .refine(value => value.outFrame > value.inFrame, {path: ['outFrame'], message: 'Source range must contain at least one complete frame.'})
-  .describe('Optional half-open range on the standalone 30 fps asset grid, supported when placing an asset in a format 6 development project.');
+  .describe('Optional half-open range on the standalone 30 fps asset grid for placing video or audio in a sequence.');
 export const sourceRangeSchemas = Object.freeze({
   'asset.range.get': z.object({projectId:id,assetId:id}).strict(),
   'asset.range.set': z.object({

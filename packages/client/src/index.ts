@@ -28,6 +28,7 @@ import {z} from 'zod';
 import {zodToJsonSchema} from 'zod-to-json-schema';
 import applicationPackage from '../../../package.json' with {type: 'json'};
 import type {OperationName} from '@mioon/contracts';
+import {fcpExportSchemas,type FcpExportOperation} from '../../contracts/src/fcp-export.ts';
 import {schemas as coreSchemas, descriptions as coreDescriptions, parse, operationEffect, effectAnnotations, LOCAL_MUTATION_OPERATIONS, isLocalMutationResponse, isExportPreflightResponse, isTimelineFormatReadResponse, TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, SUBJECT_MUTATION_OPERATIONS, isSubjectMutationResponse, hasRequestNotAppliedProof} from '@mioon/contracts';
 import {resolveConnection, connectionSource, ConnectionError, type ConnectionSource, type LocalConnection} from './connection.ts';
 import {IMAGE_MUTATION_OPERATIONS,isImageMutationResponse,isImageTaskResponse,isImageGroupResponse,isImageRequestResponse,isImageProfilesResponse,isImageListResponse} from '@mioon/contracts';
@@ -184,22 +185,32 @@ function timelineRenderWireOptions(value: unknown): {format?: typeof FORMAT6_TIM
 
 function interrupted(): ClientError { return new ClientError('INTERRUPTED', 'Stopped waiting locally. No remote job was cancelled.'); }
 function checkSignal(signal: AbortSignal | undefined): void { if (signal?.aborted) throw interrupted(); }
+const sequenceCommitOperations = new Set(['sequence.commit', 'sequence.action.commit']);
+const submissionOperations = new Set([
+  ...sequenceCommitOperations, 'generation.submit', 'job.retry', 'image.generate', 'image.review.prepare',
+  'export.create', 'timeline.render',
+  'clip.audio.export', 'export.fcpxml.start', 'export.premiere.start',
+]);
 const keyedMutationOperations = new Set<string>([
   ...LOCAL_MUTATION_OPERATIONS, ...TIMELINE_MUTATION_OPERATIONS, ...REFERENCE_MUTATION_OPERATIONS, ...IMAGE_MUTATION_OPERATIONS, ...FRAME_MUTATION_OPERATIONS, ...SCENE_MUTATION_OPERATIONS, ...PREVIS_MUTATION_OPERATIONS,
-  'generation.submit', 'job.retry', 'export.create', 'image.task.observeRemote', 'image.review.prepare', 'lut.import',
+  ...submissionOperations, 'image.task.observeRemote', 'lut.import',
   'project.backup.restore',
   'project.version.save',
   'project.version.restore',
   ...canvasEditingWrites,
 ]);
 interface RpcBody {operation: string; input: Record<string, unknown>}
-function uncertainRequestDetails(body: unknown): Record<string, unknown> {
+function uncertainRequestDetails(body: RpcBody | undefined): Record<string, unknown> {
   if (!body) return {};
-  const request = body as {operation?: unknown; input?: {requestId?: unknown; input?: {requestId?: unknown}}};
+  const {operation, input} = body;
   // Receipt reads also carry requestId. Only a known keyed write can have an
-  // uncertain submission; review preparation keeps its key in the exact intent.
-  const requestId = request.operation === 'image.review.prepare' ? request.input?.input?.requestId : request.input?.requestId;
-  return {operation: request.operation, ...(typeof request.operation === 'string' && keyedMutationOperations.has(request.operation) && requestId ? {requestId, submissionMayHaveSucceeded: true, recovery: 'Replay the exact original input with the same requestId; do not invent a replacement ID.'} : {})};
+  // uncertain submission. Review and sequence submissions keep the key in their intent.
+  let requestId = input.requestId;
+  if (operation === 'image.review.prepare') requestId = (input.input as {requestId?: unknown} | undefined)?.requestId;
+  if (sequenceCommitOperations.has(operation)) requestId = (input.envelope as {requestId?: unknown} | undefined)?.requestId;
+  if (!keyedMutationOperations.has(operation) || typeof requestId !== 'string' || !requestId) return {operation};
+  return {operation, requestId, submissionMayHaveSucceeded: true,
+    recovery: 'Replay the exact original input with the same requestId; do not invent a replacement ID.'};
 }
 function comfyObservationNotAccepted(error: unknown, status: number, input: unknown): boolean {
   const statuses: Record<string, number> = {COMFY_MODULE_UNAVAILABLE:503,COMFY_REMOTE_STATE:409,COMFY_REMOTE_REVISION_CONFLICT:409,COMFY_REMOTE_BUSY:409,COMFY_REMOTE_CAPACITY:507};
@@ -266,7 +277,13 @@ function sceneNotAccepted(error: unknown, status: number, operation: string, inp
     proof.inputHash === createHash('sha256').update(canonicalSceneInput(input)).digest('hex');
 }
 
-export interface ClientOptions {env?: NodeJS.ProcessEnv; fetchImpl?: typeof fetch; requestTimeoutMs?: number}
+export interface ClientOptions {
+  env?: NodeJS.ProcessEnv;
+  fetchImpl?: typeof fetch;
+  requestTimeoutMs?: number;
+  /** Report the current CLI/MCP attempt without inferring whether an earlier attempt applied. */
+  reportSubmissionRejections?: boolean;
+}
 export interface RequestOptions {body?: RpcBody; signal?: AbortSignal; timeoutMs?: number; userAction?: boolean}
 /** `projectId` addresses the entity-addressed operations, whose input names
  * no project; every other operation takes its project from its input. */
@@ -298,7 +315,7 @@ export interface Client {
   watch(kind: 'job' | 'export', input: Record<string, unknown>, options?: WatchOptions): Promise<WatchRecord>;
 }
 export function createClient(clientOptions: ClientOptions = {}): Client {
-  const {env = process.env, fetchImpl = fetch, requestTimeoutMs = 30_000} = clientOptions;
+  const {env = process.env, fetchImpl = fetch, requestTimeoutMs = 30_000, reportSubmissionRejections = false} = clientOptions;
   // These bounded advisory reads need transport grace after local analysis.
   // Every other default and explicit caller timeout remains unchanged.
   const preflightTimeoutMs = Object.hasOwn(clientOptions, 'requestTimeoutMs') ? requestTimeoutMs : 35_000;
@@ -327,20 +344,24 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
       if (!envelope.ok || !response.ok) {
         const failure = (envelope.error ?? {}) as {code?: unknown; message?: unknown; details?: unknown};
         let details = safeValue(failure.details || {}, [token]);
-        if (body?.operation === 'generation.submit' && Object.hasOwn(body.input, 'aspectSource')) {
-          const projectId = parseProjectApiPath(resource)?.projectId;
-          const proven = typeof projectId === 'string' && isGenerationAspectNotApplied({...failure, status: response.status}, body.input, projectId);
-          details = {...(details && typeof details === 'object' && !Array.isArray(details) ? details : {}),
-            ...(proven ? {operation: body.operation, requestId: body.input.requestId, submissionMayHaveSucceeded: false} : recoveryDetails)};
-          if (!proven) delete (details as Record<string, unknown>).mutationOutcome;
-        }
-        if (body && ((TIMELINE_MUTATION_OPERATIONS as readonly string[]).includes(body.operation) || (REFERENCE_MUTATION_OPERATIONS as readonly string[]).includes(body.operation) || (SUBJECT_MUTATION_OPERATIONS as readonly string[]).includes(body.operation))) {
-          const proven = hasRequestNotAppliedProof({...failure, status: response.status}, body.input, {operation: body.operation});
-          details = {...(details && typeof details === 'object' && !Array.isArray(details) ? details : {}),
+        const submission = reportSubmissionRejections && body && submissionOperations.has(body.operation);
+        const outcome = failure.details as {mutationOutcome?: unknown; submissionMayHaveSucceeded?: unknown} | null | undefined;
+        // A rejection of this attempt does not settle an earlier lost acknowledgement.
+        const definiteRejection = submission && response.status >= 400 && response.status < 500 &&
+          outcome?.mutationOutcome !== 'unknown' && outcome?.submissionMayHaveSucceeded !== true;
+        const generationAspect = body?.operation === 'generation.submit' && Object.hasOwn(body.input, 'aspectSource');
+        if (body && (generationAspect || (TIMELINE_MUTATION_OPERATIONS as readonly string[]).includes(body.operation) || (REFERENCE_MUTATION_OPERATIONS as readonly string[]).includes(body.operation) || (SUBJECT_MUTATION_OPERATIONS as readonly string[]).includes(body.operation))) {
+          const projectId = generationAspect ? parseProjectApiPath(resource)?.projectId : undefined;
+          const proven = generationAspect
+            ? typeof projectId === 'string' && isGenerationAspectNotApplied({...failure, status: response.status}, body.input, projectId)
+            : hasRequestNotAppliedProof({...failure, status: response.status}, body.input, {operation: body.operation});
+          if (!definiteRejection) details = {...(details && typeof details === 'object' && !Array.isArray(details) ? details : {}),
             ...(proven ? {operation: body.operation, requestId: body.input.requestId, submissionMayHaveSucceeded: false} : recoveryDetails)};
           // Never rebind an unverified marker to the original request ID while
           // adding recovery guidance: downstream clients could mistake it for proof.
-          if (!proven) delete (details as Record<string, unknown>).mutationOutcome;
+          if (!proven && details && typeof details === 'object') delete (details as Record<string, unknown>).mutationOutcome;
+        } else if (submission && !definiteRejection && recoveryDetails.submissionMayHaveSucceeded === true) {
+          details = {...(details && typeof details === 'object' && !Array.isArray(details) ? details : {}), ...recoveryDetails};
         }
         if (body && Object.hasOwn(frameSchemas, body.operation)) {
           const mutation = (FRAME_MUTATION_OPERATIONS as readonly string[]).includes(body.operation);
@@ -374,7 +395,7 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
         }
         if (body?.operation==='lut.import') details={...(details&&typeof details==='object'&&!Array.isArray(details)?details:{}),...recoveryDetails};
         if (body && ['RESTORE_OPERATION_UNAVAILABLE', 'RESTORED_RECORD_HELD', 'RESTORE_WORKSPACE_ORIGIN_REQUIRED', 'RESTORE_WORKSPACE_ORIGIN_MISMATCH', 'RESTORE_BACKUP_UNAVAILABLE'].includes(failure.code as string)) {
-          details = {...(details && typeof details === 'object' && !Array.isArray(details) ? details : {}), ...recoveryDetails};
+          details = {...(details && typeof details === 'object' && !Array.isArray(details) ? details : {}), ...(definiteRejection ? {} : recoveryDetails)};
           delete (details as Record<string, unknown>).mutationOutcome; delete (details as Record<string, unknown>).frameOutcome; delete (details as Record<string, unknown>).sceneOutcome; delete (details as Record<string, unknown>).subjectVariantOutcome; delete (details as Record<string, unknown>).observation;
         }
         throw new ClientError(typeof failure.code === 'string' ? safeValue(failure.code, [token]) : 'BACKEND_UNAVAILABLE', typeof failure.message === 'string' ? safeValue(failure.message, [token]) : 'The backend rejected the request.', {status: response.status, details});
@@ -452,6 +473,8 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid subject-generation retry acknowledgement.', {details: {...uncertainRequestDetails(body), submissionMayHaveSucceeded: true}});
     if ((LOCAL_MUTATION_OPERATIONS as readonly string[]).includes(operation) && !isLocalMutationResponse(operation, parsed, result))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid mutation acknowledgement.', {details: {...uncertainRequestDetails(body), submissionMayHaveSucceeded: true}});
+    if (Object.hasOwn(fcpExportSchemas, operation) && !fcpExportSchemas[operation as FcpExportOperation].output.safeParse(result).success)
+      throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid Final Cut Pro export response.', {details: uncertainRequestDetails(body)});
     if ((TIMELINE_MUTATION_OPERATIONS as readonly string[]).includes(operation) && !isTimelineMutationResponse(operation, parsed, result, operation === 'timeline.render' ? timelineRenderWireOptions(result) : undefined))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid timeline acknowledgement.', {details: {...uncertainRequestDetails(body), submissionMayHaveSucceeded: true}});
     if ((REFERENCE_MUTATION_OPERATIONS as readonly string[]).includes(operation) && !isReferenceMutationResponse(operation, parsed, result))

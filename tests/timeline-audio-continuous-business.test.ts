@@ -1,8 +1,16 @@
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID, createHash} from 'node:crypto';
+import {lstat, mkdir, mkdtemp, realpath, rename, rm, utimes, writeFile} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
-import {createTimelineAudioContinuousServices} from '../packages/business/src/timeline-audio-continuous.ts';
+import {readFormat5AudioProjection} from '../packages/business/src/format5-timeline-render.ts';
+import {validateManagedSource, verifiedManagedHash} from '../packages/business/src/managed-media.ts';
+import {FORMAT5_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
+import {createProjectStore} from '../packages/business/src/project-file/store.ts';
+import {referenceForPublishedMedia, registerProjectMediaStore} from '../packages/business/src/project-media-storage.ts';
+import {createProjectAudioSnapshotStamp, createTimelineAudioContinuousServices} from '../packages/business/src/timeline-audio-continuous.ts';
 import type {TimelineFps} from '../packages/contracts/src/timeline-fps.ts';
 
 interface BusinessClip {id: string; trackId: string; assetId: string; startFrame: number; durationFrames: number; sourceInFrame: number; gain: number; [key: string]: unknown}
@@ -183,6 +191,171 @@ test('saved revision and exact source stat changes reject publication without st
       (error: unknown) => ['AUDIO_PREVIEW_REVISION_CONFLICT', 'AUDIO_PREVIEW_STALE'].includes((error as {code?: string}).code as string));
     assert.equal(published, false);
   }
+});
+
+async function format5SnapshotFixture(t: TestContext) {
+  const root = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-continuous-format5-'));
+  const projectFile = path.join(root, 'audio.mioon');
+  const store = createProjectStore({projectId: randomUUID(), projectFile, targetFormat: FORMAT5_PROJECT_SCHEMA_VERSION,
+    locate: () => ({localDir: path.join(root, 'history'), cacheDir: path.join(root, 'cache'), tempDir: path.join(root, 'temp')})});
+  const {db, projectId} = store, unregister = registerProjectMediaStore(store);
+  let service: ReturnType<typeof createTimelineAudioContinuousServices> | undefined;
+  t.after(async () => {
+    try {await service?.drain();}
+    finally {unregister(); store.close(); await rm(root, {recursive: true, force: true});}
+  });
+  const time = new Date('2026-01-01T00:00:00.000Z'), at = time.toISOString();
+  const durationFrames = 240, duration = durationFrames / 30, sampleRate = 48_000;
+  const bytes = Buffer.alloc(44 + duration * sampleRate * 2);
+  bytes.write('RIFF'); bytes.writeUInt32LE(bytes.length - 8, 4); bytes.write('WAVEfmt ', 8);
+  bytes.writeUInt32LE(16, 16); bytes.writeUInt16LE(1, 20); bytes.writeUInt16LE(1, 22);
+  bytes.writeUInt32LE(sampleRate, 24); bytes.writeUInt32LE(sampleRate * 2, 28);
+  bytes.writeUInt16LE(2, 32); bytes.writeUInt16LE(16, 34); bytes.write('data', 36); bytes.writeUInt32LE(bytes.length - 44, 40);
+  const media = path.join(root, 'media'), file = path.join(media, 'owned.wav');
+  await mkdir(media, {mode: 0o700});
+  await writeFile(file, bytes, {mode: 0o600});
+  await utimes(file, time, time);
+  const reference = await referenceForPublishedMedia(store, file);
+  const timelineId = randomUUID(), clipId = randomUUID(), assetId = randomUUID(), rootId = randomUUID();
+  const mainTrack = {id: randomUUID(), name: 'Main', kind: 'video', orderIndex: 0, hidden: false, muted: false};
+  const track = {id: randomUUID(), name: 'Audio', kind: 'audio', orderIndex: 1, hidden: false, muted: false};
+  store.tx(() => {
+    store.put('projects', {id: projectId, name: 'Snapshot stamp', revision: 1, createdAt: at, updatedAt: at});
+    store.put('nodes', {id: rootId, projectId, type: 'sequence_root', name: 'Sequence', position: {x: 0, y: 0}, createdAt: at});
+    store.put('assets', {id: assetId, projectId, mimeType: 'audio/wav', name: 'Synthetic source', duration,
+      hasAudio: true, hasVideo: false, createdAt: at, ...reference});
+    store.put('timelines', {id: timelineId, projectId, revision: 1, fps: 30, width: 720, height: 1280,
+      mainTrack: {trackId: mainTrack.id, sequenceNodeId: rootId}, tracks: [mainTrack, track], durationFrames, createdAt: at, updatedAt: at,
+      clips: [{id: clipId, trackId: track.id, name: 'Audio', startFrame: 0, sourceInFrame: 0, durationFrames,
+        rect: {x: 0, y: 0, width: 720, height: 1280}, gain: 1, assetId, sourceState: 'ready', anchor: null}]});
+    db.prepare('INSERT INTO project.sequence_sync_state(timelineId,projectId,sequenceNodeId,revision,baseline) VALUES(?,?,?,?,?)')
+      .run(timelineId, projectId, rootId, 1, JSON.stringify({version: 1, board: [], track: []}));
+  });
+  const calls = {snapshots: 0, sourceChecks: 0, reads: 0};
+  let beforeDecode: (() => void | Promise<void>) | undefined;
+  const readStamp = createProjectAudioSnapshotStamp(db, FORMAT5_PROJECT_SCHEMA_VERSION);
+  const owned = service = createTimelineAudioContinuousServices(store, {runtime: {
+    assertOrdinaryWorkspace() {}, ownsLock: () => true, readSnapshotStamp: readStamp,
+    readSavedTimeline: () => {
+      calls.snapshots++;
+      const snapshot = readFormat5AudioProjection(store);
+      return snapshot && {timeline: snapshot.legacy, assets: [...snapshot.assets.values()]};
+    },
+    validateSource: (...args) => {calls.sourceChecks++; return validateManagedSource(...args);},
+    hash: verifiedManagedHash,
+    decoder: {
+      probe: async () => ({streamIndex: 0, codecName: 'pcm_s16le', sampleRate, channels: 1, channelLayout: 'mono',
+        layoutOrigin: 'pcm-wav-channel-count', audioDurationSeconds: duration, durationSeconds: duration,
+        container: 'wav', sizeBytes: bytes.length}),
+      open: () => ({done: Promise.resolve(), async read(samples) {
+        calls.reads++;
+        await beforeDecode?.();
+        return Buffer.alloc(samples * 8);
+      }, async close() {}}),
+    },
+    boundedShutdown: async work => work,
+  }});
+  const input = {projectId, timelineId, expectedRevision: 1, startFrame: 0};
+  const readPlan = () => owned.handlers['timeline.audioPreview.continuousPlan'](input);
+  const plan = await readPlan();
+  const sessionId = randomUUID();
+  const consume = (sequence: number, publish?: () => void) => owned.consumeBlock({...input, planHash: plan.planHash,
+    generation: 1, sessionId, sequence, blockStartFrame: (sequence - 1) * 60}, {consume: async ({pcm}) => {publish?.(); return pcm;}});
+  return {db, projectFile, clipId, assetId, calls, readStamp, readPlan, plan, consume,
+    onDecode: (callback: typeof beforeDecode) => {beforeDecode = callback;},
+    async replaceSourceIdentity() {
+      const previous = await lstat(file);
+      const replacement = path.join(media, 'replacement.wav');
+      await writeFile(replacement, bytes, {mode: 0o600});
+      await utimes(replacement, time, time);
+      await rename(replacement, file);
+      const next = await lstat(file);
+      assert.equal(next.size, previous.size);
+      assert.equal(next.mtimeMs, previous.mtimeMs);
+      assert.notEqual(next.ino, previous.ino);
+    }};
+}
+
+test('format-5 audio snapshot reuses the saved proof only when the attached DB is unchanged and in autocommit', async t => {
+  const f = await format5SnapshotFixture(t);
+  const planReads = f.calls.snapshots;
+  await f.consume(1);
+  assert.equal(f.calls.snapshots, planReads + 1);
+  const sourceChecks = f.calls.sourceChecks;
+  await f.consume(2);
+  assert.equal(f.calls.snapshots, planReads + 1);
+  assert.ok(f.calls.sourceChecks > sourceChecks);
+
+  f.db.exec('BEGIN DEFERRED');
+  try {
+    assert.equal(f.readStamp(), undefined);
+    await f.consume(3);
+    assert.ok(f.calls.snapshots > planReads + 2, 'Every fence in a transaction must re-read the saved state');
+  } finally {f.db.exec('ROLLBACK');}
+  const transactionReads = f.calls.snapshots;
+  await f.consume(4);
+  assert.equal(f.calls.snapshots, transactionReads + 1);
+});
+
+for (const writer of ['same connection', 'external connection'] as const) {
+  test(`format-5 audio snapshot refuses a same-revision edit during decode from ${writer}`, async t => {
+    const f = await format5SnapshotFixture(t);
+    await f.consume(1);
+    if (writer === 'external connection') {
+      // The production owner holds an exclusive SQLite lock. Release that
+      // lock on this isolated attachment to exercise data_version with a real writer.
+      f.db.exec('PRAGMA project.locking_mode=NORMAL');
+      f.db.prepare('SELECT id FROM project.timelines').get();
+    }
+    const stamp = f.readStamp(), {snapshots} = f.calls;
+    let editFailure: unknown;
+    f.onDecode(() => {
+      try {
+        const remote = writer === 'external connection' ? new DatabaseSync(f.projectFile) : undefined;
+        try {
+          const db = remote ?? f.db, table = remote ? 'timeline_clips' : 'project.timeline_clips';
+          assert.equal(db.prepare(`UPDATE ${table} SET data=json_set(data,'$.gain',0.25) WHERE id=?`).run(f.clipId).changes, 1);
+        } finally {remote?.close();}
+        assert.notEqual(f.readStamp(), stamp);
+      } catch (error) {editFailure = error; throw error;}
+    });
+    let publication = 0;
+    try {await assert.rejects(f.consume(2, () => {publication++;}), {code: 'AUDIO_PREVIEW_STALE'});}
+    finally {assert.ifError(editFailure);}
+    assert.equal(f.calls.reads, 2);
+    assert.ok(f.calls.snapshots > snapshots);
+    assert.equal(publication, 0);
+  });
+}
+
+test('format-5 audio snapshot still refuses a changed source inode without a DB write', async t => {
+  const f = await format5SnapshotFixture(t);
+  await f.consume(1);
+  const stamp = f.readStamp(), {snapshots, sourceChecks} = f.calls;
+  f.onDecode(f.replaceSourceIdentity);
+  let publication = 0;
+  await assert.rejects(f.consume(2, () => {publication++;}), {code: 'AUDIO_PREVIEW_STALE'});
+  assert.equal(f.calls.reads, 2);
+  assert.equal(f.readStamp(), stamp);
+  assert.equal(f.calls.snapshots, snapshots);
+  assert.ok(f.calls.sourceChecks > sourceChecks);
+  assert.equal(publication, 0);
+});
+
+test('format-5 audio snapshot revalidates the asset locator even when the plan hash is unchanged', async t => {
+  const f = await format5SnapshotFixture(t);
+  await f.consume(1);
+  const stamp = f.readStamp();
+  // The reference revision is part of the managed locator, outside the PCM plan digest.
+  assert.equal(f.db.prepare("UPDATE project.assets SET data=json_set(data,'$.referenceRevision',2) WHERE id=?").run(f.assetId).changes, 1);
+  assert.notEqual(f.readStamp(), stamp);
+  assert.equal((await f.readPlan()).planHash, f.plan.planHash);
+  const {snapshots, sourceChecks} = f.calls;
+  let publication = 0;
+  await assert.rejects(f.consume(2, () => {publication++;}), {code: 'AUDIO_PREVIEW_STALE'});
+  assert.ok(f.calls.snapshots > snapshots);
+  assert.equal(f.calls.sourceChecks, sourceChecks);
+  assert.equal(publication, 0);
 });
 
 test('sequence replay rejects while forward and initial gaps tolerate pre-send cancellation', async (t: TestContext) => {

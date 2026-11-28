@@ -103,6 +103,7 @@ export const SEQUENCE_EDIT_OPERATIONS = Object.freeze([
   'board.paste', 'board.duplicate',
   'timeline.clip.move', 'timeline.clip.remove', 'timeline.clip.add', 'timeline.clip.split',
   'timeline.clip.trim', 'timeline.clip.version', 'timeline.clip.move-off-track', 'timeline.clip.paste',
+  'timeline.clip.copy-as-new-shot',
   'timeline.clip.splitAtScenes', 'timeline.clip.separateSound', 'timeline.format.set', 'timeline.track.add', 'timeline.track.update',
   'timeline.clip.setSpeed', 'timeline.clip.freeze',
   'timeline.generate.placeholder', 'timeline.generate.resize',
@@ -512,6 +513,7 @@ export function sequenceEditIntentOperationName(operation: ChainSyncOperation | 
         case 'add': return operation.edit.copyFromClipId ? 'timeline.clip.paste' : 'timeline.clip.add';
         case 'insert-asset': return 'timeline.clip.add';
         case 'paste-clip': return 'timeline.clip.paste';
+        case 'copy-as-new-shot': return 'timeline.clip.copy-as-new-shot';
         case 'add-overlay': return operation.edit.copyFromClipId ? 'timeline.clip.paste' : 'timeline.clip.add';
         case 'split': return 'timeline.clip.split';
         case 'trim': return 'timeline.clip.trim';
@@ -750,6 +752,9 @@ const allocationSchema = z.object({
   duplicate(value.edges.map(item => item.id), 'edge');
 });
 export {allocationSchema as sequenceEditAllocationSchema};
+export const copyAsNewShotTrackEditSchema = z.object({
+  kind: z.literal('copy-as-new-shot'), clipId: uuidSchema, newClipId: uuidSchema, copyNodeId: uuidSchema,
+}).strict();
 const operationSchema = z.object({kind: z.enum(['board', 'sync-board', 'board-version', 'track',
   'board.root.create', 'board.shot.append', 'board.layout.move', 'board.node.create', 'board.shot.update',
   'board.node.update', 'board.restore', 'board.paste', 'board.duplicate'])}).passthrough();
@@ -757,6 +762,11 @@ const intentSchema = z.object({side: z.enum(SEQUENCE_EDIT_SIDES), operation: ope
   .superRefine((value, context) => {
     if (sequenceEditIntentSide(value.operation as unknown as Pick<ChainSyncOperation, 'kind'>) !== value.side) {
       context.addIssue({code: z.ZodIssueCode.custom, message: 'Intent side does not match its operation kind'});
+    }
+    const edit = value.operation.kind === 'track' ? value.operation.edit : undefined;
+    if (typeof edit === 'object' && edit !== null && 'kind' in edit && edit.kind === 'copy-as-new-shot'
+      && !copyAsNewShotTrackEditSchema.safeParse(edit).success) {
+      context.addIssue({code: z.ZodIssueCode.custom, path: ['operation', 'edit'], message: 'Invalid copy-as-new-shot edit'});
     }
   });
 
@@ -1371,6 +1381,17 @@ export const sequenceEditHistoryEntrySchema = z.object({
 /** `ok` plan for one envelope, produced by exactly one `planChainSync` call. */
 export type SequenceEditPlan = Extract<ChainSyncPlan, {readonly ok: true}>;
 
+export const SEQUENCE_EDIT_DIALOGUE_BLOCKER_LIMIT = 8;
+export const sequenceEditDialogueConflictSchema = z.object({
+  blockers: z.array(z.object({
+    cueId: uuidSchema, startFrame: sequenceSchema, endFrame: sequenceSchema, textExcerpt: z.string().max(25),
+  }).strict()).max(SEQUENCE_EDIT_DIALOGUE_BLOCKER_LIMIT),
+  blockerCount: sequenceSchema,
+  requiredFrames: sequenceSchema.positive(),
+  availableFrames: sequenceSchema,
+}).strict();
+export type SequenceEditDialogueConflict = z.infer<typeof sequenceEditDialogueConflictSchema>;
+
 export interface SequenceEditTransactionFailure {
   readonly ok: false;
   readonly code: SequenceEditErrorCode;
@@ -1378,6 +1399,7 @@ export interface SequenceEditTransactionFailure {
   /** Bounded validation reason for a user-facing explanation; no raw data. */
   readonly reason?: string;
   readonly message?: string;
+  readonly dialogueConflict?: SequenceEditDialogueConflict;
 }
 
 /** Input both transaction-internal entries receive. The coordinator reads the
@@ -1464,6 +1486,12 @@ export interface SequenceEditHistoryCursor {
 export const SEQUENCE_EDIT_WARNING_CODES = Object.freeze(['SOURCE_TOO_SHORT'] as const);
 export type SequenceEditWarningCode = (typeof SEQUENCE_EDIT_WARNING_CODES)[number];
 
+export const sequenceEditFailureEvidenceSchema = z.object({
+  ids: idListSchema(FORMAT5_LIMITS.mainTrackClips),
+  reason: z.string().regex(/^[A-Z][A-Z0-9_]{0,79}$/u).optional(),
+}).strict();
+export type SequenceEditFailureEvidence = Readonly<{ids: readonly string[]; reason?: string | undefined}>;
+
 /** `editor_requests.response`, bounded by the frozen 64 KiB receipt window. */
 export interface SequenceEditReceipt {
   readonly version: typeof SEQUENCE_EDIT_CONTRACT_VERSION;
@@ -1475,6 +1503,8 @@ export interface SequenceEditReceipt {
   readonly originSide: SequenceEditSide;
   readonly status: 'applied' | 'not_applied';
   readonly code?: SequenceEditErrorCode;
+  /** Optional machine evidence on a rejected action, preserved on replay. */
+  readonly failure?: SequenceEditFailureEvidence;
   /** Present only on an applied receipt that has something to report. */
   readonly warnings?: readonly ChainSyncWarning[];
   readonly affected: SequenceEditAffectedCounts;
@@ -1518,6 +1548,7 @@ export const sequenceEditReceiptSchema = z.object({
   projectId: uuidSchema, actionId: uuidSchema, operation: boundedText(SEQUENCE_EDIT_LIMITS.operationBytes),
   originSide: z.enum(SEQUENCE_EDIT_SIDES), status: z.enum(['applied', 'not_applied']),
   code: z.string().min(1).max(SEQUENCE_EDIT_LIMITS.operationBytes).optional(),
+  failure: sequenceEditFailureEvidenceSchema.optional(),
   warnings: z.array(z.object({
     code: z.literal('SOURCE_TOO_SHORT'), clipId: uuidSchema, nodeId: uuidSchema,
     versionId: uuidSchema, shortByFrames: sequenceSchema,
@@ -1527,7 +1558,8 @@ export const sequenceEditReceiptSchema = z.object({
   sceneSplit: sceneSplitSchema.optional(),
 }).strict().refine(value => value.status === 'applied' ? value.code === undefined : value.code !== undefined,
   'Only a not-applied receipt carries an error code').refine(value => value.status === 'applied' || value.warnings === undefined,
-  'A not-applied receipt carries no warnings');
+  'A not-applied receipt carries no warnings').refine(value => value.status === 'not_applied' || value.failure === undefined,
+  'Only a not-applied receipt carries failure evidence');
 
 /** External service entry shared by UI-B/UI-E/MT. The same envelope shape feeds
  * `apply`; undo/redo address one existing history action and never blindly apply

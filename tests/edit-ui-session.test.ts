@@ -5,12 +5,46 @@ import {
   format5UserUndoBlocked, format5MoveCommand, format5PatchCommand, format5Projection, format5SceneSplitNotice, format5SplitCommand, format5TrimCommand, format5VersionCommand,
 } from '../apps/web/src/edit-ui/session.ts';
 import type {SequenceRpc} from '../apps/web/src/edit-ui/session.ts';
-import {LostResponseState, UNCONFIRMED_CODE} from '../apps/web/src/edit-ui/lost-response.ts';
+import {LostResponseState, parseSequenceCommit, refreshOnSequenceEditNoop, UNCONFIRMED_CODE} from '../apps/web/src/edit-ui/lost-response.ts';
 import {ApiError} from '../apps/web/src/api.ts';
 import type {RequestOutcome} from '../apps/web/src/request-outcome-client.ts';
 
 const projectId = '70000000-0000-4000-8000-000000000001';
 const OTHER_PROJECT = '70000000-0000-4000-8000-000000000002';
+
+test('a definite sequence no-op refreshes the workspace exactly once and leaves the rejection or receipt intact', async () => {
+  let refreshes = 0;
+  const refresh = async () => {refreshes++;};
+  const preview = {ok: false, code: 'SEQUENCE_EDIT_NOOP', ids: ['track']};
+  const actions: string[] = [];
+  const session = new Format5EditSession(operation => {
+    actions.push(operation);
+    return refreshOnSequenceEditNoop(Promise.resolve(preview), refresh);
+  }, () => projectId);
+  assert.deepEqual(await session.run(format5SplitCommand('clip' as never, 1)), preview);
+  assert.deepEqual(actions, ['sequence.preview']);
+  assert.equal(refreshes, 1);
+
+  const receipt = {status: 'not_applied', code: 'SEQUENCE_EDIT_NOOP', failure: {ids: ['track']}};
+  assert.equal(await refreshOnSequenceEditNoop(Promise.resolve(receipt), refresh), receipt);
+  assert.deepEqual(parseSequenceCommit({ok: true, receipt}), {kind: 'failure', code: receipt.code, ids: receipt.failure.ids});
+  const error = new ApiError('noop', receipt.code, {ids: ['track']}, true, 409);
+  await assert.rejects(refreshOnSequenceEditNoop(Promise.reject(error), refresh), candidate => candidate === error);
+  assert.equal(refreshes, 3);
+  const conflict = {ok: false, code: 'SEQUENCE_EDIT_REVISION_CONFLICT'};
+  assert.equal(await refreshOnSequenceEditNoop(Promise.resolve(conflict), refresh), conflict);
+  const uncertain = new ApiError('unknown', receipt.code, undefined, false, 502);
+  await assert.rejects(refreshOnSequenceEditNoop(Promise.reject(uncertain), refresh), candidate => candidate === uncertain);
+  assert.equal(refreshes, 3);
+
+  const lost = new LostResponseState({readOutcome: async () => ({applied: false, operation: 'timeline.track.update',
+    status: 'not_applied', code: receipt.code}), onNoop: refresh});
+  lost.retain({projectId, requestId: 'noop-readback', envelope: envelope('noop-readback') as never, planDigest: 'digest'},
+    async () => assert.fail('a confirmed no-op is never replayed'));
+  assert.deepEqual(await lost.reconcileOnce(() => true), {kind: 'not_applied', code: receipt.code, operation: 'timeline.track.update'});
+  assert.equal(refreshes, 4);
+  assert.equal(lost.view, null);
+});
 const envelope = (requestId = 'preview-1') => ({contractVersion: 1, requestId, projectId, actionId: crypto.randomUUID(),
   originSide: 'timeline', filmId: projectId, intents: [], subjectIntent: undefined,
   baseline: {contentRevision: 1, timelineRevision: 1, syncRevision: 1, historyPosition: 0, historyRevision: 1, targets: []},

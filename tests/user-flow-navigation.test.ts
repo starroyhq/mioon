@@ -36,6 +36,7 @@ const rejectUnexpected = (name: string) => () => assert.fail(`Unexpected depende
 
 function harness({ dock = 'tasks', page = 'format', mode = 'editing', dirty = false, confirm = async () => true, controller = null, quickAssetId = null, narrow = false, realView = false }: {dock?:string;page?:string;mode?:string;dirty?:boolean;confirm?:(message?:unknown)=>Promise<unknown>;controller?:unknown;quickAssetId?:string|null;narrow?:boolean;realView?:boolean} = {}) {
   const events: (string|boolean)[][] = [], resets: unknown[][] = [], confirmations: unknown[] = [], presentations: { value: number; epoch: number; }[] = [];
+  const settledClaims: string[] = [];
   let presentation = 0;
   const formatDraft = Object.freeze({ width: '1280', height: '', dirty: true });
   const state = { dock: ['tasks', 'delivery'].includes(dock) ? 'properties' : dock,
@@ -68,6 +69,7 @@ function harness({ dock = 'tasks', page = 'format', mode = 'editing', dirty = fa
     setPanelOpen: (...args: unknown[]) => { assert.deepEqual(args, ['inspector', true, 'canvas']); env.panelIntent.current++; events.push(['panel', ...args]); },
     setMobilePanel: (value: string) => { assert.ok(['canvas', 'inspector'].includes(value)); state.mobile = value; events.push(['mobile', value]); },
     geometry: { narrow },
+    settleDiscardedAgentEditingDrafts: (projectId: string) => settledClaims.push(projectId),
     ...Object.fromEntries(['setShotDirty', 'setClipDirty', 'setSourceDirty', 'setSubjectDirty', 'setSubtitleDirty', 'setInspectorEpoch'].map(name => [name, (value:unknown) => resets.push([name, typeof value === 'function' ? value(3) : value])])),
     run: rejectUnexpected('business mutation'), rpc: rejectUnexpected('RPC'),
   };
@@ -86,7 +88,7 @@ function harness({ dock = 'tasks', page = 'format', mode = 'editing', dirty = fa
     env.updateView = (Function(...Object.keys(viewEnv), `${actualUpdateView}\nreturn updateView;`)(...Object.values(viewEnv)) as typeof env.updateView);
   }
   const api = (Function(...Object.keys(env), `${source}\nreturn { inspect, selectClip };`)(...Object.values(env)) as import('./helpers/strict-root-ui-types.ts').RootNavigationApi);
-  return { env, api, state, events, resets, confirmations, presentations, formatDraft,
+  return { env, api, state, events, resets, confirmations, presentations, formatDraft, settledClaims,
     chooseDock(value: string) { env.panelIntent.current++; state.showTasks = value === 'tasks'; state.showDelivery = value === 'delivery'; if (!['tasks', 'delivery'].includes(value)) state.dock = value; },
   };
 }
@@ -299,9 +301,11 @@ for (const action of actions) {
     const f = draftFixture(t); await f.ready(); const remove = f.holdRemove();
     const h = harness({ controller: f.controller, dirty: true }), pending = action.invoke(h);
     await f.removeEntered; assert.deepEqual((h.events as unknown), []); assert.deepEqual((h.resets as unknown), []);
+    assert.deepEqual((h.settledClaims as unknown), []);
     (remove.resolve)!(); await pending;
     assert.equal(h.state.dock, 'properties'); assert.equal(h.state.page, 'inspector'); assert.equal(f.controller.hasUnsaved(), false);
     assert.equal(h.env.dirtyRef.current, false); assert.equal(h.confirmations.length, 1);
+    assert.deepEqual(h.settledClaims, [key.projectId]);
     assert.deepEqual(h.resets.map(([name]) => name), ['subjects', 'setShotDirty', 'setClipDirty', 'setSourceDirty', 'setSubjectDirty', 'setSubtitleDirty', 'setInspectorEpoch']);
   });
   for (const change of ['clip controller', 'shot capture', 'subtitle draft']) test(`actual ${action.name} preserves the existing ${change} ownership guard`, async t => {

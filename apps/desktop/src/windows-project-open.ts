@@ -37,6 +37,15 @@ const openButton = (projectId: string): string => {
   // dialog surface keeps the project-home-open prefix.
   return `[data-testid="pf-card-open-${id}"],[data-testid="project-home-open-${id}"]`;
 };
+async function launcherOpenState(launcher: BrowserWindow, projectId: string): Promise<string> {
+  const value = await evaluateBounded(launcher, `(async () => {
+    const context = await window.__mioonProjectWindow.context();
+    if (context.entryPending?.projectId === ${JSON.stringify(projectId)}) return 'pending';
+    return context.entryReceipt?.result.reason ?? 'unobserved';
+  })()`, 3000).catch(() => 'unreadable');
+  const states = ['pending', 'accepted', 'already-open', 'busy', 'unavailable', 'cancelled', 'unobserved'];
+  return typeof value === 'string' && states.includes(value) ? value : 'unreadable';
+}
 /** Refreshes the launcher home and clicks the project's real open button. */
 export async function openRegisteredProject(launcher: BrowserWindow, backendUrl: string, projectId: string,
   onStep: (step: 'home' | 'list' | 'window' | 'workbench') => Promise<void> = async () => {}): Promise<BrowserWindow> {
@@ -100,26 +109,47 @@ export async function openRegisteredProject(launcher: BrowserWindow, backendUrl:
   }
   await onStep('list');
   // The launcher home can re-render between the readiness probe and the click
-  // (async recent-list refresh); retry the same exact button within a bounded
-  // window instead of failing on one transiently detached element.
+  // (async recent-list refresh). A disabled replacement's click() is a no-op.
+  // Only a fresh, dispatched click starts the native-window wait.
   let clicked = false;
   const clickDeadline = Date.now() + 10000;
   while (!clicked && Date.now() < clickDeadline) {
-    try {
-      clicked = await evaluate(launcher, `(() => {
-        const button = document.querySelector(${JSON.stringify(button)});
-        if (!(button instanceof HTMLElement)) return false;
+    const result = await evaluateBounded(launcher, `(() => {
+      const button = document.querySelector(${JSON.stringify(button)});
+      if (!(button instanceof HTMLElement) || !button.isConnected) return 'missing';
+      if (button.matches(':disabled,[aria-disabled="true"],[data-disabled]') || button.closest('[inert],[hidden]')) return 'disabled';
+      let dispatched = false;
+      const observe = () => { dispatched = true; };
+      button.addEventListener('click', observe, true);
+      try {
         button.click();
-        return true;
-      })()`) as boolean;
-    } catch { clicked = false; }
+      } finally {
+        button.removeEventListener('click', observe, true);
+      }
+      return dispatched ? 'dispatched' : 'ignored';
+    })()`, Math.max(1, clickDeadline - Date.now())).catch(error => {
+      throw Object.assign(new Error('The launcher click could not be confirmed', {cause: error}),
+        {code: 'PROJECT_OPEN_CLICK_UNCONFIRMED'});
+    });
+    // A failed renderer evaluation may have dispatched a click. Do not
+    // replay it without proof that the event did not reach the current button.
+    assert.ok(result === 'dispatched' || result === 'missing' || result === 'disabled' || result === 'ignored',
+      'Invalid launcher click observation');
+    clicked = result === 'dispatched';
     if (!clicked) await new Promise(resolve => setTimeout(resolve, 100));
   }
   assert.equal(clicked, true, 'The launcher project open button was unavailable');
   const expectedUrl = new URL(`/?project=${projectId}`, backendUrl).href;
-  await waitForWindowCondition(launcher, async () => Promise.resolve(BrowserWindowRuntime.getAllWindows()
-    .some(window => !window.isDestroyed() && window.webContents.getURL() === expectedUrl)),
-  30000, 'The project window did not open', 'PROJECT_OPEN_WINDOW_TIMEOUT');
+  try {
+    await waitForWindowCondition(launcher, async () => Promise.resolve(BrowserWindowRuntime.getAllWindows()
+      .some(window => !window.isDestroyed() && window.webContents.getURL() === expectedUrl)),
+    30000, 'The project window did not open', 'PROJECT_OPEN_WINDOW_TIMEOUT');
+  } catch (error) {
+    if (record(error).code !== 'PROJECT_OPEN_WINDOW_TIMEOUT') throw error;
+    const state = await launcherOpenState(launcher, projectId);
+    throw Object.assign(new Error(`The project window did not open entry=${state}`, {cause: error}),
+      {code: 'PROJECT_OPEN_WINDOW_TIMEOUT'});
+  }
   await onStep('window');
   const editor = BrowserWindowRuntime.getAllWindows().find(window => !window.isDestroyed() && window.webContents.getURL() === expectedUrl);
   assert.ok(editor, 'The project window was not found');

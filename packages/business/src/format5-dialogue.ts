@@ -24,7 +24,7 @@
  * - ordinary cues are never renamed, moved or guessed into dialogue.
  */
 import {AppError} from '@mioon/contracts';
-import {sequenceEditPreviewFailure} from './format5-sequence-preview-errors.ts';
+import {dialogueConflictMessage, sequenceEditPreviewFailure, type SequenceEditPreviewFailure} from './format5-sequence-preview-errors.ts';
 import {timelineStorageFormat} from './project-file/timeline-storage.ts';
 import {format5DialogueSchema, getFormat5TimelineIssue} from '../../contracts/src/project-format5.ts';
 import type {Format5Cue, Format5Timeline} from '../../contracts/src/project-format5.ts';
@@ -242,7 +242,10 @@ export function planDialogueAction(store: ProjectStore, intent: SequenceEditDial
     liveShotIds: new Set([...store.db.prepare('SELECT id FROM project.shots WHERE projectId=? AND archivedAt IS NULL')
       .all(store.projectId) as Row[]].map(item => String(item.id))),
   });
-  if (projection.ok === false) conflict('镜头的帧不够放这些台词，或普通字幕占用了可用帧', projection.ids);
+  if (projection.ok === false) {
+    throw new AppError(projection.code, dialogueConflictMessage(projection.dialogueConflict), 409,
+      {ids: projection.ids, dialogueConflict: projection.dialogueConflict});
+  }
   const beforeCues = new Map((timeline.subtitles?.cues ?? []).map(cue => [cue.id, cue] as const));
   const afterCues = new Map(projection.cues.map(cue => [cue.id, cue] as const));
   const touchedCueIds = new Set([...projection.changedCueIds, ...projection.removedCueIds]);
@@ -348,7 +351,7 @@ function reviseTargets(store: ProjectStore, targets: readonly SequenceEditExpect
 /** One transaction: replay, CAS, planning, shot + cue rows, one history entry. */
 export function runDialogueAction(store: ProjectStore, envelope: SequenceEditEnvelope): {
   readonly ok: true; readonly actionId: string; readonly operation: string; readonly patch: unknown; readonly receipt: unknown;
-} | {readonly ok: false; readonly code: string; readonly ids: readonly string[]} {
+} | SequenceEditPreviewFailure {
   if (!isFormat5(store)) return failure('SEQUENCE_EDIT_CONTRACT_INVALID');
   const intent = envelope.dialogueIntent;
   if (!intent || envelope.intents.length !== 0) return failure('SEQUENCE_EDIT_CONTRACT_INVALID');
@@ -374,7 +377,7 @@ export function runDialogueAction(store: ProjectStore, envelope: SequenceEditEnv
     catch (error) {
       if (error instanceof AppError && (error.code === 'SEQUENCE_EDIT_DIALOGUE_INVALID' || error.code === 'SEQUENCE_EDIT_DIALOGUE_CONFLICT')) {
         writeSequenceEditFailure(store, envelope, error.code);
-        return failure(error.code, ((error.details as Row | undefined)?.ids as string[] | undefined) ?? []);
+        return sequenceEditPreviewFailure(error);
       }
       throw error;
     }

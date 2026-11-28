@@ -1,7 +1,7 @@
 import type {NativeCloseAdmission} from '../apps/web/src/native-close-state.ts';
-interface CloseEvent{type:string;defaultPrevented:boolean;returnValue:unknown;preventDefault():void}
+interface CloseEvent{type:string;persisted:boolean;defaultPrevented:boolean;returnValue:unknown;preventDefault():void}
 type CloseListener=(event:CloseEvent)=>void;
-interface CloseTarget{listeners:Map<string,{callback:CloseListener;capture:boolean}[]>;location:{href:string};__mioonNativeCloseAdmission:NativeCloseAdmission;addEventListener(type:string,callback:CloseListener,capture?:boolean):void;removeEventListener(type:string,callback:CloseListener,capture?:boolean):void;dispatch(type:string,afterListener?:(name:string,event:CloseEvent)=>unknown):Promise<{event:CloseEvent;order:unknown[]}>}
+interface CloseTarget{listeners:Map<string,{callback:CloseListener;capture:boolean}[]>;location:{href:string};__mioonNativeCloseAdmission:NativeCloseAdmission;addEventListener(type:string,callback:CloseListener,capture?:boolean):void;removeEventListener(type:string,callback:CloseListener,capture?:boolean):void;dispatch(type:string,afterListener?:(name:string,event:CloseEvent)=>unknown,persisted?:boolean):Promise<{event:CloseEvent;order:unknown[]}>}
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -30,8 +30,8 @@ function target() {
     removeEventListener(type: string, callback: CloseListener, capture = false) {
       listeners.set(type, (listeners.get(type) ?? []).filter((entry: { callback: unknown; capture: boolean; }) => entry.callback !== callback || entry.capture !== Boolean(capture)));
     },
-    async dispatch(type: string, afterListener?: (name: string, event: CloseEvent) => unknown) {
-      const event = { type, defaultPrevented: false, returnValue: undefined, preventDefault() { this.defaultPrevented = true; } };
+    async dispatch(type: string, afterListener?: (name: string, event: CloseEvent) => unknown, persisted = false) {
+      const event = { type, persisted, defaultPrevented: false, returnValue: undefined, preventDefault() { this.defaultPrevented = true; } };
       // At a Window event target, capture listeners precede noncapture listeners
       // even when the noncapture listener was registered by an earlier effect.
       const entries = [...(listeners.get(type) ?? [])].sort((a, b) => Number(b.capture) - Number(a.capture));
@@ -63,6 +63,7 @@ function fixture({ native = true, unknown = true, writesChangeState = false } = 
     nativeCloseRegistry: { current: createNativeCloseRegistry() }, settingsNavigation: { current: createSettingsNavigationRegistry() },
     readEditorWindowInputs: () => additional, readQuitWork: () => [], readNativeLegacyClose: () => ({ dirty: false, identity: [] }),
     preferencesRef: { current: { flush: () => write('preferences-put'), hasUnsaved: () => false } },
+    releaseCleanAgentEditingOnPageHide: () => { calls.push('editing-release'); },
     lastProjectRef: { current: { flush: () => write('locator-put') } },
     localDeliveryRef: { current: { controller: { hasUnsaved: () => { calls.push('title-sync'); return true; }, flush: () => write('title-put') } } },
     shotTextRef: { current: { hasUnpersisted: () => { calls.push('shot-sync'); return true; }, flush: () => write('shot-put') } },
@@ -162,11 +163,13 @@ test('actual ordinary Web and native normal-close lifecycle paths retain their f
   for (const native of [false, true]) {
     const f = fixture({ native, unknown: false }); f.arm({ risk: false });
     assert.equal((await f.window.dispatch('beforeunload')).event.defaultPrevented, false);
-    assert.ok(f.calls.includes('clip-put')); f.calls.length = 0;
+    assert.ok(f.calls.includes('clip-put')); assert.ok(!f.calls.includes('editing-release')); f.calls.length = 0;
     await f.hidden(); assert.equal(f.calls.includes('locator-put'), false);
     for(const write of ['preferences-put','title-put','shot-put','clip-put']) assert.equal(f.calls.filter(call=>call===write).length,1,write);
     f.calls.length = 0;
+    await f.window.dispatch('pagehide', undefined, true); assert.ok(!f.calls.includes('editing-release'));
     await f.window.dispatch('pagehide'); assert.ok(f.calls.includes('preferences-put'));
+    assert.equal(f.calls.filter(call=>call==='editing-release').length,1);
   }
 });
 

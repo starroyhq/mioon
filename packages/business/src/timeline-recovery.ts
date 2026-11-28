@@ -222,10 +222,12 @@ export function createTimelineRecoveryBoundary(db: DatabaseSync,input: TimelineR
   assertTimelineAudioRoleWorkspace(db,timeline);
   assertTimelineVolumeEnvelopeWorkspace(db,timeline);
   const assets=sources(timeline);
+  // Native sequence projections can include placeholders. A legacy
+  // compensation still requires a playable source for each clip.
   validateSavedTimeline(timeline as unknown as import('./timeline-inputs.ts').TimelineRecord,{track:(value,id)=>{
    const track=value.tracks.find(track=>track.id===id);
    if(!track)throw new AppError('TRACK_NOT_FOUND','轨道不属于此时间线',404,{trackId:id});return track;
-  },asset:(_projectId,id)=>assets.get(id)!});
+  },asset:(_projectId,id)=>assets.get(id)??unavailable()});
   admitTimelineImageResponse(timeline);
   admitTimelineVolumeEnvelopeWrite(timeline);
   if(!isTimelineRecordFor(db,timeline,{projectId:input.projectId}))invalidTimeline();

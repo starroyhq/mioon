@@ -63,6 +63,8 @@ export interface ContinuousAudioRuntime {
   assertOrdinaryWorkspace(): void;
   ownsLock(): boolean;
   readSavedTimeline(projectId: string): unknown;
+  /** Optional evidence for every persisted input to readSavedTimeline. */
+  readSnapshotStamp?: () => string | undefined;
   validateSource(root: string, asset: TimelineAudioPreviewManagedAsset, options: {maxBytes: number}): {file: string; info: TimelineAudioPreviewFileIdentity};
   hash(root: string, asset: TimelineAudioPreviewManagedAsset, options: TimelineAudioPreviewHashOptions): Promise<unknown>;
   decoder: ContinuousDecoder;
@@ -81,12 +83,38 @@ interface Cursor {key: string; reader: ContinuousDecodeCursor; nextFrame: number
 interface Attempt {controller: AbortController; task: Promise<unknown>; token: object; releasePending?: () => void}
 interface Session {
   id: string; initial: Current; controller: AbortController; timer: ReturnType<typeof setTimeout>;
+  snapshotStamp?: {read: () => string | undefined; value: string};
   generation: number; requestedGeneration: number; sequence: number; nextFrame: number; cancelled: boolean; workFrames: number; generationWorkFrames: number;
   hashBytes: number; hashes: Map<string, Verified>; cursors: Map<string, Cursor>;
   active?: Attempt; pending?: Attempt; latest?: object; closing?: Promise<void>; failure?: unknown;
 }
 interface Admission {session?: Session; stopped: boolean; failure?: unknown; retired: Set<string>}
 const admissions = new WeakMap<DatabaseSync, Admission>();
+
+/** The native audio projection reads the attached project DB. data_version
+ * detects other connections' commits and total_changes detects this
+ * connection's writes. The format and schema cookie cover schema changes.
+ * Only reuse evidence from autocommit reads of the same connection. */
+export function createProjectAudioSnapshotStamp(db: DatabaseSync, projectFormat: number): () => string | undefined {
+  const data = db.prepare('PRAGMA project.data_version');
+  const schema = db.prepare('PRAGMA project.schema_version');
+  const format = db.prepare('PRAGMA project.user_version');
+  const local = db.prepare('SELECT CAST(total_changes() AS TEXT) AS changes');
+  return () => {
+    if (!db.isOpen || db.isTransaction) return undefined;
+    try {
+      if (format.get()?.user_version !== projectFormat) return undefined;
+      const cookie = schema.get()?.schema_version;
+      const changes = local.get()?.changes;
+      const version = data.get()?.data_version;
+      if (typeof version !== 'number' || typeof cookie !== 'number' || typeof changes !== 'string') return undefined;
+      return `${version}:${cookie}:${changes}`;
+    } catch {
+      // The regular read can report the original error if evidence is unavailable.
+      return undefined;
+    }
+  };
+}
 /** This conservative bound includes twelve source-read allocations, a 1 MiB
  * callback backing store plus 2 MiB paused-pipe allowance per cursor, six mixed
  * block copies across server/transport/renderer, and 2 MiB transport reserve.
@@ -221,13 +249,27 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
   }
   const inputOf = (input: ContinuousAudioBlockInput): ContinuousAudioPlanInput => ({projectId: input.projectId, timelineId: input.timelineId,
     expectedRevision: input.expectedRevision, startFrame: input.startFrame});
+  function readFencedSnapshot(input: ContinuousAudioPlanInput, stamp: string | undefined) {
+    const latest = current(input);
+    const read = runtime.readSnapshotStamp;
+    const snapshotStamp = read && stamp !== undefined && read.call(runtime) === stamp ? {read, value: stamp} : undefined;
+    return {latest, snapshotStamp};
+  }
   const fenceSession = (session: Session, signal?: AbortSignal): void => {
     available();
     if (session.failure) throw session.failure;
     if (session.controller.signal.aborted || signal?.aborted || session.closing) throw fail('OPERATION_CANCELLED', 503);
-    const latest = current({projectId: session.initial.plan.projectId, timelineId: session.initial.plan.timelineId,
-      expectedRevision: session.initial.plan.timelineRevision, startFrame: session.initial.plan.startFrame});
-    if (latest.plan.planHash !== session.initial.plan.planHash || canonical([...latest.assets]) !== canonical([...session.initial.assets])) throw fail('AUDIO_PREVIEW_STALE');
+    // Admission is shared by connection, so the evidence must also belong to
+    // the reader that produced the snapshot.
+    const proof = session.snapshotStamp;
+    const stamp = runtime.readSnapshotStamp?.();
+    if (!proof || proof.read !== runtime.readSnapshotStamp || proof.value !== stamp) {
+      const {latest, snapshotStamp} = readFencedSnapshot({projectId: session.initial.plan.projectId,
+        timelineId: session.initial.plan.timelineId, expectedRevision: session.initial.plan.timelineRevision,
+        startFrame: session.initial.plan.startFrame}, stamp);
+      if (latest.plan.planHash !== session.initial.plan.planHash || canonical([...latest.assets]) !== canonical([...session.initial.assets])) throw fail('AUDIO_PREVIEW_STALE');
+      session.snapshotStamp = snapshotStamp;
+    }
     for (const verified of session.hashes.values()) {
       const actual = runtime.validateSource(store.root, verified.asset, {maxBytes: LIMITS.sourceBytes});
       if (!identity(actual.info) || actual.file !== verified.file || !sameFile(actual.info, verified.info)) throw fail('AUDIO_PREVIEW_STALE');
@@ -413,10 +455,11 @@ export function createTimelineAudioContinuousServices(store: {db: DatabaseSync; 
     let session = admission.session;
     if (!session) {
       if (admission.retired.has(input.sessionId)) throw fail('AUDIO_PREVIEW_STALE');
-      const initial = current(inputOf(input)); if (initial.plan.planHash !== input.planHash) throw fail('AUDIO_PREVIEW_STALE');
+      const {latest: initial, snapshotStamp} = readFencedSnapshot(inputOf(input), runtime.readSnapshotStamp?.());
+      if (initial.plan.planHash !== input.planHash) throw fail('AUDIO_PREVIEW_STALE');
       if (input.blockStartFrame >= initial.plan.durationFrames) throw fail('AUDIO_PREVIEW_RANGE_BOUNDS');
       const controller = new AbortController();
-      session = {id: input.sessionId, initial, controller, timer: setTimeout(() => {}, LIMITS.sessionTimeoutMs), generation: input.generation, requestedGeneration: input.generation, sequence: 0,
+      session = {id: input.sessionId, initial, snapshotStamp, controller, timer: setTimeout(() => {}, LIMITS.sessionTimeoutMs), generation: input.generation, requestedGeneration: input.generation, sequence: 0,
         nextFrame: input.blockStartFrame, cancelled: false, workFrames: 0, generationWorkFrames: 0, hashBytes: 0, hashes: new Map(), cursors: new Map()};
       clearTimeout(session.timer);
       const created = session;

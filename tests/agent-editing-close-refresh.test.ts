@@ -13,16 +13,22 @@ const flush = async () => { for (let index = 0; index < 30; index++) await Promi
 
 /** Run the actual boundary's private owner map and watchAgentEditingClose with
  * a real editing controller and P0. Only React mounting and local HTTP are fake. */
-async function fixture({initialReadFailure = false}: {initialReadFailure?: boolean} = {}) {
+async function fixture({initialReadFailure = false, autoAcquire = false, workspaceScope = 'normal', desktopWindowId = null}: {
+  initialReadFailure?: boolean; autoAcquire?: boolean; workspaceScope?: string; desktopWindowId?: string | null;
+} = {}) {
   const projectId = crypto.randomUUID(), target: AgentTaskTarget = {kind: 'timeline', id: projectId, revision: 4};
-  const effects: (() => void | (() => void))[] = [], cleanups: (() => void)[] = [], writes: AgentTaskEditingInput[] = [];
+  const effects = new Map<number, {deps: readonly unknown[]; cleanup?: () => void}>();
+  const slots: {current: unknown}[] = [], pendingEffects: (() => void)[] = [], writes: AgentTaskEditingInput[] = [];
+  let hook = 0;
   let observation: protection.AgentEditingObservation = {claims: [], targets: [{...target}], timelineRevision: 2};
   let read: (() => Promise<protection.AgentEditingObservation>) | null = null, failRead = initialReadFailure, failWrite = false;
-  let controller: ReturnType<typeof protection.createAgentEditingProtection> | undefined, ownerId = '', reads = 0;
+  let controller: ReturnType<typeof protection.createAgentEditingProtection> | undefined, ownerId = '', reads = 0, clean = true;
+  const keepaliveWrites: string[] = [];
   const client: protection.AgentEditingClient = {
     async read() { reads++; if (failRead) throw new Error('synthetic read failure'); return read ? read() : structuredClone(observation); },
-    async update(input) {
+    async update(input, keepalive) {
       writes.push(input);
+      if (keepalive) keepaliveWrites.push(input.action);
       if (failWrite) throw new Error('synthetic lost write acknowledgement');
       observation = {...observation, claims: ['claim', 'restore'].includes(input.action) ? [{id: crypto.randomUUID(), projectId, ownerId,
         target: {...target}, state: 'active', createdAt: '2026-10-26T00:00:00Z', updatedAt: '2026-10-26T00:00:00Z'}] : []};
@@ -32,8 +38,18 @@ async function fixture({initialReadFailure = false}: {initialReadFailure?: boole
   const react = {
     createContext: () => ({Provider: 'editing-context'}),
     createElement: (type: unknown, props: Record<string, unknown> | null, ...children: unknown[]) => ({type, props: {...props, children}}),
-    useRef: (current: unknown) => ({current}), useState: (value: unknown) => [value, () => {}],
-    useLayoutEffect: (effect: () => void | (() => void)) => { effects.push(effect); },
+    useRef: (current: unknown) => slots[hook++] ??= {current},
+    useState: (value: unknown) => {
+      const slot = slots[hook++] ??= {current: value};
+      return [slot.current, (next: unknown) => { slot.current = next; }];
+    },
+    useLayoutEffect: (effect: () => void | (() => void), deps: readonly unknown[]) => {
+      const key = hook++, previous = effects.get(key);
+      if (!previous || deps.some((value, index) => value !== previous.deps[index])) pendingEffects.push(() => {
+        previous?.cleanup?.();
+        effects.set(key, {deps, cleanup: effect() || undefined});
+      });
+    },
   };
   const module = {exports: {} as typeof import('../apps/web/src/AgentEditingBoundary.tsx')};
   Function('require', 'module', 'exports', boundaryCode)((id: string) => {
@@ -47,28 +63,133 @@ async function fixture({initialReadFailure = false}: {initialReadFailure?: boole
     if (id.includes('workbench-tooltip')) return {WorkbenchTooltip: 'tooltip'};
     if (id === './icons.tsx') return {__esModule: true, default: 'Icon'};
     if (id.includes('packages/i18n')) return {message: (key: string) => ({key})};
+    if (id === './workspace-visibility.tsx') return {useWorkspaceVisibility: () => true};
     if (id.endsWith('.css')) return {};
     assert.fail(`Unexpected boundary dependency ${id}`);
   }, module, module.exports);
   const boundary = module.exports, registry = createNativeCloseRegistry(), settings = createSettingsNavigationRegistry();
+  boundary.setNativeAgentEditingWindowOwner(desktopWindowId);
   const release = boundary.watchAgentEditingClose(registry);
-  const element = boundary.default({projectId, targets: [target], canRelease: () => true, children: null}) as unknown as {type: (props: unknown) => unknown; props: unknown};
-  element.type(element.props);
-  for (const effect of effects) { const cleanup = effect(); if (cleanup) cleanups.push(cleanup); }
+  const render = () => {
+    hook = 0;
+    const element = boundary.default({projectId, targets: [target], workspaceScope, autoAcquire, canRelease: () => clean, children: null}) as unknown as {type: (props: unknown) => unknown; props: unknown};
+    element.type(element.props);
+    for (const effect of pendingEffects.splice(0)) effect();
+  };
+  render();
   await flush();
   assert.ok(controller);
   const liveController = controller;
   const close = createNativeCloseAdmission({registry, settings, readScope: () => 'synthetic-editor', readDocumentURL: () => 'https://synthetic.invalid/',
     now: () => 1000, newToken: () => 'synthetic-close'});
-  return {controller: liveController, registry, close, boundary, writes, target,
+  const unmount = () => { for (const {cleanup} of effects.values()) cleanup?.(); effects.clear(); };
+  return {controller: liveController, registry, close, boundary, writes, target, projectId, keepaliveWrites, unmount, render,
     get reads() { return reads; }, get observation() { return observation; },
     setObservation(next: protection.AgentEditingObservation) { observation = next; }, setRead(next: (() => Promise<protection.AgentEditingObservation>) | null) { read = next; },
-    failRead(value = true) { failRead = value; }, failWrite() { failWrite = true; },
+    failRead(value = true) { failRead = value; }, failWrite() { failWrite = true; }, setClean(value: boolean) { clean = value; },
     commit(token: string) { return close.commit(token, {discardDirty: true, allowDrainFailure: false, expiresAt: 2000}); },
     claim(patch: Partial<AgentTaskClaim> = {}): AgentTaskClaim { return {id: crypto.randomUUID(), projectId, ownerId, target: {...target}, state: 'active', createdAt: '2026-10-26T00:00:00Z', updatedAt: '2026-10-26T00:00:00Z', ...patch}; },
-    cleanup() { close.dispose(); release(); for (const cleanup of cleanups) cleanup(); liveController.dispose(); },
+    cleanup() { close.dispose(); release(); unmount(); liveController.dispose(); },
   };
 }
+
+test('the normal preclaim and editor-session boundary reuse the native owner and release on selection change', async () => {
+  const windowId = crypto.randomUUID(), f = await fixture({workspaceScope: 'editor-session', desktopWindowId: windowId});
+  try {
+    assert.equal(await f.boundary.acquireAgentEditingTarget(f.projectId, f.target), true);
+    assert.equal(await f.boundary.acquireAgentEditingTarget(f.projectId, f.target), true);
+    assert.deepEqual(f.writes.map(input => input.action), ['claim']);
+    assert.equal(f.writes[0].ownerId, `desktop:${windowId}:timeline:${f.projectId}`);
+    assert.equal(f.controller.canEdit(), true, 'the mounted property boundary sees the preclaim');
+    f.unmount();
+    await new Promise<void>(resolve => setTimeout(resolve, 0));
+    assert.deepEqual(f.writes.map(input => input.action), ['claim', 'release']);
+    assert.equal(f.controller.getState().phase, 'idle');
+  } finally { f.cleanup(); }
+});
+
+test('normal pagehide dispatches one keepalive release while dirty or unknown claims stay fenced', async () => {
+  const f = await fixture();
+  try {
+    await f.controller.acquire();
+    f.setClean(false);
+    f.boundary.releaseCleanAgentEditingOnPageHide();
+    assert.deepEqual(f.keepaliveWrites, []);
+    f.setClean(true);
+    f.boundary.releaseCleanAgentEditingOnPageHide();
+    await flush();
+    assert.deepEqual(f.keepaliveWrites, ['release']);
+    assert.equal(f.controller.getState().phase, 'idle');
+    f.failWrite();
+    await f.controller.acquire();
+    f.boundary.releaseCleanAgentEditingOnPageHide();
+    assert.deepEqual(f.keepaliveWrites, ['release']);
+    assert.equal(f.controller.getState().phase, 'uncertain');
+  } finally { f.cleanup(); }
+});
+
+test('a successful save releases the claim without automatic reacquisition in the same subtitle selection', async () => {
+  const f = await fixture({autoAcquire: true});
+  try {
+    f.render();
+    await flush();
+    assert.deepEqual(f.writes.map(input => input.action), ['claim']);
+    f.setClean(false);
+    f.render();
+    f.setClean(true);
+    f.render();
+    await new Promise<void>(resolve => setTimeout(resolve, 0));
+    f.render();
+    await flush();
+    assert.deepEqual(f.writes.map(input => input.action), ['claim', 'release']);
+  } finally { f.cleanup(); }
+});
+
+test('only acknowledged discard may release a dirty boundary during a selection replacement', async () => {
+  for (const confirmed of [false, true]) {
+    const f = await fixture();
+    try {
+      await f.controller.acquire();
+      f.setClean(false);
+      f.render();
+      if (confirmed) {
+        f.setClean(true);
+        f.boundary.settleDiscardedAgentEditingDrafts(f.projectId);
+      }
+      f.unmount();
+      f.setClean(true); // Shared draft ref repointed to the clean next selection.
+      await new Promise<void>(resolve => setTimeout(resolve, 0));
+      f.boundary.releaseCleanAgentEditingOnPageHide();
+      assert.deepEqual(f.writes.map(input => input.action), confirmed ? ['claim', 'release'] : ['claim']);
+    } finally { f.cleanup(); }
+  }
+});
+
+test('temporary drag holds return a borrowed claim when its inspector closed during the drag', async () => {
+  const f = await fixture();
+  try {
+    await f.controller.acquire();
+    const drop = f.boundary.holdAgentEditingTarget(f.projectId, f.target);
+    f.unmount();
+    await new Promise<void>(resolve => setTimeout(resolve, 0));
+    assert.deepEqual(f.writes.map(input => input.action), ['claim']);
+    drop();
+    await new Promise<void>(resolve => setTimeout(resolve, 0));
+    await new Promise<void>(resolve => setTimeout(resolve, 0));
+    assert.deepEqual(f.writes.map(input => input.action), ['claim', 'release']);
+  } finally { f.cleanup(); }
+});
+
+test('a native editor reload advances past the durable owner generation despite earlier local time', async () => {
+  const f = await fixture({desktopWindowId: crypto.randomUUID()});
+  try {
+    const oldGeneration = Date.now() + 100_000;
+    f.setObservation({...f.observation, ownerVersion: {generation: oldGeneration, sequence: 8}});
+    assert.equal(await f.boundary.acquireAgentEditingTarget(f.projectId, f.target), true);
+    assert.equal(f.writes[0].generation, oldGeneration + 1);
+    assert.equal(f.writes[0].sequence, 1);
+  } finally { f.cleanup(); }
+});
 
 test('known-idle project polling cannot invalidate unchanged Mio draft discard consent', async () => {
   const f = await fixture();

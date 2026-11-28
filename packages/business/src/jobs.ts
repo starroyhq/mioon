@@ -3,6 +3,7 @@ import {exportAssetName, generatedVideoAssetName} from './output-asset-names.ts'
 import {CLIP_AUDIO_EXPORT_MODE, isClipAudioExportRecord} from '../../contracts/src/clip-audio-export.ts';
 import type {ClipAudioExportRecord} from '../../contracts/src/clip-audio-export.ts';
 import {runClipAudioExport} from './clip-audio-export.ts';
+import {FCPXML_EXPORT_TASK_SQL, isFcpExportTaskRecord} from './fcpxml-export-task.ts';
 import {isBackgroundTaskIndexUncertain} from './background-task-events.ts';
 import type {BackgroundTaskRef} from './background-task-events.ts';
 import {AppError} from '../../contracts/src/app-error.ts';
@@ -45,8 +46,8 @@ import {markGenerationPreflightFailure,isGenerationPreflightFailure,currentGener
 import {adoptFormat5GeneratedVersionInside} from './format5-sequence-sync.ts';
 import {isSequenceProjectFormat} from './project-file/schema/databases.ts';
 import {assertMediaTerminated,awaitProvider,boundedShutdown,checkpoint} from './operation-lifecycle.ts';
-import {publishProjectOutput,markProjectOutputRegistered,assertPublishedProjectOutput,registerVerifiedProjectOutputs} from './project-output-publication.ts';
-import {createOutputArtifactStage,readOutputArtifact,writeOutputArtifact,outputArtifactStage,outputArtifactDigest,restoredArtifactAudioCheck,assertOutputArtifactStage,sealOutputArtifactStage} from './output-artifact-storage.ts';
+import {publishProjectOutput,markProjectOutputRegistered,assertPublishedProjectOutput,registerVerifiedProjectOutputs,isExportInstallUnresolved,reconcileInterruptedExportPublication} from './project-output-publication.ts';
+import {createOutputArtifactStage,readOutputArtifact,writeOutputArtifact,outputArtifactStage,outputArtifactDigest,restoredArtifactAudioCheck,assertOutputArtifactStage,discardCompletedExportArtifact,sealOutputArtifactStage} from './output-artifact-storage.ts';
 import type {OutputArtifact} from '../../contracts/src/output-artifact.ts';
 import {exportOutputArtifactIdentity} from '../../contracts/src/output-artifact.ts';
 import type {ProjectOutputOwner} from '../../contracts/src/project-output-publication.ts';
@@ -120,12 +121,12 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
  const exportUuid=(value: string): boolean=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
  const exportRowBytes=4*1024*1024,identity=(column: string): string=>`CASE WHEN typeof(${column})='text' AND length(CAST(${column} AS BLOB))=36 THEN ${column} END AS ${column}`;
  const exportColumns=`${identity('id')},${identity('projectId')},
-  CASE WHEN typeof(data)='text' THEN CASE WHEN json_valid(data) THEN CASE WHEN json_type(data)='object' THEN
+  CASE WHEN ${FCPXML_EXPORT_TASK_SQL} THEN NULL WHEN typeof(data)='text' THEN CASE WHEN json_valid(data) THEN CASE WHEN json_type(data)='object' THEN
    CASE WHEN (SELECT count(*) FROM json_each(exports.data) WHERE key='mode')<=1 THEN
     CASE WHEN json_type(data,'$.mode')='text' AND length(CAST(json_extract(data,'$.mode') AS BLOB))=8 AND json_extract(data,'$.mode')='timeline'
      THEN CASE WHEN length(CAST(data AS BLOB)) BETWEEN 1 AND ${exportRowBytes} THEN data END
      ELSE ${'data'} END
-   END END END END AS data`;
+   END END END END AS data, ${FCPXML_EXPORT_TASK_SQL} AS fcpxml`;
  let invalidExportReported=false;
  const invalidExport=(): null=>{if(!invalidExportReported){invalidExportReported=true;console.error('Skipped invalid local export record.');}return null;};
  function decodeExport(row: Record<string, unknown>|null|undefined): ExportRecord|null {
@@ -133,6 +134,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   if(typeof row.data!=='string')return invalidExport();
   let record: unknown;try{record=JSON.parse(row.data);}catch{return invalidExport();}
   if(!isRecord(record)||!exportUuid(String(row.id))||!exportUuid(String(row.projectId))||!exportUuid(String(record.id))||!exportUuid(String(record.projectId)))return invalidExport();
+  if(isFcpExportTaskRecord(record))return null;
   const value=record as ExportRecord;
   if(value.id!==row.id||value.projectId!==row.projectId)return invalidExport();
   if(value.mode==='timeline'&&property(property(value.snapshot,'timeline'),'projectId')!==row.projectId)return invalidExport();
@@ -140,7 +142,10 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   return value;
  }
  const workerExport=(id: string,observe=true): ExportRecord|null=>{
-  const value=decodeExport(store.db.prepare(`SELECT ${exportColumns} FROM exports WHERE id=?`).get(id) as Record<string,unknown>|undefined);
+  const row=store.db.prepare(`SELECT ${exportColumns} FROM exports WHERE id=?`).get(id);
+  // FCPXML owns its worker, interruption records and publication fences.
+  if(row?.fcpxml===1)return null;
+  const value=decodeExport(row);
   if(!value&&observe)observeInvalid('export',id);return value;
  };
  // Custom delivery adds an awaited capability step. Preserve the complete
@@ -557,11 +562,59 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   const readLut=colourExport?createTimelineColourLutReader(store.db,e.projectId):undefined;
   const agentBound=!!agentTaskJobBinding(store.db,'export',e.id);
   const fencedAttempt=floatExport||hasSelectedTimelineExportRange(e.snapshot)||colourExport,effectError=timelineExportRangeEffectError;
-  let preparedAssets: Map<string, unknown>|undefined,linkedOutput=false,publicationAccepted=false,
+  let preparedAssets: Map<string, unknown>|undefined,linkedOutput=false,publicationAccepted=false,discardCompleted=false,
    outputIdentity: {dev: number; ino: number; isFile(): boolean; nlink: number}|undefined,outputHandle: Awaited<ReturnType<typeof open>>|undefined,claimLive=true,validateSources: (()=>void)|undefined,
    floatMeasurement: ReturnType<typeof ownedFloatTimelineMeasurement>|undefined,terminationUnconfirmed=false,renderStarted=false,blockedGate=false;
   const beforeStart=():void=>{if(agentBound&&!renderStarted){try{assertAgentTaskJobEffect(store.db,'export',e.id);}catch(error){if(isAgentTaskEffectBlocked(error))blockedGate=true;throw error;}renderStarted=true;}};
-  const beforeEffect=(): void=>{if(agentBound&&!renderStarted){try{assertAgentTaskJobEffect(store.db,'export',e.id);}catch(error){if(isAgentTaskEffectBlocked(error))blockedGate=true;throw error;}}const latest=currentOwnedExport(e);if(!claimLive||stopped||signal.aborted||latest?.status!=='running'||writerOwner&&outputArtifactDigest(exportOutputArtifactIdentity(latest))!==outputOwner.inputHash)throw effectError();if(outputIdentity){let actual;try{actual=lstatSync(linkedOutput?file:part);}catch{throw effectError();}if(!actual.isFile()||actual.dev!==outputIdentity.dev||actual.ino!==outputIdentity.ino)throw effectError();}if(writerOwner&&artifact&&lstatSync(outputArtifactStage(writerOwner,artifact),{throwIfNoEntry:false}))assertOutputArtifactStage(writerOwner,artifact);validateSources?.();};
+  const checkRunning=(): void=>{
+   if(agentBound&&!renderStarted){
+    try{assertAgentTaskJobEffect(store.db,'export',e.id);}
+    catch(error){if(isAgentTaskEffectBlocked(error))blockedGate=true;throw error;}
+   }
+   if(!claimLive||stopped||signal.aborted)throw effectError();
+  };
+  const checkOutputIdentity=(): void=>{
+   if(outputIdentity){
+    let actual;
+    try{actual=lstatSync(linkedOutput?file:part);}catch{throw effectError();}
+    if(!actual.isFile()||actual.dev!==outputIdentity.dev||actual.ino!==outputIdentity.ino)throw effectError();
+   }
+   if(writerOwner&&artifact&&lstatSync(outputArtifactStage(writerOwner,artifact),{throwIfNoEntry:false}))assertOutputArtifactStage(writerOwner,artifact);
+  };
+  const beforeEffect=(): void=>{
+   checkRunning();
+   const latest=currentOwnedExport(e);
+   if(latest?.status!=='running'||writerOwner&&outputArtifactDigest(exportOutputArtifactIdentity(latest))!==outputOwner.inputHash)throw effectError();
+   checkOutputIdentity();
+   validateSources?.();
+  };
+  // These schemas remain attached for the lifetime of this exact store.
+  // total_changes covers local row writes; data_version covers other
+  // connections. Schema versions also cover DDL on the worker connection.
+  // Neither an in-transaction read nor a changing generation can seed the memo.
+  const finalOutputFence=()=>{
+   const changeCount=store.db.prepare('SELECT total_changes() AS n');
+   changeCount.setReadBigInts(true);
+   const schemas=['main','project','cache'];
+   const dataVersions=schemas.map(schema=>store.db.prepare('PRAGMA '+schema+'.data_version'));
+   const schemaVersions=[...schemas,'temp'].map(schema=>store.db.prepare('PRAGMA '+schema+'.schema_version'));
+   const generation=()=>[changeCount.get()!.n,
+    ...dataVersions.map(statement=>statement.get()!.data_version),
+    ...schemaVersions.map(statement=>statement.get()!.schema_version)].join('/');
+   let validated: string | undefined;
+   const full=(): void=>{
+    validated=undefined;
+    const start=store.db.isTransaction?undefined:generation();
+    beforeEffect();
+    if(start!==undefined&&!store.db.isTransaction&&generation()===start)validated=start;
+   };
+   const chunk=(): void=>{
+    checkRunning();
+    if(validated===undefined||store.db.isTransaction||generation()!==validated)full();
+    else checkOutputIdentity();
+   };
+   return {beforeEffect:full,beforeChunk:chunk};
+  };
   const checkCustomSources=(): void=>{if(customExport(e))validatePreparedTimelineSources(store.db,e.projectId,e.snapshot as never,preparedAssets as never,{root});};
   try {
    beforeEffect?.();
@@ -571,6 +624,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
    // Every cancellable export owns its staging inode, including legacy
    // delivery without an opt-in profile. A late cancel may land after link.
    if(writerOwner){artifact=readOutputArtifact(writerOwner,outputOwner,'export',outputOwner.inputHash);part=artifact?outputArtifactStage(writerOwner,artifact):createOutputArtifactStage(writerOwner,outputOwner,'export');artifactComplete=Boolean(artifact);resumedArtifact=Boolean(artifact);}
+   if(writerOwner&&artifact)reconcileInterruptedExportPublication(writerOwner,outputOwner,artifact.assetId);
    if(!artifact){
    outputHandle=await open(part,'wx',writerOwner?0o600:0o666);outputIdentity=await outputHandle.stat();beforeEffect?.();
    if(e.mode==='timeline') {
@@ -618,7 +672,13 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
    }
    exportStage(store,e.id,'finalizing');
    }
-   const info=artifact?.info??await fileInfo(part,{signal,beforeEffect});checkpoint(signal);
+   // Rendering is finished. The remaining streams only read the stage or
+   // destination. Full checks still run at the boundaries of each byte pass,
+   // before publishing receipts and during the registration transaction.
+   const outputFence=writerOwner?finalOutputFence():undefined;
+   outputFence?.beforeEffect();
+   const info=artifact?.info??await fileInfo(part,{signal,beforeEffect:outputFence?.beforeChunk??beforeEffect});checkpoint(signal);
+   outputFence?.beforeEffect();
    // Recheck the preserved relational owner immediately before publication.
    if(currentOwnedExport(e)?.status!=='running')return;
    if(artifact){
@@ -646,16 +706,19 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     const audioCheck=floatExport?restoredArtifactAudioCheck(artifact,e):undefined;
     const displayName=e.mode==='timeline'&&e.purpose!=='export'?undefined
      :stringValue(property(e.snapshot,'deliveryName'))??stringValue(property(get('projects',e.projectId),'name'))??'';
-    const published=await publishProjectOutput(writerOwner,{owner:outputOwner,assetId:artifact.assetId,publicationId:artifact.publicationId,targetKind:'exports',stageFile:part,mimeType:'video/mp4',sha256:info.sha256,sizeBytes:info.sizeBytes,...(displayName===undefined?{}:{displayName})},{signal,beforeEffect});checkpoint(signal);beforeEffect();
-    const {relativePath:_publishedPath,...locator}=published;
-    await registerVerifiedProjectOutputs(writerOwner, {signal, beforeEffect}, () => {
-     tx(()=>{try{assertPublishedProjectOutput(writerOwner,published.publication);}catch(error){if(property(error,'code')==='INVALID_MEDIA')throw effectError();throw error;}beforeEffect();if(!resumedArtifact)checkCustomSources();if(!artifact)throw Error('Missing completed export artifact');
-     const asset={id:artifact.assetId,projectId:e.projectId,name:exportAssetName(store.db,e,outputGeometry,allowProjectFps),mimeType:'video/mp4',...info,...locator,producer:{kind:'export',id:e.id},provenance:'export',createdAt:artifact.createdAt,url:`/media/${artifact.assetId}`};
+    const publicationOptions={signal,beforeEffect,...outputFence};
+    const completed=artifact;
+    const published=await publishProjectOutput(writerOwner,{owner:outputOwner,assetId:completed.assetId,publicationId:completed.publicationId,targetKind:'exports',stageFile:part,mimeType:'video/mp4',sha256:info.sha256,sizeBytes:info.sizeBytes,...(displayName===undefined?{}:{displayName})},publicationOptions,published=>{
+     beforeEffect();if(!resumedArtifact)checkCustomSources();
+     const {relativePath:_publishedPath,...locator}=published;
+     const asset={id:completed.assetId,projectId:e.projectId,name:exportAssetName(store.db,e,outputGeometry,allowProjectFps),mimeType:'video/mp4',...info,...locator,producer:{kind:'export',id:e.id},provenance:'export',createdAt:completed.createdAt,url:`/media/${completed.assetId}`};
      put('assets',asset);put('exports',{...e,status:'succeeded',assetId:asset.id,url:asset.url,error:null,...(audioCheck?{audioCheck}:{}),updatedAt:now()});
-     });
-     publicationAccepted=true;
-     return markProjectOutputRegistered(writerOwner,published.publication,{signal});
+    }).catch(error=>{
+     if(property(error,'code')==='INVALID_MEDIA'&&property(property(error,'details'),'point')==='registration')throw effectError();
+     throw error;
     });
+    publicationAccepted=true;
+    await markProjectOutputRegistered(writerOwner,published.publication,{signal});
     return;
    }
    // link is an atomic, non-overwriting publication on the managed filesystem.
@@ -665,26 +728,30 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
    await unlink(part);checkpoint(signal);beforeEffect?.();
    const projectOwner=registeredProjectStore(root),publishedReference=projectOwner?await referenceForPublishedMedia(projectOwner,file,{sha256:info.sha256,signal,beforeEffect}):null;
    tx(()=>{beforeEffect?.();if(currentOwnedExport(e)?.status!=='running')throw Object.assign(Error('Invalid local export record.'),{code:'INVALID_TIMELINE_SNAPSHOT'});checkCustomSources();
-    const a: Record<string, unknown>&{url: string}={id:randomUUID(),projectId:e.projectId,name:exportAssetName(store.db,e,outputGeometry),mimeType:'video/mp4',...info,...(publishedReference?{...publishedReference,producer:{kind:'export',id:e.id}}:{relativePath}),provenance:'export',createdAt:now(),url:''};a.url=`/media/${String(a.id)}`;put('assets',a);put('exports',{...e,status:'succeeded',assetId:a.id,url:a.url,error:null,...(floatExport&&floatMeasurement?{audioCheck:bindFloatTimelineMeasurement(e as never,floatMeasurement,now(),{assetId:String(a.id),sha256:info.sha256})}:{}),updatedAt:now()});});
+    const a: Record<string, unknown>&{url: string}={id:randomUUID(),projectId:e.projectId,name:exportAssetName(store.db,e,outputGeometry,allowProjectFps),mimeType:'video/mp4',...info,...(publishedReference?{...publishedReference,producer:{kind:'export',id:e.id}}:{relativePath}),provenance:'export',createdAt:now(),url:''};a.url=`/media/${String(a.id)}`;put('assets',a);put('exports',{...e,status:'succeeded',assetId:a.id,url:a.url,error:null,...(floatExport&&floatMeasurement?{audioCheck:bindFloatTimelineMeasurement(e as never,floatMeasurement,now(),{assetId:String(a.id),sha256:info.sha256})}:{}),updatedAt:now()});});
    publicationAccepted=true;
   } catch(error) {
    terminationUnconfirmed=Boolean(property(error,'terminationUnconfirmed')||hasUnconfirmedMediaProcesses({signal}));
    if(terminationUnconfirmed)failShutdown(error);
-   if(publicationAccepted)return;
+   if(publicationAccepted||isExportInstallUnresolved(error))return;
    if(isBackgroundTaskIndexUncertain(error))return;
    if(pauseUnavailableBackgroundTask(store.db,{kind:'export',taskId:e.id},error))return;
-   const failExport=(): void=>{
+   const failExport=(): boolean=>{
     const latest=currentOwnedExport(e);
     const latestStatus=stringValue(property(latest,'status'));
-    if(!latest||isCancelledExport(latest)||latestStatus==='cancelled'||(customExport(e)||writerOwner&&artifact&&latest.assetId===artifact.assetId)&&latestStatus==='succeeded')return;
-    if(agentBound&&!renderStarted&&(blockedGate||isAgentTaskEffectBlocked(error))){const cancelled=isAgentTaskJobStopped(store.db,'export',e.id);put('exports',{...(floatExport?requeueFloatTimelineExport(latest):latest),status:cancelled?'failed':'queued',error:cancelled?{code:'EXPORT_CANCELLED',message:'导出已取消',retryable:false}:null,updatedAt:now()});return;}
+    if(!latest||(customExport(e)||writerOwner&&artifact&&latest.assetId===artifact.assetId)&&latestStatus==='succeeded')return false;
+    if(isCancelledExport(latest)||latestStatus==='cancelled')return latest.assetId===null&&latest.url===null;
+    if(agentBound&&!renderStarted&&(blockedGate||isAgentTaskEffectBlocked(error))){const cancelled=isAgentTaskJobStopped(store.db,'export',e.id);put('exports',{...(floatExport?requeueFloatTimelineExport(latest):latest),status:cancelled?'failed':'queued',error:cancelled?{code:'EXPORT_CANCELLED',message:'导出已取消',retryable:false}:null,updatedAt:now()});return cancelled;}
     const audioCheck=floatExport&&!signal.aborted?(floatMeasurement?bindFloatTimelineMeasurement(e as never,floatMeasurement,now()):bindFloatTimelineFailure(e as never,error,now())):undefined;
     put('exports',{...(floatExport&&signal.aborted?requeueFloatTimelineExport(latest):latest),status:signal.aborted?'queued':'failed',error:terminationUnconfirmed?mediaPauseError('exports',latestStatus??'failed'):signal.aborted?null:{...safeError(error,'EXPORT_FAILED'),...(audioCheck?.code==='EXPORT_AUDIO_OVER_RANGE'?{retryable:false}:{})},...(audioCheck?{audioCheck}:{}),updatedAt:now()});
+    return !signal.aborted;
    };
-   tx(failExport);
+   discardCompleted=tx(failExport);
   } finally {
    claimLive=false;
    const cleanup=async(): Promise<void>=>{
+   if(outputHandle)await outputHandle.close().catch(()=>{});
+   if(writerOwner&&artifact&&discardCompleted)try{discardCompletedExportArtifact(writerOwner,artifact);}catch{/* An unverified file is not removed. */}
    const unpublished=(): boolean=>{const latest=currentOwnedExport(e,{cleanupOnly:floatExport});const status=stringValue(property(latest,'status'));return Boolean(latest&&exportIdentity(latest)===exportIdentity(e)&&status!==undefined&&['queued','running','failed'].includes(status)&&latest.assetId===null&&latest.url===null);};
    if(outputIdentity&&(!writerOwner||!artifactComplete)){try{const actual=await lstat(part).catch(()=>null);if(actual?.isFile()&&actual.dev===outputIdentity.dev&&actual.ino===outputIdentity.ino&&unpublished())await unlink(part).catch(()=>{});}catch{/* an uncertain read preserves the part file */}}
    // An uncertain commit, hostile replacement, foreign export, changed inode,
@@ -698,7 +765,6 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
      }
     }catch{/* An uncertain read or cleanup preserves the link and original error. */}
    }
-   if(outputHandle)await outputHandle.close().catch(()=>{});
    };
    if(terminationUnconfirmed)void waitForMediaProcesses({signal}).then(cleanup).catch(()=>{});
    else await cleanup();

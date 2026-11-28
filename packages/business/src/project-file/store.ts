@@ -13,7 +13,7 @@ import {TIMELINE_FPS_READER_FEATURE} from '../../../contracts/src/project-reader
 import {isTimelineFps, type TimelineFps} from '../../../contracts/src/timeline-fps.ts';
 import {fenceFormat5ProjectContent} from './format5-content.ts';
 import {putFormat5TimelineInside, readFormat5TimelineRecord} from './format5-timeline.ts';
-import {readProjectContentStamp, sameContentStamp} from './content-stamp.ts';
+import {readProjectContentStamp, sameContentStamp, type ContentStamp} from './content-stamp.ts';
 import {mediaUnavailableError} from '../../../contracts/src/media-reference-errors.ts';
 import {markBackgroundTaskChanged, flushBackgroundTaskChanges, discardBackgroundTaskChanges, closeBackgroundTaskEvents,
   validateBackgroundTaskAdmission, validateBackgroundTaskChanges} from '../background-task-events.ts';
@@ -140,6 +140,7 @@ export interface CommitProjectAssetHashOptions {
   readonly expectedRaw: string;
   readonly reference: MediaReference;
   readonly sha256: string;
+  readonly expectedContentStamp?: ContentStamp;
   readonly beforeEffect?: () => void;
   readonly signal?: AbortSignal;
 }
@@ -148,11 +149,18 @@ export interface CommitProjectAssetHashOptions {
  * separate from domain transactions: it must retain every ownership/effect
  * fence without manufacturing a domain mutation receipt for hash preparation.
  * There is no general observer bypass or caller-supplied mutation callback. */
-export function commitProjectAssetHash(store: ProjectStore, options: CommitProjectAssetHashOptions): Record<string, unknown> {
+export function commitProjectAssetHash(store: ProjectStore, options: CommitProjectAssetHashOptions): {
+  asset: Record<string, unknown>; contentStamp: ContentStamp | null;
+} {
   const verified = verifiedStores.get(store);
   if (!verified || !isProjectStore(store)) throw new TypeError('Hash metadata requires the exact live project owner');
   if (typeof options.expectedRaw !== 'string' || typeof options.assetId !== 'string' || !/^[a-f0-9-]{36}$/u.test(options.assetId)) throw new TypeError('An exact asset JSON identity is required');
   function changed(): never {throw mediaUnavailableError('MEDIA_CHANGED', options.assetId, 'content');}
+  const requireStamp = (expected: ContentStamp): void => {
+    if (!sameContentStamp(expected, readProjectContentStamp(store.db))) {
+      throw new AppError('PREFLIGHT_STALE', '素材准备期间项目内容已变化。', 409);
+    }
+  };
   const reference = mediaReferenceSchema.safeParse(options.reference);
   if (!reference.success || !/^[a-f0-9]{64}$/u.test(options.sha256) || reference.data.fullSha256 !== options.sha256) changed();
   const db = store.db, connection = verified.connection;
@@ -169,6 +177,7 @@ export function commitProjectAssetHash(store: ProjectStore, options: CommitProje
   try {
     for (const transactionFence of transactionFences.get(db) ?? []) transactionFence();
     fence();
+    if (options.expectedContentStamp) requireStamp(options.expectedContentStamp);
     const persisted = db.prepare('SELECT id,projectId,data FROM project.assets WHERE id=?').get(options.assetId);
     if (!persisted || persisted.id !== options.assetId || persisted.projectId !== store.projectId || persisted.data !== options.expectedRaw) changed();
     const current: unknown = JSON.parse(options.expectedRaw);
@@ -190,12 +199,14 @@ export function commitProjectAssetHash(store: ProjectStore, options: CommitProje
       const update = db.prepare('UPDATE project.assets SET data=? WHERE id=? AND projectId=? AND data=?').run(resultRaw, options.assetId, store.projectId, options.expectedRaw);
       if (Number(update.changes) !== 1) changed();
     }
+    const contentStamp = options.expectedContentStamp ? readProjectContentStamp(db) : null;
     fence();
+    if (contentStamp) requireStamp(contentStamp);
     // A backend fence may observe current metadata but may never replace the
     // asset that this hash was prepared for, even immediately before COMMIT.
     if (db.prepare('SELECT data FROM project.assets WHERE id=? AND projectId=?').get(options.assetId, store.projectId)?.data !== resultRaw) changed();
     db.exec('COMMIT');
-    return result;
+    return {asset: result, contentStamp};
   } catch (error) {
     if (db.isTransaction) db.exec('ROLLBACK');
     throw error;

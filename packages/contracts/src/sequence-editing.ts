@@ -1,7 +1,7 @@
 import {z} from 'zod';
 import {assetRangeOnSourceGridSchema} from './source-range.ts';
 import {
-  SEQUENCE_EDIT_SIDES, isSequenceEditRequestId, sequenceEditAffectedCountsSchema, sequenceEditEnvelopeSchema,
+  SEQUENCE_EDIT_SIDES, copyAsNewShotTrackEditSchema, isSequenceEditRequestId, sequenceEditAffectedCountsSchema, sequenceEditEnvelopeSchema,
   sequenceEditHistoryActionSchema, sequenceEditHistoryViewSchema, sequenceEditReceiptSchema,
 } from './sequence-edit.ts';
 import type {
@@ -109,6 +109,7 @@ const trackEditSchema = z.discriminatedUnion('kind', [
   z.object({kind: z.literal('insert-asset'), assetId: operationUuid, trackId: operationUuid.nullable(),
     startFrame: operationFrame, assetRange: assetRangeOnSourceGridSchema.optional()}).strict(),
   z.object({kind: z.literal('paste-clip'), clipId: operationUuid, startFrame: operationFrame}).strict(),
+  copyAsNewShotTrackEditSchema,
   z.object({kind: z.literal('add-overlay'), clipId: operationUuid, trackId: operationUuid, startFrame: operationFrame,
     durationFrames: operationFrame.positive(), sourceInFrame: operationFrame,
     name: z.string().min(1).max(200), assetId: operationUuid.optional(), copyFromClipId: operationUuid.optional()}).strict(),

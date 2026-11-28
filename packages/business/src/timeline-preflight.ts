@@ -54,7 +54,7 @@ const messages: Readonly<Record<string,string>>=Object.freeze({
  PREFLIGHT_SNAPSHOT_BUDGET:'The saved metadata exceeds the bounded check budget. No media was changed.',
  PREFLIGHT_BUDGET:'The bounded file or total byte budget was reached. Export is still available.',
  PREFLIGHT_TIMEOUT:'The bounded media check reached its time limit. Export is still available.',
- PREFLIGHT_BUSY:'Another export check is running. Try this check again when it finishes.',
+ PREFLIGHT_BUSY:'Timeline media is still being prepared. Check again when preparation finishes.',
  PREFLIGHT_STALE:'The saved timeline or its source metadata changed. Run the check again.',
  PLACEHOLDER_CLIP:'The export range contains a placeholder segment. Generate it or split/remove it before exporting.',
  VERSION_TOO_SHORT:'A following segment selects a version shorter than its cut. Select or lock a usable version before exporting.',
@@ -79,6 +79,7 @@ function classify(error: unknown): [string,string]{
  if(failure.code==='SUBTITLE_RENDERER_UNVERIFIED')return ['incomplete','PREFLIGHT_INCOMPLETE'];
  if(failure.code==='INSPECTION_BUDGET_EXCEEDED')return ['incomplete','PREFLIGHT_SNAPSHOT_BUDGET'];
  if(failure.code==='MANAGED_SOURCE_LIMIT'||failure.code==='PREFLIGHT_BUDGET')return ['incomplete','PREFLIGHT_BUDGET'];
+ if(failure.code==='PREFLIGHT_BUSY')return ['incomplete','PREFLIGHT_BUSY'];
  if(['MEDIA_TIMEOUT','MEDIA_OUTPUT_LIMIT','MEDIA_SPAWN_FAILED','MEDIA_INVALID_CONFIGURATION','MEDIA_CANCELLED','MEDIA_PROCESS_FAILED'].includes(failure.code as string))return ['incomplete','PREFLIGHT_INCOMPLETE'];
  if(['MEDIA_MISSING','MEDIA_NOT_MEDIA','MEDIA_OUTSIDE_NOT_CONFIRMED'].includes(failure.code as string))return ['blocked','PREFLIGHT_SOURCE_INVALID'];
  if(['MEDIA_CHANGED','MEDIA_CHANGED_DURING_READ'].includes(failure.code as string))return ['blocked','PREFLIGHT_SOURCE_CHANGED'];
@@ -91,8 +92,8 @@ function classify(error: unknown): [string,string]{
  return ['blocked','PREFLIGHT_MEDIA_INVALID'];
 }
 
-/** Explicit read-only check. Nothing is persisted, initialized, derived or
- * scheduled. One attempt per service, no backlog. Actual exports always recheck
+/** Explicit check of a saved timeline. Sampled references may complete their
+ * full hash in place. One attempt per service, no backlog. Actual exports recheck
  * ownership, bytes, streams and renderer rules; a report cannot promise future
  * bytes or full decode success. Owned children are joined before drain/close.
  */
@@ -143,7 +144,7 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
     }
    }
   }
-  let initial,referencePreparedBytes=0;
+  let initial,referencePreparation: Awaited<ReturnType<typeof prepareTimelineReferenceHashes>>;
   try{if(!hasSampledTimelineReferences(store,input.projectId))initial=readSnapshot(input);}
   catch(error){const failure=error as {code?:string};if(failure.code==='NOT_FOUND')throw error;const [status,code]=classify(error);report.status=status;report.issues=[issue(code,status==='incomplete'?'warning':'error')];return report;}
   if(initial?.timeline){report.timelineId=initial.timeline.id;report.timelineRevision=initial.timeline.revision;}
@@ -152,10 +153,10 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
   let referenceTimedOut=false;
   const referenceTimer=setTimeout(()=>{referenceTimedOut=true;referenceController.abort();},limits.timeoutMs);
   const referenceFence=():void=>{checkpoint(referenceSignal);beforeEffect?.();};
-  const referenceWork=prepareTimelineReferenceHashes(store,input.projectId,{signal:referenceSignal,beforeEffect:referenceFence,maxBytes:limits.sourceBytes,totalBytes:limits.totalBytes,validateSelection:saved=>{report.timelineId=typeof saved.id==='string'?saved.id:null;report.timelineRevision=typeof saved.revision==='number'?saved.revision:null;if(saved.revision!==input.expectedRevision)throw new AppError('PREFLIGHT_STALE','时间线版本已变化',409);}});
+  const referenceWork=prepareTimelineReferenceHashes(store,input.projectId,{signal:referenceSignal,beforeEffect:referenceFence,maxBytes:limits.sourceBytes,totalBytes:limits.totalBytes,preflight:true,validateSelection:saved=>{report.timelineId=typeof saved.id==='string'?saved.id:null;report.timelineRevision=typeof saved.revision==='number'?saved.revision:null;if(saved.revision!==input.expectedRevision)throw new AppError('PREFLIGHT_STALE','时间线版本已变化',409);}});
   referenceEntry.task=referenceWork.finally(()=>{clearTimeout(referenceTimer);active.delete(referenceEntry);});
   referenceEntry.task.catch(()=>{});
-  try{await awaitProvider(()=>referenceEntry.task!,referenceSignal);referenceFence();referencePreparedBytes=(await referenceWork).preparedBytes;initial=readSnapshot(input);}
+  try{await awaitProvider(()=>referenceEntry.task!,referenceSignal);referenceFence();referencePreparation=await referenceWork;initial=readSnapshot(input);}
   catch(error){
    checkpoint(external);if(stopped)checkpoint(referenceController.signal);if(hostEffectFailure)throw hostEffectFailure;
    const failure=error as {code?: string};if(failure.code==='NOT_FOUND')throw error;
@@ -194,11 +195,11 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
   if(active.size){report.status='incomplete';report.issues=[issue('PREFLIGHT_BUSY','warning')];return report;}
   const controller=new AbortController(),signal=external?AbortSignal.any([external,controller.signal]):controller.signal;
   const entry: PreflightAttempt={controller,task:null};active.add(entry);let timedOut=false;
-  const budget={sourceBytes:limits.sourceBytes,totalBytes:limits.totalBytes,bytesHashed:referencePreparedBytes};
+  const budget={sourceBytes:limits.sourceBytes,totalBytes:limits.totalBytes,bytesHashed:referencePreparation.preparedBytes};
   const timer=setTimeout(()=>{timedOut=true;controller.abort();},remaining);
   const preparation=(async()=>{
    if(report.checks.subtitles){await verifySubtitleFontResource({signal,beforeEffect});checkpoint(signal);report.checks.subtitles.fontVerified=true;await inspectSubtitleRenderer({signal,beforeEffect});checkpoint(signal);}
-   const options={signal,budget,beforeEffect,probe:async(file: string,probeOptions: PreflightProbeOptions)=>{beforeEffect?.();const result=await probe(file,{...probeOptions,beforeEffect});beforeEffect?.();return result;},onChecked:()=>{report.checks.checkedAssets++;}};
+   const options={signal,budget,preparedSources:referencePreparation.preparedSources,beforeEffect,probe:async(file: string,probeOptions: PreflightProbeOptions)=>{beforeEffect?.();const result=await probe(file,{...probeOptions,beforeEffect});beforeEffect?.();return result;},onChecked:()=>{report.checks.checkedAssets++;}};
    return prepareTimelineInputs(initial.snapshot as never,{root:store.root,projectId:input.projectId,readAsset:(id: string)=>{beforeEffect?.();return readOwnedTimelineAsset(store.db,input.projectId,id) as unknown as import('./timeline-inputs.ts').ManagedAssetRecord|null;},
     ...options,allowProjectFps,readLut:createTimelineColourLutReader(store.db,input.projectId) as never});
   })();

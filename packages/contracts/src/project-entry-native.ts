@@ -11,6 +11,8 @@ import type {ProjectDeleteInput, ProjectDeleteResponse} from './project-lifecycl
 import type {z as Zod} from 'zod';
 import type {NativeAssetMediaPort} from './asset-media-native.ts';
 import {timelineFpsSchema} from './timeline-fps.ts';
+import type {NativeFcpExportControlPort} from './project-entry-control.ts';
+export type {NativeFcpExportControlPort} from './project-entry-control.ts';
 import {projectFormatReadOnlyViewSchema, projectFormatUpgradePreviewSchema} from './project-format-upgrade.ts';
 import type {ProjectFormatReadOnlyView} from './project-format-upgrade.ts';
 
@@ -36,7 +38,7 @@ export const projectEntryOpenPathInputSchema = z.object({projectFile: absolutePa
 export const projectEntryPrepareAcquireInputSchema = z.object({projectId: projectIdSchema}).strict();
 export const projectEntryAcquireInputSchema = z.object({projectId: projectIdSchema, windowId, expectedProjectFile:absolutePath.optional(), deferRecent: z.literal(true).optional(), formatUpgrade: projectFormatSourceSchema.optional()}).strict();
 export const projectEntryMarkOpenedInputSchema = z.object({windowId, contextId: windowId}).strict();
-export const projectEntryReleaseInputSchema = z.object({windowId}).strict();
+export const projectEntryReleaseInputSchema = z.object({windowId, closed:z.literal(true).optional()}).strict();
 export const projectEntryWindowSchema = z.object({windowId, project: recentProjectSchema}).strict();
 export const projectEntryWindowRevokedSchema = z.object({windowId, projectId: projectIdSchema}).strict();
 /** A trusted read-only observation. File identities/stamps never reach the page. */
@@ -65,6 +67,7 @@ export type ProjectEntryAdoptCopyInput = z.infer<typeof projectEntryAdoptCopyInp
 export interface ProjectEntryControlPort {
   readonly templates?: readonly import('./project-entry-desktop.ts').ProjectDesktopTemplate[];
   readonly nativeRelink?: NativeAssetMediaPort;
+  readonly nativeFcpExport?: NativeFcpExportControlPort;
   listRecent(): Promise<ProjectEntriesResponse>;
   /** Main-to-utility read of app-wide durable task activity. */
   updateActivity?(): import('./desktop-update.ts').DesktopUpdateActivity;
@@ -75,6 +78,7 @@ export interface ProjectEntryControlPort {
   markOpened?(input: z.infer<typeof projectEntryMarkOpenedInputSchema>): Promise<true> | true;
   /** Resolve current registration before the native volume admission; no lease. */
   prepareAcquire?(input: {projectId:string}): Promise<RecentProject>;
+  /** closed is evidence from native window destruction; ordinary lease cleanup omits it. */
   release(input: ProjectEntryReleaseInput): void;
   duplicate?(input: ProjectCopyInput): Promise<ProjectCopyResponse>;
   saveAs?(input: ProjectEntrySaveAsInput): Promise<{copy: ProjectCopyResponse; window: ProjectEntryWindow}>;

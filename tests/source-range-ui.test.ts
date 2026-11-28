@@ -165,7 +165,7 @@ test('App guards dirty clip before source selection, clears clip selection, and 
   let discards=0,ownerScope='source:1';
   const environment={React:{createElement:(type: string,props: Record<string, unknown> | null,...children: RootTree[])=>({type,props:{...props,children}})},
     editorSession:{current:'normal'},quickAssetId:'asset-a',sourceAsset:asset(),AgentEditingBoundary:'AgentEditingBoundary',SourceRangeInspector:'SourceRangeInspector',
-    workspace:{},data:{project:{id:'project-a'}},sourceDirty:true,
+    workspace:{},data:{project:{id:'project-a'}},sourceDirtyRef:{current:true},
     sourceRanges:{state:{scope:'source:1'},controller:{getState:()=>({scope:ownerScope}),discard:()=>{discards++;}}},
     timeline:timeline(),sourceRangeBlocked:false,addSavedSourceRange:()=>{},FrameExtractionPanel:'FrameExtractionPanel',frameExtraction:{controller:{}},agentRecovery:null as {kind: string; projectId: string; taskId: string; key: string; current(): boolean} | null,sceneSummary:()=>null,
   };
@@ -178,7 +178,7 @@ test('App guards dirty clip before source selection, clears clip selection, and 
   assert.equal(render().props.children[0].props.children[0].props.revealTask,recovery,'retain the exact read-only recovery intent without changing range ownership');
   environment.agentRecovery={...recovery,kind:'image'};assert.equal(render().props.children[0].props.children[0].props.revealTask,null);environment.agentRecovery=null;
   assert.equal(boundary.props.canRelease(),false,'an unsaved range retains its exact target claim');
-  environment.sourceDirty=false;assert.equal(render().props.canRelease(),true);
+  environment.sourceDirtyRef.current=false;assert.equal(render().props.canRelease(),true);
   ownerScope='source:2';boundary.props.onDiscard();assert.equal(discards,0,'a retained callback cannot discard another source scope');
   ownerScope='source:1';boundary.props.onDiscard();assert.equal(discards,1);
   assert.match(app, /sourceInFrame: 0/); // Existing whole-asset route is retained.

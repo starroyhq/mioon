@@ -10,6 +10,7 @@ import {createOwnedMediaGraphReader} from './inspection.ts';
 import {INSPECTION_ROW_LIMITS} from './inspection-query.ts';
 import {readTimelineStorage} from './project-file/timeline-storage.ts';
 import {validateManagedSource,verifiedManagedHash,sameManagedFile,retainManagedUnavailableCause} from './managed-media.ts';
+import type {VerifiedManagedSource} from './managed-media.ts';
 import {run,runStreaming,checkMediaEffect} from './media-runtime.ts';
 import {parseProbeOutput,withProbePermit} from './media-probe.ts';
 import {validateTimeline,freezeTimelineSnapshot} from './timeline-inputs.ts';
@@ -49,6 +50,7 @@ interface PreflightBudget {sourceBytes: number;totalBytes: number;bytesHashed: n
 interface PrepareOptions {
  root: string;projectId: string;readAsset: (id: string)=>ManagedAssetRecord|null|undefined;
  signal?: AbortSignal;budget?: PreflightBudget;
+ preparedSources?: ReadonlyMap<string, VerifiedManagedSource>;
  probe?: (file: string,options: ProbeOptions)=>Promise<TimelineProbeResult>;
  onChecked?: (assetId: string)=>void;validateLinks?: (timeline: TimelineRecord)=>void;
  allowProjectFps?: boolean;beforeEffect?: ()=>void;readLut?: (value: unknown)=>unknown;retainOpacitySourceIdentity?: boolean;
@@ -170,7 +172,7 @@ function timelineInputSourceError(error:unknown,assetId:string):unknown {
  }
  return error;
 }
-export async function prepareTimelineInputs(snapshot: TimelineSnapshotLike,{root,projectId,readAsset,signal,budget,probe=probeTimelineSource,onChecked,validateLinks,beforeEffect,readLut,retainOpacitySourceIdentity=false,allowProjectFps=false}: PrepareOptions): Promise<Map<string, PreparedSource>>{
+export async function prepareTimelineInputs(snapshot: TimelineSnapshotLike,{root,projectId,readAsset,signal,budget,preparedSources,probe=probeTimelineSource,onChecked,validateLinks,beforeEffect,readLut,retainOpacitySourceIdentity=false,allowProjectFps=false}: PrepareOptions): Promise<Map<string, PreparedSource>>{
  checkMediaEffect(beforeEffect,signal);
  if(!snapshot?.timeline||!Array.isArray(snapshot.assets))throw Error('Timeline render has no frozen snapshot');
  if(snapshot.timeline.projectId!==projectId||!isTimelineSubtitleSnapshotProfile(snapshot)||!isTimelineExportSnapshot(snapshot,{allowProjectFps})||!isTimelineColourSnapshot(snapshot))throw invalid();
@@ -189,17 +191,23 @@ export async function prepareTimelineInputs(snapshot: TimelineSnapshotLike,{root
   if(!sameMediaLocator(frozen,a))throw fault('TIMELINE_SOURCE_UNAVAILABLE','Timeline snapshot path no longer matches managed asset');
   const maxBytes=budget?.sourceBytes??Infinity;
   checkMediaEffect(beforeEffect,signal);const source=validateManagedSource(root,a,{maxBytes});
-  if(budget&&source.info.size>budget.totalBytes-budget.bytesHashed)throw fault('PREFLIGHT_BUDGET','Preflight byte budget was reached');
-  let hashed,hashEffectFailure;
-  try{
-   checkMediaEffect(beforeEffect,signal);
-   hashed=await verifiedManagedHash(root,a,{signal,maxBytes,expected:source.info,onBytes:bytes=>{
-    // The shared hash helper sanitizes arbitrary callback failures. Retain the
-    // backend fence's exact rejection until that helper closes its descriptor.
-    try{checkMediaEffect(beforeEffect,signal);}catch(error){hashEffectFailure=error;throw error;}
-    if(budget){if(bytes>budget.totalBytes-budget.bytesHashed)throw fault('PREFLIGHT_BUDGET','Preflight byte budget was reached');budget.bytesHashed+=bytes;}
-   }});
-  }catch(error){throw hashEffectFailure??error;}
+  let hashed = preparedSources?.get(frozen.id);
+  if (hashed) {
+   if (hashed.sha256!==frozen.sha256 || hashed.file!==source.file || !sameManagedFile(hashed.info,source.info)) {
+    throw fault('MANAGED_SOURCE_CHANGED','Timeline input bytes differ from prepared asset hash');
+   }
+  } else {
+   if(budget&&source.info.size>budget.totalBytes-budget.bytesHashed)throw fault('PREFLIGHT_BUDGET','Preflight byte budget was reached');
+   let hashEffectFailure;
+   try{
+    checkMediaEffect(beforeEffect,signal);
+    hashed=await verifiedManagedHash(root,a,{signal,maxBytes,expected:source.info,onBytes:bytes=>{
+     // Retain the backend fence rejection across managed-error sanitization.
+     try{checkMediaEffect(beforeEffect,signal);}catch(error){hashEffectFailure=error;throw error;}
+     if(budget){if(bytes>budget.totalBytes-budget.bytesHashed)throw fault('PREFLIGHT_BUDGET','Preflight byte budget was reached');budget.bytesHashed+=bytes;}
+    }});
+   }catch(error){throw hashEffectFailure??error;}
+  }
   checkMediaEffect(beforeEffect,signal);
   const checkSource=()=>{checkMediaEffect(beforeEffect,signal);const latest=readAsset(frozen.id);if(!latest||latest.projectId!==projectId||latest.sha256!==a.sha256||latest.mimeType!==a.mimeType||!sameMediaLocator(latest,a)||!sameManagedFile(hashed.info,validateManagedSource(root,a,{maxBytes}).info))throw fault('MANAGED_SOURCE_CHANGED','Timeline input bytes differ from frozen asset hash');};
   checkSource();
