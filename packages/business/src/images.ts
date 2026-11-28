@@ -329,29 +329,29 @@ export function createImageServices(store: ImageStore,{signal:ownerSignal,genera
   const check=(): ImageHistoryTask=>{const latest=current(target);if(source)editSources.assertCurrent(toInput(latest.input),source);return latest;};
   const file=await storage.publish(stageTask(target),receipt,check);
   try {
-  check();fault('after_media_publication',{taskId:target.row.id});
-  check();
-  const referenceFields=isProjectStore(store)?await referenceForPublishedMedia(store,path.join(store.root,file.relativePath),{sha256:receipt.sha256,beforeEffect:()=>{check();}}):null;
-  const commit=()=>tx(()=>{
-   const latest=current(target);if(source)editSources.assertOwned(toInput(latest.input),source.descriptor);if(isProjectStore(store)&&file.publication)assertPublishedProjectOutput(store,file.publication,{beforeEffect:()=>{check();}});const g=group(latest.row.projectId,latest.row.groupId);if(g.activeTaskId!==latest.row.id)invalid();
-   const maximum=Number(db.prepare('SELECT max(number) AS n FROM image_versions WHERE groupId=?').get(g.id)?.n??0);maxRevision(maximum);const timestamp=now();
-   const asset={id:receipt.assetId,projectId:g.projectId,name:generatedImageAssetName(db,latest.row.id,g.projectId,g.name,maximum+1),mimeType:'image/png',sha256:receipt.sha256,width:receipt.width,height:receipt.height,sizeBytes:receipt.byteLength,...(referenceFields??{relativePath:file.relativePath}),...(file.publication?{publication:file.publication}:{}),url:`/media/${receipt.assetId}`,provenance:receipt.isMock?'synthetic-mock':'generated',createdAt:timestamp};
-   const version={id:receipt.versionId,projectId:g.projectId,groupId:g.id,taskId:latest.row.id,number:maximum+1,assetId:asset.id,sha256:receipt.sha256,mimeType:'image/png',width:receipt.width,height:receipt.height,byteLength:receipt.byteLength,isMock:receipt.isMock,providerId:latest.snapshot.providerId,model:latest.snapshot.model,options:latest.snapshot.options,...imageEditFields(latest.snapshot),createdAt:timestamp};
-   db.prepare('INSERT INTO assets(id,projectId,data) VALUES(?,?,?)').run(asset.id,asset.projectId,JSON.stringify(asset));
-   db.prepare('INSERT INTO image_versions(id,projectId,groupId,taskId,number,assetId,data) VALUES(?,?,?,?,?,?,?)').run(version.id,g.projectId,g.id,latest.row.id,version.number,asset.id,JSON.stringify(version));
-   const completed=change(latest,{state:'succeeded',versionId:version.id,errorCode:null},{release:true,headVersionId:version.id});
-   (createOwnedMediaGraphReader(db,g.projectId) as unknown as {asset(id: string): unknown}).asset(asset.id);
-   resultListeners.get(db)?.({projectId:g.projectId,requestId:latest.row.requestId,taskId:latest.row.id,versionId:version.id,assetId:asset.id});
-   fault('before_result_commit',{taskId:latest.row.id});return completed;
-  });
-  const publication = file.publication;
-  const result = isProjectStore(store) && publication
-    ? await registerVerifiedProjectOutputs(store, {beforeEffect: check}, () => {
-      const completed = commit();
-      return markProjectOutputRegistered(store, publication, {beforeEffect: owner})
-        .catch(() => {/* A committed result can reconcile a retained publication intent. */}).then(() => completed);
-    }) : commit();
-  try{storage.discardStagedPng(stageTask(result),()=>{current(result);});}catch{/* A retained private stage is safe; never undo a committed result. */}
+   check();fault('after_media_publication',{taskId:target.row.id});
+   check();
+   const referenceFields=isProjectStore(store)?await referenceForPublishedMedia(store,path.join(store.root,file.relativePath),{sha256:receipt.sha256,beforeEffect:()=>{check();}}):null;
+   const commit=()=>tx(()=>{
+    const latest=current(target);if(source)editSources.assertOwned(toInput(latest.input),source.descriptor);if(isProjectStore(store)&&file.publication)assertPublishedProjectOutput(store,file.publication,{beforeEffect:()=>{check();}});const g=group(latest.row.projectId,latest.row.groupId);if(g.activeTaskId!==latest.row.id)invalid();
+    const maximum=Number(db.prepare('SELECT max(number) AS n FROM image_versions WHERE groupId=?').get(g.id)?.n??0);maxRevision(maximum);const timestamp=now();
+    const asset={id:receipt.assetId,projectId:g.projectId,name:generatedImageAssetName(db,latest.row.id,g.projectId,g.name,maximum+1),mimeType:'image/png',sha256:receipt.sha256,width:receipt.width,height:receipt.height,sizeBytes:receipt.byteLength,...(referenceFields??{relativePath:file.relativePath}),...(file.publication?{publication:file.publication}:{}),url:`/media/${receipt.assetId}`,provenance:receipt.isMock?'synthetic-mock':'generated',createdAt:timestamp};
+    const version={id:receipt.versionId,projectId:g.projectId,groupId:g.id,taskId:latest.row.id,number:maximum+1,assetId:asset.id,sha256:receipt.sha256,mimeType:'image/png',width:receipt.width,height:receipt.height,byteLength:receipt.byteLength,isMock:receipt.isMock,providerId:latest.snapshot.providerId,model:latest.snapshot.model,options:latest.snapshot.options,...imageEditFields(latest.snapshot),createdAt:timestamp};
+    db.prepare('INSERT INTO assets(id,projectId,data) VALUES(?,?,?)').run(asset.id,asset.projectId,JSON.stringify(asset));
+    db.prepare('INSERT INTO image_versions(id,projectId,groupId,taskId,number,assetId,data) VALUES(?,?,?,?,?,?,?)').run(version.id,g.projectId,g.id,latest.row.id,version.number,asset.id,JSON.stringify(version));
+    const completed=change(latest,{state:'succeeded',versionId:version.id,errorCode:null},{release:true,headVersionId:version.id});
+    (createOwnedMediaGraphReader(db,g.projectId) as unknown as {asset(id: string): unknown}).asset(asset.id);
+    resultListeners.get(db)?.({projectId:g.projectId,requestId:latest.row.requestId,taskId:latest.row.id,versionId:version.id,assetId:asset.id});
+    fault('before_result_commit',{taskId:latest.row.id});return completed;
+   });
+   const publication = file.publication;
+   const result = isProjectStore(store) && publication
+     ? await registerVerifiedProjectOutputs(store, {beforeEffect: check}, () => {
+       const completed = commit();
+       return markProjectOutputRegistered(store, publication, {beforeEffect: owner})
+         .catch(() => {/* A committed result can reconcile a retained publication intent. */}).then(() => completed);
+     }) : commit();
+   try{storage.discardStagedPng(stageTask(result),()=>{current(result);});}catch{/* A retained private stage is safe; never undo a committed result. */}
   } catch (error) {
    if (isProjectStore(store) && file.publication) {
     try {discardUnregisteredFatOutput(store, file.publication);} catch {/* Keep a result whose ownership cannot be proved. */}
