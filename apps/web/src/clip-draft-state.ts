@@ -119,6 +119,7 @@ export function createClipDraftController({ context: initial, client, validateTi
   let state: ClipDraftState = { raw: copy(context.saved), dirty: false, baseRevision: context.timelineRevision, source: copy(context.source), conflict: false, canRebase: false, rebaseSaved: null,
     compositionPending: false, phase: 'loading', error: '', errorDisplay: undefined, candidate: null, savedAt: null, submitting: false, businessPending: false, autosavePaused: false, failure: null, retainedRecord: false };
   let collaborationBaseline: {proof:AgentEditingProof;saved:ClipDraftRaw}|null=context.collaboration?{proof:copy(context.collaboration),saved:copy(context.saved)}:null;
+  let adoptNextTimelineRevision = false;
   const captures = new WeakSet<ClipDraftCapture>();
   const emit = (patch: Partial<ClipDraftState>) => { state = { ...state, ...patch }; if (active) onChange(state); };
   function pausePersistence(error: unknown, prefix = '', readOnly = false, display?: MessageDescriptor) {
@@ -272,9 +273,14 @@ export function createClipDraftController({ context: initial, client, validateTi
       const canRebase=Boolean(proof&&baseline&&proof.ownerId===baseline.proof.ownerId&&proof.kind===baseline.proof.kind&&proof.id===baseline.proof.id&&proof.revision===baseline.proof.revision&&proof.timelineRevision===next.timelineRevision&&sameClipDraftValue(next.saved,baseline.saved)&&sameClipDraftValue(next.source,state.source));
       context = copy(next);
       if (state.dirty || composition || state.submitting) {
-        if(canRebase&&!state.submitting&&!state.businessPending&&!state.candidate){if(state.baseRevision!==context.timelineRevision){serial++;if(composition)composition.serial=serial;}emit({baseRevision:context.timelineRevision,conflict:false,canRebase:false,rebaseSaved:null});}
+        if (adoptNextTimelineRevision && !state.submitting && !state.businessPending && !state.candidate && next.timelineRevision > state.baseRevision && sameClipDraftValue(next.source, state.source)) {
+          adoptNextTimelineRevision = false;
+          serial++;
+          if (composition) composition.serial = serial;
+          emit({ baseRevision: context.timelineRevision, conflict: false, canRebase: false, rebaseSaved: null });
+        } else if(canRebase&&!state.submitting&&!state.businessPending&&!state.candidate){if(state.baseRevision!==context.timelineRevision){serial++;if(composition)composition.serial=serial;}emit({baseRevision:context.timelineRevision,conflict:false,canRebase:false,rebaseSaved:null});}
         else if (conflict()) emit({ conflict: true, canRebase: canRebaseStillSafe(), rebaseSaved: canRebaseStillSafe() ? state.rebaseSaved : null });
-      } else {collaborationBaseline=proof&&!state.candidate?{proof:copy(proof),saved:copy(context.saved)}:null;emit({ raw: copy(context.saved), baseRevision: context.timelineRevision, source: copy(context.source), conflict: false, canRebase: false, rebaseSaved: null });}
+      } else {adoptNextTimelineRevision=false;collaborationBaseline=proof&&!state.candidate?{proof:copy(proof),saved:copy(context.saved)}:null;emit({ raw: copy(context.saved), baseRevision: context.timelineRevision, source: copy(context.source), conflict: false, canRebase: false, rebaseSaved: null });}
       schedule();
     },
     beginVolumeComposition(token: ClipDraftCapture): ClipVolumeCompositionToken | null {
@@ -432,6 +438,31 @@ export function createClipDraftController({ context: initial, client, validateTi
         context.timelineRevision <= state.baseRevision) return false;
       emit({ baseRevision: context.timelineRevision, conflict: false, canRebase: false, rebaseSaved: null, phase: 'ready', error: '', errorDisplay: undefined });
       schedule();
+      return true;
+    },
+    /** Reconcile a co-editing conflict: either adopt Mio's group values or
+     * keep the user's draft rebased onto the latest observed timeline revision. */
+    reconcileCoEditing(options: { baseRevision?: number; patch?: Partial<ClipDraftRaw>; clearConflict?: boolean; adoptNextRevision?: boolean } = {}): boolean {
+      if (!active || composition || deleting || discarding || state.submitting || state.businessPending) return false;
+      const nextRaw = options.patch ? { ...state.raw, ...copy(options.patch) } : copy(state.raw);
+      const nextSaved = options.patch ? { ...context.saved, ...copy(options.patch) } : context.saved;
+      const nextBase = Math.max(options.baseRevision ?? 0, context.timelineRevision);
+      if (options.patch) context = { ...context, saved: nextSaved };
+      const stillDirty = !sameClipDraftValue(nextRaw, nextSaved);
+      adoptNextTimelineRevision = Boolean(options.adoptNextRevision && stillDirty && nextBase <= state.baseRevision);
+      serial++;
+      emit({
+        raw: nextRaw,
+        dirty: stillDirty,
+        baseRevision: nextBase,
+        conflict: options.clearConflict ? false : state.conflict,
+        canRebase: false,
+        rebaseSaved: null,
+        phase: 'ready',
+        error: options.clearConflict ? '' : state.error,
+        errorDisplay: options.clearConflict ? undefined : state.errorDisplay,
+      });
+      if (stillDirty) schedule();
       return true;
     },
     load, flush, flushForClose,

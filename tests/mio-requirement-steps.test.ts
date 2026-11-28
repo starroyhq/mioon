@@ -182,6 +182,7 @@ function panel(value:AgentTaskSnapshot,locale:Locale='zh-Hans',readOnly=false) {
     if(name==='./project-rules-proposal.ts')return rulesProposal;
     if(name==='./agent-task-presentation.ts')return presentation;
     if(name==='./mio-follow.ts')return mioFollow;
+    if(name==='./mio-co-editing.ts')return{notifyMioRunActivity(){}};
     if(name==='./UiPreferencesProvider.tsx')return{useUiPreferences:()=>({preferences:{mioFollow:true}})};
     if(name==='./agent-task-requirements.ts')return requirements;
     if(name==='./agent-task-reviews.ts')return reviews;

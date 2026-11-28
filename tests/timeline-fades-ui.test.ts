@@ -93,6 +93,9 @@ async function inspectorHarness(patch: Record<string,unknown> = {}, lutRpc: clip
       if (id === '@mioon/ui/components/workbench-confirm') return { useConfirmation: () => async () => true };
       if (id === './icons.tsx') return { default: 'Icon', __esModule: true };
       if (id === './clip-sound-state.ts') return {clipSoundEntriesVisible: () => false, clipSaveAudioVisible: () => false};
+      if (id === './AgentEditingBoundary.tsx') return { __esModule: true, default: 'AgentEditingBoundary', acquireAgentEditingTargetAtRevision: async () => ({ status: 'acquired' }), attachAgentEditingParticipant: () => () => {}, readCachedAgentEditingTargetRevision: () => 0, reconcileAgentEditingTargetClaim: async () => ({ status: 'acquired' }), releaseAgentEditingTarget: async () => true };
+      if (id === './mio-co-editing.ts') return { useMioActiveWrites: () => [], findMioWriteForTarget: () => null, parseCoEditingClaimResult: () => null, buildCoEditingComparison: () => ({ rows: [], conflictedFields: new Set() }), clipDraftPatchFromServerValues: () => ({}), clipFieldGroup: () => 'audio', clipFieldTargetKind: () => 'timeline_clip_audio', clipGroupTargetKind: () => 'timeline_clip_audio', refreshMioActiveWrites: async () => {} };
+      if (id === './MioCoEditingControls.tsx') return { MioCoEditingConflictCard: 'MioCoEditingConflictCard', MioEditingBadge: 'MioEditingBadge' };
       return primitive;
     }, module, module.exports);
     modules.set(filename, module.exports); return module.exports;

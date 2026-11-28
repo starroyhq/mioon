@@ -32,8 +32,30 @@ function harness(){
   const retainedClient={
     async read(id:string){
       reads.push([id]);if(readHandler)await readHandler(id);
-      const owners=claims.filter(claim=>claim.projectId===id).map(claim=>({claim,generation:123,sequence:4,claimSnapshot:'0'.repeat(64),liveness:liveness.get(claim.ownerId)??'in_use'}));
-      return owners.length?[{projectId:id,kind:agentTaskEditingTargetRevisionKind(owners[0]!.claim.target.kind),id:target.id,owners}]:[];
+      const owners=claims.filter(claim=>claim.projectId===id).map(claim=>{
+        const state=liveness.get(claim.ownerId)??'in_use';
+        return {claim,generation:123,sequence:4,claimSnapshot:'0'.repeat(64),liveness:state,locator:{kind:claim.target.kind,id:claim.target.id},canEnd:state==='retained'};
+      });
+      if(!owners.length)return [];
+      const kind=agentTaskEditingTargetRevisionKind(owners[0]!.claim.target.kind);
+      return [{projectId:id,kind,id:target.id,locator:{kind,id:target.id},canEnd:owners.some(o=>o.canEnd),owners}];
+    },
+    async readStatus(id:string,local:{ownsWindow:(ownerId:string)=>boolean;readDraft?:(owner:unknown)=>'unsaved'|'clean'|'unconfirmed'|undefined}){
+      const rawGroups=await retainedClient.read(id);
+      const groups=rawGroups.map(group=>{
+        const owners=group.owners.map(owner=>{
+          const status=!local.ownsWindow(owner.claim.ownerId)
+            ? (owner.liveness==='in_use'?'another_window' as const:'unconfirmed' as const)
+            : (local.readDraft?.(owner)==='unsaved'?'local_unsaved' as const:local.readDraft?.(owner)==='clean'&&owner.claim.state==='active'?'local_occupied' as const:'unconfirmed' as const);
+          return {...owner,status};
+        });
+        const order=['local_unsaved','another_window','unconfirmed','local_occupied'] as const;
+        const status=order.find(candidate=>owners.some(o=>o.status===candidate))??'unconfirmed';
+        return {...group,owners,status};
+      });
+      const endableClaimCount=groups.reduce((sum,g)=>sum+g.owners.filter(o=>o.canEnd).length,0);
+      const endableGroupCount=groups.filter(g=>g.canEnd).length;
+      return {groups,endableClaimCount,endableGroupCount};
     },
     async lookup(id:string,requestId:string){batchLookups.push([id,requestId]);return batchReceipt;},
     async resolve(input:AgentTaskEditingResolveBatchInput){
@@ -79,26 +101,28 @@ function harness(){
     cleanup(){for(const slot of slots)slot.cleanup?.();controller?.dispose();globalThis.sessionStorage=(previous as unknown as Storage);},
   };
 }
-const resolveButton=(tree: UiTree)=>nodes(nodes(tree).find((node)=>node.type==='article')).find((node)=>node.type==='button');
-const reloadButton=(tree: UiTree)=>nodes(tree).filter((node)=>node.type==='button').at(-1);
+const expandBar=(render:()=>UiTree)=>{let tree=render();const toggle=nodes(tree).find((node)=>node.props?.['data-testid']==='agent-retained-toggle');if(toggle&&toggle.props['aria-expanded']===false){toggle.props.onClick?.();tree=render();}return tree;};
+const resolveButton=(tree: UiTree)=>nodes(tree).find((node)=>node.props?.['data-testid']==='agent-retained-end');
+const reloadButton=(tree: UiTree)=>nodes(tree).find((node)=>node.props?.['data-testid']==='agent-retained-reload');
 
-test('the editing boundary is one compact Edit control whose name, hint and announced status keep the explanation',async()=>{
+test('the editing boundary removes the Edit gate on idle targets and keeps recovery cards for uncertain states',async()=>{
   const h=harness();try{
     const props={projectId:h.initialProjectId,targets:[h.target],canRelease:()=>true,children:'Protected fields'},find=(tree: UiTree,id: string)=>nodes(tree).find((node)=>node.props?.['data-testid']===id);
     h.renderBoundary(props);await flush();let tree=h.renderBoundary(props);
-    const card=find(tree,'agent-editing-protection')!,status=nodes(card).find((node)=>node.props?.role==='status')!;
-    assert.match(String(card.props.className),/is-compact/);assert.equal(status.props.className,'sr-only');assert.equal(text(status),translate('zh-Hans','agent.task.editingHint'));
-    const start=find(tree,'agent-editing-start')!;
-    assert.equal(start.props['aria-label'],translate('zh-Hans','agent.task.editingStart'));assert.match(text(start),new RegExp(translate('zh-Hans','agent.task.editingStartShort')));
-    assert.equal(nodes(tree).find((node)=>node.type==='tooltip')!.props.content,translate('zh-Hans','agent.task.editingHint'));
-    assert.equal(nodes(tree).find((node)=>node.type==='fieldset')!.props.disabled,true,'fields stay locked until the edit starts');
-    await start.props.onClick();await flush();tree=h.renderBoundary(props);
-    assert.ok(find(tree,'agent-editing-release'));assert.equal(nodes(tree).find((node)=>node.type==='fieldset')!.props.disabled,false);
-    assert.equal(nodes(tree).find((node)=>node.type==='tooltip')!.props.content,translate('zh-Hans','agent.task.editingActive'));
-    // A state that needs a decision keeps the explanatory card.
+    assert.equal(find(tree,'agent-editing-start'),undefined,'no Edit button on idle state');
+    assert.equal(find(tree,'agent-editing-release'),undefined,'no Finish editing button');
+    assert.equal(find(tree,'agent-editing-protection'),undefined,'no idle editing chrome');
+    const fieldset=nodes(tree).find((node)=>node.type==='fieldset')!;
+    assert.equal(fieldset.props.disabled,false,'fields are directly editable without clicking Edit');
+    // First actual input automatically claims at the visible target revision.
+    (fieldset.props.onInputCapture as () => void)();await flush();tree=h.renderBoundary(props);
+    assert.ok(h.updates.some(update=>update.action==='claim'),'first input dispatches claim');
+    assert.equal(h.controller().getState().phase,'active');
+    // A state that needs a decision keeps the recovery card and pauses input.
     h.controller().invalidate();tree=h.renderBoundary(props);
     const full=find(tree,'agent-editing-protection')!;
-    assert.doesNotMatch(String(full.props.className),/is-compact/);assert.equal(nodes(full).find((node)=>node.props?.role==='status')!.props.className,undefined);assert.ok(find(tree,'agent-editing-query'));
+    assert.ok(full);assert.equal(nodes(full).find((node)=>node.props?.role==='status')!.props.className,undefined);assert.ok(find(tree,'agent-editing-query'));
+    assert.equal(nodes(tree).find((node)=>node.type==='fieldset')!.props.disabled,true);
   }finally{h.cleanup();}
 });
 test('autoAcquire claims the editing target for an explicit form without a second Edit click',async()=>{
@@ -199,7 +223,7 @@ test('existing retained clip labels understand an audio claim and release its ex
     const claim = h.addForeign();
     claim.target.kind = 'timeline_clip_audio';
     h.render(); await flush();
-    const tree = h.render();
+    const tree = expandBar(h.render);
     const article = nodes(tree).find(node => node.type === 'article');
     assert.ok(article);
     assert.ok(text(article).includes(translate('zh-Hans', 'agent.display.target.timeline_clip')));
@@ -214,7 +238,7 @@ test('retained recovery offers explicit resolution only for claims the host conf
     await h.boundary.acquireAgentEditingTarget(h.initialProjectId,h.target);
     const claim=h.addForeign();
     h.addForeign('in_use',crypto.randomUUID());h.addForeign('uncertain',crypto.randomUUID());
-    h.render();await flush();const tree=h.render();
+    h.render();await flush();const tree=expandBar(h.render);
     const articles=nodes(tree).filter((node)=>node.type==='article');assert.equal(articles.length,1);assert.equal(h.controller().canEdit!(),true);
     assert.match(text(tree),/鏡頭|镜头/u);assert.match(text(tree),/Opening scene/u);assert.doesNotMatch(text(tree),new RegExp(h.target.id+'|'+h.foreignOwner+'|\\bshot\\b'));
     await resolveButton(tree)!.props.onClick();await flush();
@@ -228,7 +252,7 @@ test('an indeterminate batch send only queries its original receipt and clears t
   const h=harness();try{
     const claim=h.addForeign();
     h.setBatchResolve(async()=>{throw Error('offline');});
-    h.render();await flush();await resolveButton(h.render())!.props.onClick();await flush();
+    h.render();await flush();await resolveButton(expandBar(h.render))!.props.onClick();await flush();
     const input=h.batchRequests[0];assert.equal(h.closeState()!.blocked,true);assert.equal(h.storage.get(h.key()),JSON.stringify(input));
     h.setBatchReceipt({projectId:input.projectId,requestId:input.requestId,releasedClaimIds:[crypto.randomUUID()]});
     await reloadButton(h.render())!.props.onClick();await flush();
@@ -245,7 +269,7 @@ test('a definitive stale batch rejection refreshes the list without holding clos
   const h=harness();try{
     h.addForeign();
     h.setBatchResolve(async()=>{throw new RetainedEditingConflict();});
-    h.render();await flush();await resolveButton(h.render())!.props.onClick();await flush();
+    h.render();await flush();await resolveButton(expandBar(h.render))!.props.onClick();await flush();
     assert.equal(h.closeState()!.blocked,false);assert.equal(h.storage.has(h.key()),false);
     assert.equal(h.reads.length,2);assert.equal(h.batchRequests.length,1);
   }finally{h.cleanup();}
@@ -253,7 +277,7 @@ test('a definitive stale batch rejection refreshes the list without holding clos
 test('unknown reads retain the recovery content and safe target name without exposing raw identifiers',async()=>{
   const h=harness();try{
     h.addForeign();h.setRecovery({type:'p',props:{children:['Synthetic interrupted round']}});h.render();await flush();h.setRead(async()=>{throw Error('offline');});
-    await reloadButton(h.render())!.props.onClick();await flush();const tree=h.render();assert.match(text(tree),/Synthetic interrupted round/u);assert.match(text(tree),/Opening scene/u);assert.equal(nodes(tree).filter((node)=>node.props?.role==='alert').length,1);assert.doesNotMatch(text(tree),new RegExp(h.target.id+'|'+h.foreignOwner));assert.equal(h.updates.length,0);
+    await reloadButton(expandBar(h.render))!.props.onClick();await flush();const tree=h.render();assert.match(text(tree),/Synthetic interrupted round/u);assert.match(text(tree),/Opening scene/u);assert.equal(nodes(tree).filter((node)=>node.props?.role==='alert').length,1);assert.doesNotMatch(text(tree),new RegExp(h.target.id+'|'+h.foreignOwner));assert.equal(h.updates.length,0);
   }finally{h.cleanup();}
 });
 
@@ -289,7 +313,7 @@ test('hiding the mounted recovery owner for legacy history retains its unknown-r
 
 test('a retained resolve confirmation cannot dispatch after hiding, hide/show or a project change',async()=>{
   for(const change of ['hide','hide-show','project','project-return'] as const){const h=harness();try{
-    h.addForeign();const confirmation=deferred();h.setConfirm(()=>confirmation.promise);h.render();await flush();resolveButton(h.render())!.props.onClick();await flush();
+    h.addForeign();const confirmation=deferred();h.setConfirm(()=>confirmation.promise);h.render();await flush();resolveButton(expandBar(h.render))!.props.onClick();await flush();
     if(change.startsWith('hide')){h.setVisible(false);h.render();if(change==='hide-show'){h.setVisible(true);h.render();}}
     else{h.setProject(crypto.randomUUID());h.render();if(change==='project-return'){h.setProject(h.initialProjectId);h.render();}}
     confirmation.resolve!(true);await flush();assert.equal(h.batchRequests.length,0,change);
@@ -305,7 +329,7 @@ test('corrupt retained receipts fail closed and cannot automatically clear or re
 });
 
 test('cancelling confirmation preserves the foreign claim and sends no resolve',async()=>{
-  const h=harness();try{h.addForeign();h.setConfirm(async()=>false);h.render();await flush();await resolveButton(h.render())!.props.onClick();await flush();assert.equal(h.confirmations.length,1);assert.equal(h.updates.length,0);assert.equal(nodes(h.render()).filter((node)=>node.type==='article').length,1);assert.equal(h.storage.size,0);}finally{h.cleanup();}
+  const h=harness();try{h.addForeign();h.setConfirm(async()=>false);h.render();await flush();await resolveButton(expandBar(h.render))!.props.onClick();await flush();assert.equal(h.confirmations.length,1);assert.equal(h.updates.length,0);assert.equal(nodes(expandBar(h.render)).filter((node)=>node.type==='article').length,1);assert.equal(h.storage.size,0);}finally{h.cleanup();}
 });
 
 test('a retained receipt belonging to a different project cannot be cleared through this project',async()=>{
@@ -317,7 +341,7 @@ test('a retained receipt belonging to a different project cannot be cleared thro
 
 test('failure to retain an explicit resolve blocks close and prevents all write dispatch',async()=>{
   const h=harness();try{
-    h.addForeign();h.render();await flush();h.setStorageWriteFailure(true);await resolveButton(h.render())!.props.onClick();await flush();const tree=h.render();
+    h.addForeign();h.render();await flush();h.setStorageWriteFailure(true);await resolveButton(expandBar(h.render))!.props.onClick();await flush();const tree=h.render();
     assert.equal(h.batchRequests.length,0);assert.equal(h.storage.size,0);assert.equal(h.closeState()!.blocked,true);assert.equal(resolveButton(tree)!.props.disabled,true);
   }finally{h.cleanup();}
 });

@@ -57,7 +57,10 @@ function inspector(locale: Locale='en', eligible=true, supported=true){
   if(name==='@mioon/contracts')return {sourceFrameCount:()=>10,isTimelineRecord:()=>true};
   if(name.endsWith('/Timeline.tsx'))return {assetKind:(a: {mimeType:string})=>a.mimeType.split('/')[0],framesLabel:String};
   if(name.endsWith('clip-draft-hook.ts'))return {useClipDraft:()=>({state,controller})};
-  if(name.endsWith('clip-draft-state.ts'))return {clipDraftRaw:(clip: {volumeEnvelope?:RawVolumeEnvelope|null})=>({...raw,volumeEnvelope:clip.volumeEnvelope}),clipDraftSource:()=>({}),clipDraftPatch:()=>({})};
+  if(name.endsWith('clip-draft-state.ts'))return {clipDraftRaw:(clip: {volumeEnvelope?:RawVolumeEnvelope|null})=>({...raw,volumeEnvelope:clip.volumeEnvelope}),clipDraftSource:()=>({}),clipDraftPatch:()=>({}),sameClipDraftValue:(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b)};
+  if(name.endsWith('AgentEditingBoundary.tsx'))return {__esModule:true,default:'AgentEditingBoundary',acquireAgentEditingTargetAtRevision:async()=>({status:'acquired'}),attachAgentEditingParticipant:()=>()=>{},readCachedAgentEditingTargetRevision:()=>0,reconcileAgentEditingTargetClaim:async()=>({status:'acquired'}),releaseAgentEditingTarget:async()=>true};
+  if(name.endsWith('mio-co-editing.ts'))return {useMioActiveWrites:()=>[],findMioWriteForTarget:()=>null,parseCoEditingClaimResult:()=>null,buildCoEditingComparison:()=>({rows:[],conflictedFields:new Set()}),clipDraftPatchFromServerValues:()=>({}),clipFieldGroup:()=>'audio',clipFieldTargetKind:()=>'timeline_clip_audio',clipGroupTargetKind:()=>'timeline_clip_audio',refreshMioActiveWrites:async()=>{}};
+  if(name.endsWith('MioCoEditingControls.tsx'))return {MioCoEditingConflictCard:'MioCoEditingConflictCard',MioEditingBadge:'MioEditingBadge'};
   if(name.endsWith('clip-volume-envelope-state.ts'))return {rawVolumeEnvelopeChanged};
   if(name.endsWith('clip-opacity-envelope-state.ts'))return opacityState;
   if(name.endsWith('opacity-ime-submit-guard.ts'))return imeSubmitGuard;

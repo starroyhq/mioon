@@ -11,24 +11,68 @@ import type {
 } from '../../../packages/contracts/src/agent-tasks-v2.ts';
 import { useI18n } from './i18n/I18nProvider.tsx';
 import { createAgentEditingClient } from './agent-editing-protection.ts';
-import { invalidateAgentEditingOwner } from './AgentEditingBoundary.tsx';
+import {
+  agentRetainedEditingEvidence,
+  invalidateAgentEditingOwner,
+  releaseLocalAgentEditingOwner,
+  subscribeAgentEditingChanges,
+} from './AgentEditingBoundary.tsx';
 import {
   createRetainedEditingClient, matchesEditingBatchReceipt, RetainedEditingConflict,
 } from './agent-retained-editing.ts';
+import type { RetainedEditingLocalEvidence, RetainedEditingStatus, RetainedEditingStatusView } from './agent-retained-editing.ts';
 import type { NativeCloseSourceRegistry } from './native-close-sources.ts';
 import { taskDisplayTargets } from './agent-task-presentation.ts';
 import type { TaskDisplayLookup } from './agent-task-presentation.ts';
+import Icon from './icons.tsx';
+import './mio-co-editing.css';
 
 type PendingResolve = AgentTaskEditingInput | AgentTaskEditingResolveBatchInput;
+type GroupView = RetainedEditingStatusView['groups'][number];
+
+export interface RetainedEditingLocator {
+  kind: string;
+  id: string;
+}
+
+const MAX_BATCH_CLAIMS = 100;
+
+function statusMessageKey(status: RetainedEditingStatus) {
+  switch (status) {
+    case 'local_unsaved': return 'agent.coEdit.status.local_unsaved' as const;
+    case 'local_occupied': return 'agent.coEdit.status.local_occupied' as const;
+    case 'another_window': return 'agent.coEdit.status.another_window' as const;
+    default: return 'agent.coEdit.status.unconfirmed' as const;
+  }
+}
 
 /** An unconfirmed clear can only query its original durable receipt. */
-export default function AgentRetainedEditing({ projectId, visible, readOnly, nativeCloseRegistry, recovery, targetName }: {
-  projectId: string; visible: boolean; readOnly: boolean; nativeCloseRegistry?: unknown; recovery?: ReactNode; targetName?: TaskDisplayLookup;
+export default function AgentRetainedEditing({
+  projectId,
+  visible,
+  readOnly,
+  nativeCloseRegistry,
+  recovery,
+  targetName,
+  readDraft,
+  onLocateTarget,
+}: {
+  projectId: string;
+  visible: boolean;
+  readOnly: boolean;
+  nativeCloseRegistry?: unknown;
+  recovery?: ReactNode;
+  targetName?: TaskDisplayLookup;
+  readDraft?: RetainedEditingLocalEvidence['readDraft'];
+  onLocateTarget?: (locator: RetainedEditingLocator) => unknown;
 }) {
   const {t, locale} = useI18n(), confirm = useConfirmation();
-  const [claims, setClaims] = useState<AgentTaskEditingClaimOwner[]>([]);
+  const [statusView, setStatusView] = useState<RetainedEditingStatusView | null>(null);
+  const [expanded, setExpanded] = useState(false);
   const [busy, setBusy] = useState(false), [unknown, setUnknown] = useState(false);
   const client = useRef(createRetainedEditingClient());
+  const readDraftRef = useRef(readDraft);
+  readDraftRef.current = readDraft;
   const flight = useRef(false), epoch = useRef(0), mounted = useRef(false), receiptBlocked = useRef(false);
   const view = useRef({projectId, visible, readOnly});
   if (view.current.projectId !== projectId || view.current.visible !== visible || view.current.readOnly !== readOnly) {
@@ -56,7 +100,7 @@ export default function AgentRetainedEditing({ projectId, visible, readOnly, nat
     mounted.current = true;
     source.current = (nativeCloseRegistry as NativeCloseSourceRegistry | undefined)?.register('agent-editing-recovery-v2') ?? null;
     pending.current = null; receiptBlocked.current = false; flight.current = false;
-    setBusy(false); setClaims([]); setUnknown(false);
+    setBusy(false); setStatusView(null); setUnknown(false); setExpanded(false);
     try {
       const raw = sessionStorage.getItem(key);
       if (raw) {
@@ -79,7 +123,15 @@ export default function AgentRetainedEditing({ projectId, visible, readOnly, nat
     };
   }, [projectId, nativeCloseRegistry]);
 
-  useLayoutEffect(() => { if (visible) void load(); }, [projectId, visible]);
+  useLayoutEffect(() => {
+    if (!visible) return;
+    void load();
+    return subscribeAgentEditingChanges(() => {
+      if (mounted.current && view.current.visible && !flight.current && !pending.current && !receiptBlocked.current) {
+        void load();
+      }
+    });
+  }, [projectId, visible]);
 
   function startFlight(): number {
     flight.current = true;
@@ -96,9 +148,10 @@ export default function AgentRetainedEditing({ projectId, visible, readOnly, nat
   }
 
   async function readClaims(token: number) {
-    const groups = await client.current.read(projectId);
+    const evidence = agentRetainedEditingEvidence(projectId, owner => readDraftRef.current?.(owner));
+    const next = await client.current.readStatus(projectId, evidence);
     if (isCurrent(token)) {
-      setClaims(groups.flatMap(group => group.owners));
+      setStatusView(next);
       setUnknown(false);
     }
   }
@@ -130,14 +183,26 @@ export default function AgentRetainedEditing({ projectId, visible, readOnly, nat
     } finally { finishFlight(token); }
   }
 
-  async function resolve({claim, generation, sequence, claimSnapshot}: AgentTaskEditingClaimOwner) {
+  async function resolveOwners(ownersToEnd: readonly AgentTaskEditingClaimOwner[], confirmDescriptor: ReturnType<typeof message>) {
     const canResolve = () => !flight.current && !pending.current && !receiptBlocked.current &&
       view.current.visible && !view.current.readOnly && view.current.projectId === projectId;
-    if (generation === null || sequence === null || !canResolve()) return;
+    const batch = ownersToEnd
+      .filter((owner): owner is AgentTaskEditingClaimOwner & {generation: number; sequence: number} =>
+        owner.liveness === 'retained' && owner.generation !== null && owner.sequence !== null)
+      .slice(0, MAX_BATCH_CLAIMS);
+    if (!batch.length || !canResolve()) return;
     const token = epoch.current, viewToken = view.current;
-    if (!await confirm(message('agent.task.editingResolve')) || !isCurrent(token) || viewToken !== view.current || !canResolve()) return;
+    if (!await confirm(confirmDescriptor) || !isCurrent(token) || viewToken !== view.current || !canResolve()) return;
     const input: AgentTaskEditingResolveBatchInput = {
-      requestId: crypto.randomUUID(), projectId, claims: [{claimId: claim.id, ownerId: claim.ownerId, generation, sequence, claimSnapshot}],
+      requestId: crypto.randomUUID(),
+      projectId,
+      claims: batch.map(({claim, generation, sequence, claimSnapshot}) => ({
+        claimId: claim.id,
+        ownerId: claim.ownerId,
+        generation,
+        sequence,
+        claimSnapshot,
+      })),
     };
     try { persist(input); } catch { setUnknown(true); return; }
     const attempt = startFlight();
@@ -155,21 +220,161 @@ export default function AgentRetainedEditing({ projectId, visible, readOnly, nat
     } finally { finishFlight(attempt); }
   }
 
-  const retained = claims.filter(owner => owner.liveness === 'retained' && owner.generation !== null && owner.sequence !== null);
-  if (!recovery && !unknown && !retained.length) return null;
-  return <section className="mio-card agent-task-retained-editing" data-testid="agent-retained-editing">
-    <strong>{t('agent.panel.recoveryTitle')}</strong>{recovery}
-    <div className="mio-retained-items">
-      {unknown && <p role="alert">{t('agent.task.editingUnknown')}</p>}
-      {retained.map(owner => {
-        const {claim} = owner;
-        const kind = AGENT_TASK_DISPLAY_TARGET_KINDS.find(value => value === agentTaskEditingTargetRevisionKind(claim.target.kind)) ?? 'unknown';
-        return <article key={claim.id}>
-          <p>{t('agent.panel.editingItem')} · {taskDisplayTargets({operation: '', targets: [{kind, id: claim.target.id}], targetCount: 1, fields: []}, locale, targetName)}</p>
-          <Button type="button" disabled={!visible || readOnly || busy || receiptBlocked.current || Boolean(pending.current)} onClick={() => {void resolve(owner);}}>{t('agent.task.editingResolve')}</Button>
-        </article>;
-      })}
-      {(unknown || retained.length > 0) && <Button type="button" variant="ghost" disabled={!visible || busy || receiptBlocked.current} onClick={() => {void load();}}>{t(pending.current ? 'agent.task.confirmRead' : 'agent.task.reload')}</Button>}
-    </div>
-  </section>;
+  async function endGroup(group: GroupView) {
+    if (group.canEnd) {
+      await resolveOwners(
+        group.owners.filter(owner => owner.canEnd),
+        message('agent.task.editingResolve'),
+      );
+      return;
+    }
+    const canResolve = () => !flight.current && !pending.current && !receiptBlocked.current &&
+      view.current.visible && !view.current.readOnly && view.current.projectId === projectId;
+    if (!canResolve()) return;
+    const isLocal = group.status === 'local_occupied' || group.status === 'local_unsaved';
+    if (!isLocal) return;
+    const token = epoch.current, viewToken = view.current;
+    if (group.status === 'local_unsaved') {
+      if (!await confirm(message('agent.task.editingDiscardConfirm')) || !isCurrent(token) || viewToken !== view.current || !canResolve()) return;
+    }
+    const attempt = startFlight();
+    try {
+      const ownerIds = [...new Set(group.owners.map(owner => owner.claim.ownerId))];
+      for (const ownerId of ownerIds) {
+        await releaseLocalAgentEditingOwner(projectId, ownerId, { discardUnsaved: group.status === 'local_unsaved' });
+      }
+      if (!isCurrent(attempt)) return;
+      await readClaims(attempt);
+    } catch {
+      if (isCurrent(attempt)) setUnknown(true);
+    } finally { finishFlight(attempt); }
+  }
+
+  async function endAll() {
+    if (!statusView) return;
+    const endable = statusView.groups.flatMap(group => group.owners.filter(owner => owner.canEnd));
+    if (!endable.length) return;
+    await resolveOwners(endable, message('agent.coEdit.endAllConfirm', { count: statusView.endableGroupCount }));
+  }
+
+  const groups = statusView?.groups ?? [];
+  const endableGroupCount = statusView?.endableGroupCount ?? 0;
+  const open = expanded || unknown;
+  const disabled = !visible || readOnly || busy || receiptBlocked.current || Boolean(pending.current);
+
+  if (!recovery && !unknown && !groups.length) return null;
+
+  return <div className="mio-retained-container" data-testid="agent-retained-editing">
+    {recovery && <section className="mio-card"><strong>{t('agent.panel.recoveryTitle')}</strong>{recovery}</section>}
+    {(groups.length > 0 || unknown) && <>
+      <div className="mio-retained-bar">
+        <Button
+          type="button"
+          variant="ghost"
+          size="compact"
+          className="mio-retained-toggle"
+          data-testid="agent-retained-toggle"
+          aria-expanded={open}
+          onClick={() => setExpanded(value => !value)}
+        >
+          <Icon name="arrow" size={12} />
+          <span>{t('agent.coEdit.retainedBar', { count: groups.length })}</span>
+        </Button>
+        {open && <div className="mio-retained-bar-actions">
+          {!unknown && groups.length > 0 && (
+            <Button
+              type="button"
+              variant="icon"
+              size="compact"
+              className="mio-retained-reload-icon"
+              data-testid="agent-retained-reload"
+              aria-label={t('agent.task.reload')}
+              title={t('agent.task.reload')}
+              disabled={!visible || busy || receiptBlocked.current}
+              onClick={() => { void load(); }}
+            >
+              <Icon name="refresh" size={12} />
+            </Button>
+          )}
+          {endableGroupCount > 0 && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="compact"
+              className="mio-retained-end-all"
+              data-testid="agent-retained-end-all"
+              disabled={disabled}
+              onClick={() => { void endAll(); }}
+            >
+              {t('agent.coEdit.endAll', { count: endableGroupCount })}
+            </Button>
+          )}
+        </div>}
+      </div>
+      {open && <div className="mio-retained-list" data-testid="agent-retained-list">
+        {unknown && <div className="mio-retained-unknown-row">
+          <p role="alert">{t('agent.task.editingUnknown')}</p>
+          <Button
+            type="button"
+            variant="ghost"
+            size="compact"
+            data-testid="agent-retained-reload"
+            disabled={!visible || busy || receiptBlocked.current}
+            onClick={() => { void load(); }}
+          >
+            {t(pending.current ? 'agent.task.confirmRead' : 'agent.task.reload')}
+          </Button>
+        </div>}
+        {groups.map(group => {
+          const kind = AGENT_TASK_DISPLAY_TARGET_KINDS.find(value => value === agentTaskEditingTargetRevisionKind(group.kind)) ?? 'unknown';
+          const title = taskDisplayTargets({operation: '', targets: [{kind, id: group.id}], targetCount: 1, fields: []}, locale, targetName);
+          const foreignInUseOnly = group.status === 'another_window' && !group.canEnd;
+          const canEndRow = group.canEnd || group.status === 'local_occupied' || group.status === 'local_unsaved';
+          return <article key={`${group.kind}:${group.id}`} className="mio-retained-row" data-testid="agent-retained-row" data-status={group.status}>
+            <div className="mio-retained-info">
+              <span className="mio-retained-title" title={title}>{title}</span>
+              <span className="mio-retained-status" data-status={group.status} data-testid="agent-retained-status">
+                {group.status === 'local_unsaved' && <span className="mio-retained-status-dot" aria-hidden="true" />}
+                {group.status === 'another_window' && <Icon name="window" size={11} />}
+                <span>{t(statusMessageKey(group.status))}</span>
+              </span>
+            </div>
+            <div className="mio-retained-actions">
+              {foreignInUseOnly ? (
+                <span className="mio-retained-in-use" data-testid="agent-retained-in-use">{t('agent.coEdit.inUse')}</span>
+              ) : <>
+                {onLocateTarget && (
+                  <Button
+                    type="button"
+                    variant="icon"
+                    size="compact"
+                    className="mio-retained-locate"
+                    data-testid="agent-retained-locate"
+                    aria-label={t('agent.task.locate')}
+                    disabled={!visible}
+                    onClick={() => { onLocateTarget(group.locator); }}
+                  >
+                    <Icon name="locate" size={13} />
+                  </Button>
+                )}
+                {canEndRow && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="compact"
+                    className="mio-retained-end"
+                    data-testid="agent-retained-end"
+                    disabled={disabled}
+                    onClick={() => { void endGroup(group); }}
+                  >
+                    {t('agent.coEdit.endOne')}
+                  </Button>
+                )}
+              </>}
+            </div>
+          </article>;
+        })}
+      </div>}
+    </>}
+  </div>;
 }
