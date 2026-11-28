@@ -640,6 +640,7 @@ test('actual format 5 saveTimelineFormat routes ratio changes through sequence p
     currentProject: {current: projectId},
     setFormat5SessionBusy: (value: boolean) => { busy.push(value); },
     format5Session: () => ({format: async (presetId: string) => { formats.push(presetId); return outcome; }}),
+    isSequenceEditNoop: (result: {code?: unknown}) => result?.code === 'SEQUENCE_EDIT_NOOP',
     notifyFormat5CommandFailure: () => { refreshed.push('notify'); },
     clearFormat5ConflictToast: () => { refreshed.push('clear'); },
     refresh: async () => { refreshed.push('refresh'); },
@@ -663,6 +664,10 @@ test('actual format 5 saveTimelineFormat routes ratio changes through sequence p
   outcome = {ok: false, code: 'SEQUENCE_EDIT_UNCONFIRMED', unconfirmed: true};
   const unknown = await (save as (i: unknown, o?: unknown) => Promise<{status: string; error?: unknown}>)(intent, {canExecute: () => true});
   assert.equal(unknown.status, 'unknown');
+
+  outcome = {ok: false, code: 'SEQUENCE_EDIT_NOOP'};
+  const noop = await (save as (i: unknown, o?: unknown) => Promise<{status: string; error?: unknown}>)(intent, {canExecute: () => true});
+  assert.equal(noop.status, 'not_applied');
 });
 
 test('actual format 4 selection reports locked edits and refreshes conflicts without resubmitting', async () => {
