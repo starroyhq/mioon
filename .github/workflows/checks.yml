@@ -406,10 +406,6 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-      - name: Test the reviewed macOS desktop group
-        id: desktop
-        run: node scripts/tooling.ts test --suite=macos-desktop --concurrency=2 --reporter=tap
-
       - name: Test project publication on macOS FAT disk images
         id: project-volumes
         timeout-minutes: 10
@@ -424,6 +420,10 @@ jobs:
           node --test --test-concurrency=1 --test-reporter=tap --test-name-pattern='exFAT|FAT32' \
             tests/project-output-publication.test.ts tests/project-output-crash-recovery.test.ts \
             tests/project-copy-startup-recovery.test.ts tests/project-template-server.test.ts
+
+      - name: Test the reviewed macOS desktop group
+        id: desktop
+        run: node scripts/tooling.ts test --suite=macos-desktop --concurrency=2 --reporter=tap
 
       - name: Write safe diagnostics
         if: always()

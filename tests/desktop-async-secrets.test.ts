@@ -68,6 +68,8 @@ const projectTrashContractsUrl = data('export let calls = 0; const forbidden = (
 const projectTrashContracts = await import(projectTrashContractsUrl);
 const projectTrashFsUrl = data('export let calls = 0; export function lstatSync() { calls++; throw Error("Project trash filesystem access is outside this secrets fixture"); }');
 const projectTrashFs = await import(projectTrashFsUrl);
+const projectFileIdentityUrl = data('export let calls = 0; export function fileIdentityOfStats() { calls++; throw Error("Project file identity is outside this secrets fixture"); }');
+const projectFileIdentity = await import(projectFileIdentityUrl);
 const workspaceNativeContractsUrl = data('export let calls = 0; const forbidden = () => { calls++; throw Error("Workspace native schemas are outside this secrets fixture"); }; export const workspaceNativeRequestSchema = {parse: forbidden};');
 const workspaceNativeContracts = await import(workspaceNativeContractsUrl);
 // The supervisor now constructs the real project-entry client. This fixture
@@ -94,6 +96,7 @@ const nativeAssetMediaContracts = await import(nativeAssetMediaContractsUrl);
 after(() => assert.equal(nativeAudioContracts.calls, 0, 'Secrets fixtures must never execute native audition schemas'));
 after(() => assert.equal(projectTrashContracts.calls, 0, 'Secrets fixtures must never execute project trash schemas or refusals'));
 after(() => assert.equal(projectTrashFs.calls, 0, 'Secrets fixtures must never attempt project trash filesystem access'));
+after(() => assert.equal(projectFileIdentity.calls, 0, 'Secrets fixtures must never compute project file identities'));
 after(() => assert.equal(workspaceNativeContracts.calls, 0, 'Secrets fixtures must never execute workspace native schemas'));
 after(() => assert.equal(projectEntryContracts.calls, 0, 'Secrets fixtures must never execute project entry contracts'));
 after(() => assert.equal(nativeAssetMediaContracts.calls, 0, 'Secrets fixtures must never execute native relink contracts'));
@@ -106,6 +109,7 @@ const overrides = new Map([
   ['../../../packages/contracts/src/project-file.ts', projectAddressParserUrl],
   ['@mioon/contracts/native-audio-preview', nativeAudioContractsUrl],
   ['../../../packages/contracts/src/project-trash-native.ts', projectTrashContractsUrl],
+  ['../../../packages/business/src/app-db/identity.ts', projectFileIdentityUrl],
   ['../../../packages/contracts/src/workspace-native.ts', workspaceNativeContractsUrl],
   ['../../../packages/contracts/src/project-entry.ts', projectEntryContractsUrl],
   ['../../../packages/contracts/src/project-entry-control.ts', projectEntryContractsUrl],
