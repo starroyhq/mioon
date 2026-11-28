@@ -6,6 +6,7 @@ import { WorkbenchTooltip } from './WorkspaceControls.tsx';
 import { useWorkspaceVisibility } from './workspace-visibility.tsx';
 import {Star,CircleSlash,RotateCcw} from '@mioon/ui/components/workbench-icons';
 import { dispositionLabels, dispositionRow } from './asset-disposition-state.ts';
+import { findMioWriteForTarget, useMioActiveWrites } from './mio-co-editing.ts';
 import type { DisplayMessage } from '../../../packages/i18n/src/index.ts';
 
 interface DispositionRow {disposition: string; revision?: number}
@@ -26,11 +27,13 @@ export function useDispositionInteraction(scope: unknown, controller: Dispositio
   return { visible, admit: (action: () => unknown): unknown => { if (visible && live.current === token && scope && controller?.getState().scope === scope) return action(); } };
 }
 export default function AssetDispositionControls({ asset, state, controller, blocked, prefix = 'asset', compact = false }: {asset: DispositionAsset; state: DispositionState; controller: DispositionController; blocked?: boolean; prefix?: string; compact?: boolean}) {
-  const { t, renderMessage, formatDate, formatNumber } = useI18n();
+  const { t, renderMessage } = useI18n();
   const row: DispositionRow | null = dispositionRow(state as never, asset.id), labels = dispositionLabels as DispositionLabelMap, entry = state?.entries?.[asset.id];
   const interaction = useDispositionInteraction(state?.scope, controller, asset.id);
-  const disabled = !interaction.visible || !row || blocked || Boolean(state?.savingAssetId || state?.uncertain);
-  const status = state?.savingAssetId === asset.id ? t('assets.mark.saving') : row ? renderMessage(labels[row.disposition] as DisplayMessage) : entry?.phase === 'loading' ? t('assets.mark.loading') : t('assets.mark.unknown');
+  const mioWrites = useMioActiveWrites(state?.projectId, Boolean(interaction.visible && state?.projectId));
+  const mioWrite = findMioWriteForTarget(mioWrites, { kind: 'asset_disposition', id: asset.id });
+  const disabled = !interaction.visible || !row || blocked || Boolean(state?.savingAssetId || state?.uncertain || mioWrite);
+  const status = mioWrite ? t('agent.coEdit.mioEditing') : state?.savingAssetId === asset.id ? t('assets.mark.saving') : row ? renderMessage(labels[row.disposition] as DisplayMessage) : entry?.phase === 'loading' ? t('assets.mark.loading') : t('assets.mark.unknown');
   return <AgentEditingBoundary projectId={state?.projectId} targets={[{kind:'asset_disposition',id:asset.id,revision:row?.revision ?? 0}]} canRelease={() => !state?.savingAssetId && !state?.uncertain}><div className={`asset-disposition-controls ${compact ? 'asset-marks-compact' : ''}`} data-no-asset-drag draggable={false} onPointerDown={event => event.stopPropagation()} onDragStart={event => { event.preventDefault(); event.stopPropagation(); }}>
     <span className={`asset-disposition-label ${row?.disposition || 'unknown'}`} data-testid={`${prefix}-disposition-status-${asset.id}`} role="status">{status}</span>
     <div className="asset-disposition-buttons" role="group" aria-label={t('assets.mark.named', { name: asset.name })}>

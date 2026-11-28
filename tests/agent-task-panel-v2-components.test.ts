@@ -66,6 +66,7 @@ function harness({backgroundPending=false,readOnly=false,status,changes=[],local
   const restoreGlobals=()=>{globalThis.document=previous;if(previousWindow)Object.defineProperty(globalThis,'window',previousWindow);else Reflect.deleteProperty(globalThis,'window');};
   Function('module','exports','require',transformSync(source,{loader:'tsx',format:'cjs'}).code)(module,module.exports,(id: string|string[])=>{
     if(id==='./mio-follow.ts')return mioFollow;
+    if(id==='./mio-co-editing.ts')return {notifyMioRunActivity(){}};
     if(id==='./MioMarkdown.tsx')return {__esModule:true,default:'mio-markdown'};
     if(id==='./UiPreferencesProvider.tsx')return {useUiPreferences:()=>({...followPreferences,setMioFollow:async(enabled:boolean)=>{followWrites.push(enabled);if(!await saveFollow(enabled))return false;followPreferences.preferences.mioFollow=enabled;return true;}})};
     if(id==='@mioon/ui/components/switch')return{Switch:'switch'};

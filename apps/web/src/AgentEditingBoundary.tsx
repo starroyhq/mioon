@@ -2,12 +2,10 @@ import React, { createContext, useContext, useLayoutEffect, useRef, useState } f
 import type { ReactNode } from 'react';
 import { Button } from '@mioon/ui/components/button';
 import { useConfirmation } from '@mioon/ui/components/workbench-confirm';
-import { WorkbenchTooltip } from '@mioon/ui/components/workbench-tooltip';
-import Icon from './icons.tsx';
 import { useI18n } from './i18n/I18nProvider.tsx';
 import { message } from '../../../packages/i18n/src/index.ts';
 import type { AgentTaskTarget } from '../../../packages/contracts/src/agent-tasks-v2.ts';
-import { createAgentEditingProtection, agentEditingOwnerIdentity, agentEditingOwnerInWindow, agentEditingTargetRevision } from './agent-editing-protection.ts';
+import { createAgentEditingClient, createAgentEditingProtection, agentEditingOwnerIdentity, agentEditingOwnerInWindow, agentEditingTargetRevision } from './agent-editing-protection.ts';
 import type { AgentEditingClaimResult, AgentEditingState } from './agent-editing-protection.ts';
 import type { RetainedEditingLocalEvidence } from './agent-retained-editing.ts';
 import type { NativeCloseSourceRegistry } from './native-close-sources.ts';
@@ -24,7 +22,7 @@ export function setNativeAgentEditingWindowOwner(windowId: string | null): void 
 // power to release the original window's live draft protection.
 export function agentEditingWindowOwner(): string { return nativeWindowOwner ?? (liveWindowOwner ??= crypto.randomUUID()); }
 type Protection = ReturnType<typeof createAgentEditingProtection>;
-interface EditingParticipant { visible: boolean; clean: boolean; canRelease: () => boolean }
+interface EditingParticipant { visible: boolean; clean: boolean; canRelease: () => boolean; onDiscard?: () => unknown }
 interface EditingOwner {
   projectId: string;
   ownerId: string;
@@ -39,6 +37,7 @@ interface EditingOwner {
 }
 const owners = new Map<string, EditingOwner>();
 const closeListeners = new Set<() => void>();
+const latestTargetRevisions = new Map<string, AgentTaskTarget[]>();
 const targetKey = (targets: readonly Pick<AgentTaskTarget, 'kind' | 'id'>[]) =>
   targets.map(target => JSON.stringify([target.kind, target.id])).sort();
 const editingKey = (projectId: string, targets: readonly Pick<AgentTaskTarget, 'kind' | 'id'>[]) =>
@@ -51,7 +50,14 @@ function protection(projectId: string, targets: readonly AgentTaskTarget[]): Edi
   // Workspace/recovery scopes are not editing identities. Imperative edits
   // and all controls in one window share the controller for their target set.
   const ownerId = agentEditingOwnerIdentity(nativeWindowOwner ? 'desktop' : 'normal', agentEditingWindowOwner(), targets);
-  const controller = createAgentEditingProtection({ projectId, ownerId, targets, onChange: next => { for (const listener of listeners) listener(next); for (const listener of closeListeners) listener(); } });
+  const controller = createAgentEditingProtection({
+    projectId, ownerId, targets,
+    onChange: next => {
+      if (next.targets) latestTargetRevisions.set(projectId, next.targets);
+      for (const listener of listeners) listener(next);
+      for (const listener of closeListeners) listener();
+    },
+  });
   const entry = { projectId, ownerId, controller, listeners, participants: new Set<EditingParticipant>(), departed: new Set<EditingParticipant>(), holdKey: targets.length === 1 ? holdKey(projectId, targets[0]) : undefined };
   owners.set(key, entry);
   return entry;
@@ -71,10 +77,48 @@ const targetOwner = (projectId: string, kind: string, id: string) => owners.get(
 export function agentEditingOwnedByThisWindow(ownerId: string): boolean { return agentEditingOwnerInWindow(ownerId, nativeWindowOwner ? 'desktop' : 'normal', agentEditingWindowOwner()); }
 export function invalidateAgentEditingOwner(projectId: string, ownerId: string): void { for (const entry of owners.values()) if (entry.projectId === projectId && entry.ownerId === ownerId) entry.controller.invalidate(); }
 export function agentEditingTargetActive(projectId: string, kind: string, id: string): boolean { return targetOwner(projectId, kind, id)?.controller.canEdit() ?? false; }
-export function agentEditingProof(projectId:string,kind:string,id:string):AgentEditingProof|null {const entry=targetOwner(projectId,kind,id),state=entry?.controller.getState(),claim=state?.claims.find(value=>value.target.kind===kind&&value.target.id===id);return entry?.controller.canEdit()&&claim&&typeof state?.timelineRevision==='number'?{ownerId:claim.ownerId,kind,id,revision:agentEditingTargetRevision(state.targets ?? [], {kind,id}),timelineRevision:state.timelineRevision}:null;}
+export function readCachedAgentEditingTargetRevision(projectId: string, target: Pick<AgentTaskTarget, 'kind' | 'id'>): number | undefined {
+  const cached = latestTargetRevisions.get(projectId);
+  if (cached) return agentEditingTargetRevision(cached, target);
+  const entry = targetOwner(projectId, target.kind, target.id);
+  const targets = entry?.controller.getState().targets;
+  return targets ? agentEditingTargetRevision(targets, target) : undefined;
+}
+export function agentEditingProof(projectId:string,kind:string,id:string):AgentEditingProof|null {
+  const candidates = kind === 'timeline_clip'
+    ? ['timeline_clip', 'timeline_clip_audio', 'timeline_clip_visual', 'timeline_clip_timing']
+    : [kind];
+  for (const candidateKind of candidates) {
+    const entry = targetOwner(projectId, candidateKind, id);
+    const state = entry?.controller.getState();
+    const claim = state?.claims.find(value => value.target.kind === candidateKind && value.target.id === id);
+    if (entry?.controller.canEdit() && claim && typeof state?.timelineRevision === 'number') {
+      return {
+        ownerId: claim.ownerId,
+        kind: candidateKind,
+        id,
+        revision: agentEditingTargetRevision(state.targets ?? [], {kind: candidateKind, id}),
+        timelineRevision: state.timelineRevision,
+      };
+    }
+  }
+  return null;
+}
 export async function refreshAgentEditingTargets(projectId: string): Promise<void> {
-  await Promise.allSettled([...owners.values()].filter(entry => entry.projectId === projectId &&
-    (entry.participants.size || entry.acquiring || entry.exactAcquire || entry.controller.getState().phase !== 'idle')).map(refreshOwner));
+  const active = [...owners.values()].filter(entry => entry.projectId === projectId &&
+    (entry.participants.size || entry.acquiring || entry.exactAcquire || entry.controller.getState().phase !== 'idle'));
+  if (active.length) {
+    await Promise.allSettled(active.map(refreshOwner));
+    return;
+  }
+  // Even with no active participants (idle inspectors after save/release), refresh
+  // the project target revision snapshot so the next first-input claim uses the latest ledger revision.
+  try {
+    const observation = await createAgentEditingClient().read(projectId);
+    if (observation.targets) latestTargetRevisions.set(projectId, observation.targets);
+  } catch {
+    // Read-only cache refresh fails silently offline; claim still runs safely against the server.
+  }
 }
 export function subscribeAgentEditingChanges(listener:()=>void):()=>void{closeListeners.add(listener);return()=>{closeListeners.delete(listener);};}
 function editingCloseIdentity(id: string, state: AgentEditingState): readonly unknown[] {
@@ -118,6 +162,56 @@ export async function reconcileAgentEditingTargetClaim(projectId: string, target
   await entry.exactAcquire?.pending;
   await entry.reading;
   return entry.controller.reconcileClaimAtRevision([visible], requestId);
+}
+export async function releaseAgentEditingTarget(projectId: string, target: Pick<AgentTaskTarget, 'kind' | 'id'>): Promise<boolean> {
+  const entry = targetOwner(projectId, target.kind, target.id);
+  if (!entry) return true;
+  await entry.acquiring;
+  await entry.exactAcquire?.pending;
+  await entry.reading;
+  const released = entry.controller.canEdit() ? await entry.controller.release() : true;
+  try { await refreshOwner(entry); } catch { /* ignore transient refresh failure */ }
+  return released;
+}
+/** Register a live participant for a group-level claim (such as clip audio/visual/timing). */
+export function attachAgentEditingParticipant(
+  projectId: string,
+  target: AgentTaskTarget,
+  participant: { visible: boolean; clean: boolean; canRelease: () => boolean; onDiscard?: () => unknown },
+): () => void {
+  const entry = protection(projectId, [target]);
+  entry.departed.delete(participant);
+  entry.participants.add(participant);
+  return () => {
+    entry.participants.delete(participant);
+    if (!participant.clean) entry.departed.add(participant);
+    deferRelease(entry, () => !hasVisibleParticipant(entry));
+  };
+}
+/** Release a local claim owned by this window from the Mio "unfinished edits" panel. */
+export async function releaseLocalAgentEditingOwner(
+  projectId: string,
+  ownerId: string,
+  options: { discardUnsaved?: boolean } = {},
+): Promise<boolean> {
+  const entry = [...owners.values()].find(item => item.projectId === projectId && item.ownerId === ownerId);
+  if (!entry) return false;
+  await entry.acquiring;
+  await entry.exactAcquire?.pending;
+  await entry.reading;
+  if (options.discardUnsaved) {
+    for (const participant of entry.participants) {
+      if (participant.onDiscard) {
+        const result = await participant.onDiscard();
+        if (result === false) return false;
+      }
+      if (participant.canRelease()) participant.clean = true;
+    }
+    entry.departed.clear();
+  }
+  if (!entry.controller.canEdit()) return true;
+  if (!ownerCanRelease(entry)) return false;
+  return entry.controller.release();
 }
 function ownerCanRelease(entry: EditingOwner): boolean {
   try {
@@ -226,29 +320,52 @@ export function holdAgentEditingTarget(projectId: string, target: AgentTaskTarge
     }, 0);
   };
 }
-export interface AgentEditingBoundaryProps { projectId?: string | null; workspaceScope?: string; targets: readonly AgentTaskTarget[]; disabled?: boolean; controlsOnly?: boolean; autoAcquire?: boolean; canRelease: () => boolean; onDiscard?: () => unknown; children: ReactNode | ((allowed: boolean) => ReactNode) }
+export interface AgentEditingBoundaryProps {
+  projectId?: string | null;
+  workspaceScope?: string;
+  targets: readonly AgentTaskTarget[];
+  disabled?: boolean;
+  controlsOnly?: boolean;
+  autoAcquire?: boolean;
+  /** Disable implicit first-input claiming on this wrapper when the child owns group-level claims (e.g. TimelineInspector). */
+  claimOnInput?: boolean;
+  onClaimResult?: (result: AgentEditingClaimResult, target: AgentTaskTarget) => unknown;
+  canRelease: () => boolean;
+  onDiscard?: () => unknown;
+  children: ReactNode | ((allowed: boolean) => ReactNode);
+}
 export default function AgentEditingBoundary(props: AgentEditingBoundaryProps) {
   const identity = JSON.stringify([props.projectId, targetKey(props.targets)]);
   if (props.disabled || !props.projectId || !props.targets.length) return <>{typeof props.children === 'function' ? props.children(Boolean(props.disabled)) : props.children}</>;
   return <OwnedEditingBoundary key={identity} {...props} projectId={props.projectId} />;
 }
-function OwnedEditingBoundary({ projectId, targets, canRelease, onDiscard, children, controlsOnly = false, autoAcquire = false }: Omit<AgentEditingBoundaryProps, 'projectId'> & { projectId: string }) {
+function OwnedEditingBoundary({ projectId, targets, canRelease, onDiscard, children, controlsOnly = false, autoAcquire = false, claimOnInput = true, onClaimResult }: Omit<AgentEditingBoundaryProps, 'projectId'> & { projectId: string }) {
   const { t } = useI18n(), confirm = useConfirmation(), visible = useWorkspaceVisibility();
   const [state, setState] = useState<AgentEditingState>({ phase: 'loading', claims: [], pending: null });
-  const owner = useRef<EditingOwner | null>(null), release = useRef(canRelease), discard = useRef(onDiscard);
-  release.current = canRelease; discard.current = onDiscard;
+  const owner = useRef<EditingOwner | null>(null), release = useRef(canRelease), discard = useRef(onDiscard), claimCallback = useRef(onClaimResult);
+  release.current = canRelease; discard.current = onDiscard; claimCallback.current = onClaimResult;
   const clean = canRelease(), previous = useRef({visible, clean}), autoAcquired = useRef(false);
-  const participant = useRef<EditingParticipant>({visible, clean, canRelease: () => release.current()});
+  const baselineRevision = useRef<number | null>(null);
+  const participant = useRef<EditingParticipant>({visible, clean, canRelease: () => release.current(), onDiscard: () => discard.current?.()});
   useLayoutEffect(() => {
     let entry: EditingOwner;
     try { entry = protection(projectId, targets); } catch { setState({ phase: 'uncertain', claims: [], pending: null }); return; }
     owner.current = entry;
-    const registered = participant.current, listener = (next: AgentEditingState) => setState(next);
+    const registered = participant.current, listener = (next: AgentEditingState) => {
+      if (registered.clean && next.targets && targets.length === 1) {
+        baselineRevision.current = agentEditingTargetRevision(next.targets, targets[0]!);
+      }
+      setState(next);
+    };
     entry.departed.delete(registered);
     entry.participants.add(registered);
     entry.listeners.add(listener);
-    setState(entry.controller.getState());
-    if (entry.controller.getState().phase === 'idle' && !entry.acquiring) void refreshOwner(entry);
+    const current = entry.controller.getState();
+    if (registered.clean && current.targets && targets.length === 1) {
+      baselineRevision.current = agentEditingTargetRevision(current.targets, targets[0]!);
+    }
+    setState(current);
+    if (current.phase === 'idle' && !entry.acquiring) void refreshOwner(entry);
     return () => {
       entry.listeners.delete(listener);
       entry.participants.delete(registered);
@@ -263,8 +380,13 @@ function OwnedEditingBoundary({ projectId, targets, canRelease, onDiscard, child
     const was = previous.current, entry = owner.current;
     previous.current = {visible, clean};
     if (!entry) return;
-    if (!was.clean && clean) deferRelease(entry, () => true);
-    else if (was.visible && !visible) deferRelease(entry, () => !hasVisibleParticipant(entry));
+    if (!was.clean && clean) {
+      const latest = entry.controller.getState().targets;
+      if (latest && targets.length === 1) baselineRevision.current = agentEditingTargetRevision(latest, targets[0]!);
+      deferRelease(entry, () => true);
+    } else if (was.visible && !visible) {
+      deferRelease(entry, () => !hasVisibleParticipant(entry));
+    }
   }, [visible, clean]);
   useLayoutEffect(() => {
     if (!visible || !autoAcquire) { autoAcquired.current = false; return; }
@@ -274,6 +396,21 @@ function OwnedEditingBoundary({ projectId, targets, canRelease, onDiscard, child
       void acquireOwner(owner.current);
     }
   }, [visible, autoAcquire, state.phase]);
+  function triggerFirstInputClaim(): void {
+    if (!claimOnInput || controlsOnly || !visible || targets.length !== 1) return;
+    const entry = owner.current;
+    if (!entry) return;
+    const phase = entry.controller.getState().phase;
+    if (phase === 'active' || phase === 'acquiring' || phase === 'uncertain' || phase === 'retained') return;
+    const target = targets[0]!;
+    const revision = baselineRevision.current
+      ?? readCachedAgentEditingTargetRevision(projectId, target)
+      ?? target.revision;
+    const visibleTarget = { ...target, revision };
+    void acquireAgentEditingTargetAtRevision(projectId, visibleTarget).then(result => {
+      if (owner.current === entry) claimCallback.current?.(result, visibleTarget);
+    });
+  }
   async function discardRetained() {
     const entry = owner.current, action = discard.current;
     if (!entry || !action || !await confirm(message('agent.task.editingDiscardConfirm')) || entry !== owner.current) return;
@@ -284,21 +421,23 @@ function OwnedEditingBoundary({ projectId, targets, canRelease, onDiscard, child
       if (entry === owner.current && entry.controller.getState() === observed && ownerCanRelease(entry)) void entry.controller.resolve();
     }, 0);
   }
-  const allowed = state.phase === 'active', busy = ['loading', 'acquiring', 'releasing'].includes(state.phase);
-  const admission = () => owner.current?.controller.canEdit() ?? false;
-  const reject = (event: React.SyntheticEvent) => { if (!admission()) { event.preventDefault(); event.stopPropagation(); } };
-  // Starting and finishing an edit is one compact control; its hint and the announced status keep the full
-  // explanation. Recovery states need a decision, so they keep the explanatory card.
+  const busy = ['loading', 'acquiring', 'releasing'].includes(state.phase);
+  // Section 25: No "Edit" / "Finish editing" gate on idle targets. Controls are
+  // directly editable and claim automatically on first actual input. Only
+  // recovery states (uncertain receipt / retained owner) pause input.
   const recovery = state.phase === 'uncertain' || state.phase === 'retained';
+  const admission = () => {
+    const current = owner.current?.controller.getState().phase;
+    return current !== 'uncertain' && current !== 'retained';
+  };
+  const reject = (event: React.SyntheticEvent) => { if (!admission()) { event.preventDefault(); event.stopPropagation(); } };
   return <EditingContext.Provider value={admission}><div className={`agent-editing-owner${controlsOnly ? ' agent-editing-canvas' : ''}`} data-editing-targets={targets.map(target => `${target.kind}:${target.id}`).join(',')} data-editing-phase={state.phase}>
-    <div className={`agent-editing-protection${recovery ? '' : ' is-compact'}`} data-testid="agent-editing-protection"><p role="status" className={recovery ? undefined : 'sr-only'}>{t(allowed ? 'agent.task.editingActive' : recovery ? 'agent.task.editingUnknown' : 'agent.task.editingHint')}</p>
-      {state.phase === 'idle' && <WorkbenchTooltip content={t('agent.task.editingHint')}><Button type="button" size="sm" variant="outline" data-testid="agent-editing-start" aria-label={t('agent.task.editingStart')} onClick={() => { if (owner.current) void acquireOwner(owner.current); }}><Icon name="pencil" size={12} />{t('agent.task.editingStartShort')}</Button></WorkbenchTooltip>}
-      {allowed && <WorkbenchTooltip content={t('agent.task.editingActive')}><Button type="button" size="sm" variant="outline" data-testid="agent-editing-release" disabled={!clean} onClick={() => { const entry = owner.current; if (entry && ownerCanRelease(entry)) void entry.controller.release(); }}>{t('agent.task.editingRelease')}</Button></WorkbenchTooltip>}
+    {recovery && <div className="agent-editing-protection" data-testid="agent-editing-protection"><p role="status">{t('agent.task.editingUnknown')}</p>
       {state.phase === 'retained' && <Button type="button" size="sm" variant="outline" data-testid="agent-editing-restore" onClick={()=>{void owner.current?.controller.restore();}}>{t('agent.task.editingRestore')}</Button>}
       {state.phase === 'retained' && onDiscard && !clean && <Button type="button" size="sm" variant="outline" data-testid="agent-editing-discard" onClick={() => { void discardRetained(); }}>{t('agent.task.editingDiscard')}</Button>}
       {state.phase === 'retained' && <Button type="button" size="sm" variant="outline" data-testid="agent-editing-resolve" onClick={() => { void (async () => { const entry = owner.current; if (entry && ownerCanRelease(entry) && await confirm(message('agent.task.editingResolve')) && entry === owner.current && ownerCanRelease(entry)) await entry.controller.resolve(); })(); }}>{t('agent.task.editingResolve')}</Button>}
       {state.phase === 'uncertain' && <Button type="button" size="sm" variant="outline" data-testid="agent-editing-query" disabled={busy} onClick={() => { if (owner.current) void refreshOwner(owner.current); }}>{t('agent.task.confirmRead')}</Button>}
-    </div>
-    {controlsOnly ? typeof children === 'function' ? children(allowed) : children : <fieldset className="agent-editing-fields" disabled={!allowed} onBeforeInputCapture={reject} onCompositionStartCapture={reject} onPointerDownCapture={reject} onKeyDownCapture={reject} onDragStartCapture={reject}>{typeof children === 'function' ? children(allowed) : children}</fieldset>}
+    </div>}
+    {!controlsOnly && <fieldset className="agent-editing-fields" disabled={recovery} onInputCapture={() => { if (admission()) triggerFirstInputClaim(); }} onChangeCapture={() => { if (admission()) triggerFirstInputClaim(); }} onBeforeInputCapture={reject} onSubmitCapture={reject} onPointerDownCapture={reject} onKeyDownCapture={reject}>{typeof children === 'function' ? children(!recovery) : children}</fieldset>}
   </div></EditingContext.Provider>;
 }

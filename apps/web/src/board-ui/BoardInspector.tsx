@@ -25,6 +25,21 @@ import {reconcileShotDraft} from './shot-draft.ts';
 import type {ShotDraftState} from './shot-draft.ts';
 import {WorkbenchSelect} from '../WorkspaceControls.tsx';
 import Icon from '../icons.tsx';
+import {
+  acquireAgentEditingTargetAtRevision,
+  readCachedAgentEditingTargetRevision,
+  reconcileAgentEditingTargetClaim,
+  releaseAgentEditingTarget,
+} from '../AgentEditingBoundary.tsx';
+import {
+  buildCoEditingComparison,
+  findMioWriteForTarget,
+  parseCoEditingClaimResult,
+  refreshMioActiveWrites,
+  useMioActiveWrites,
+} from '../mio-co-editing.ts';
+import type {CoEditingConflict} from '../mio-co-editing.ts';
+import {MioCoEditingConflictCard, MioEditingBadge} from '../MioCoEditingControls.tsx';
 
 type Row = Record<string, any>;
 export interface BoardGenerationOptions {
@@ -35,6 +50,9 @@ export interface BoardGenerationOptions {
   [key: string]: unknown;
 }
 export interface BoardInspectorProps {
+  readonly projectId?: string | null;
+  readonly onRefreshProject?: () => Promise<unknown> | unknown;
+  readonly onOpenMioPanel?: () => unknown;
   readonly board: BoardLive;
   readonly activeFilmId: string | null;
   readonly mount: BoardMountView | null;
@@ -101,15 +119,119 @@ export default function BoardInspector(props: BoardInspectorProps): React.ReactE
   const [titleEditing, setTitleEditing] = useState(false);
   const [serviceMenu, setServiceMenu] = useState(false);
   const [jobAction, setJobAction] = useState<string | null>(null);
+  const [coEditConflict, setCoEditConflict] = useState<CoEditingConflict | null>(null);
+  const [coEditBusy, setCoEditBusy] = useState(false);
   const draftRevision = useRef<number | null>(null);
   const lastShotId = useRef<string | null>(null);
   const dirtyRef = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const editableNode = selected && (selected.kind === 'text' || selected.kind === 'image' || selected.kind === 'video'
     || selected.kind === 'audio' || selected.kind === 'previs') ? selected : null;
   const nodeRow = editableNode ? props.nodes.find(node => node.id === editableNode.id) : undefined;
   const nodeRevision = nodeRow && Number.isSafeInteger(nodeRow.revision) ? Number(nodeRow.revision) : null;
   const shot = selected?.kind === 'shot' ? props.shots.find(item => item.id === selected.id) : undefined;
   const shotRevision = shot && Number.isSafeInteger(shot.revision) ? Number(shot.revision) : null;
+  const projectId = props.projectId ?? (typeof shot?.projectId === 'string' ? shot.projectId : null);
+  const mioWrites = useMioActiveWrites(projectId, Boolean(projectId && selected));
+  const targetKind = selected?.kind === 'shot' ? 'shot' : editableNode ? 'node' : null;
+  const targetId = selected?.id ?? null;
+  const mioWrite = targetKind && targetId ? findMioWriteForTarget(mioWrites, {kind: targetKind, id: targetId}) : null;
+  const baselineRevision = useRef<number>(0);
+  useEffect(() => {
+    setCoEditConflict(null);
+    setCoEditBusy(false);
+    if (projectId && targetKind && targetId) {
+      baselineRevision.current = readCachedAgentEditingTargetRevision(projectId, {kind: targetKind, id: targetId})
+        ?? (targetKind === 'shot' ? (shotRevision ?? 0) : (nodeRevision ?? 0));
+    }
+  }, [projectId, targetKind, targetId]);
+  function claimOnBoardInput(): void {
+    if (!projectId || !targetKind || !targetId || coEditConflict) return;
+    const target = {kind: targetKind, id: targetId, revision: baselineRevision.current};
+    void acquireAgentEditingTargetAtRevision(projectId, target).then(result => {
+      if (!mounted.current) return;
+      if (result.status === 'acquired') { setCoEditConflict(null); return; }
+      const conflict = parseCoEditingClaimResult(result, target);
+      if (conflict) {
+        setCoEditConflict(conflict);
+        if (conflict.kind === 'mio_committing') void refreshMioActiveWrites(projectId);
+        else if (conflict.kind === 'revision_changed' && conflict.currentValues === null) void props.onRefreshProject?.();
+      }
+    });
+  }
+  const boardDiff = coEditConflict?.kind === 'revision_changed' && targetKind
+    ? buildCoEditingComparison({
+        localValues: targetKind === 'shot' ? {title, prompt, duration} : {name: nodeName, text: nodeText},
+        serverValues: (coEditConflict.currentValues as Record<string, unknown> | null)
+          ?? (targetKind === 'shot' && shot
+            ? {title: shot.title, prompt: shot.prompt, duration: shot.duration}
+            : editableNode ? {name: editableNode.name, text: String(nodeRow?.text ?? '')} : null),
+        baselineValues: targetKind === 'shot' && shot
+          ? {title: shot.title, prompt: shot.prompt, duration: shot.duration}
+          : editableNode ? {name: editableNode.name, text: String(nodeRow?.text ?? '')} : undefined,
+        fields: targetKind === 'shot' ? ['title', 'prompt', 'duration'] : ['name', 'text'],
+        format: {t, formatNumber},
+      })
+    : {rows: [], conflictedFields: new Set<string>()};
+  async function adoptMioBoard(): Promise<void> {
+    if (!projectId || !targetKind || !targetId || coEditConflict?.kind !== 'revision_changed') return;
+    setCoEditBusy(true);
+    try {
+      const values = coEditConflict.currentValues as Record<string, unknown> | null;
+      if (targetKind === 'shot') {
+        if (typeof values?.title === 'string') setTitle(values.title);
+        else if (shot) setTitle(String(shot.title ?? ''));
+        if (typeof values?.prompt === 'string') setPrompt(values.prompt);
+        else if (shot) setPrompt(String(shot.prompt ?? ''));
+        if (typeof values?.duration === 'number') setDuration(values.duration);
+        else if (shot) setDuration(Number(shot.duration ?? 4));
+      } else if (editableNode) {
+        if (typeof values?.name === 'string') setNodeName(values.name);
+        else setNodeName(editableNode.name);
+        if (typeof values?.text === 'string') setNodeText(values.text);
+        else setNodeText(String(nodeRow?.text ?? ''));
+      }
+      baselineRevision.current = coEditConflict.currentRevision;
+      setCoEditConflict(null);
+      await releaseAgentEditingTarget(projectId, {kind: targetKind, id: targetId});
+      await props.onRefreshProject?.();
+    } finally {
+      if (mounted.current) setCoEditBusy(false);
+    }
+  }
+  async function keepMineBoard(): Promise<void> {
+    if (!projectId || !targetKind || !targetId || coEditConflict?.kind !== 'revision_changed') return;
+    setCoEditBusy(true);
+    try {
+      const target = {kind: targetKind, id: targetId, revision: coEditConflict.currentRevision};
+      const result = await acquireAgentEditingTargetAtRevision(projectId, target);
+      if (!mounted.current) return;
+      if (result.status === 'acquired') {
+        baselineRevision.current = coEditConflict.currentRevision;
+        if (shotRevision !== null) draftRevision.current = shotRevision;
+        setCoEditConflict(null);
+        await props.onRefreshProject?.();
+      } else {
+        setCoEditConflict(parseCoEditingClaimResult(result, target));
+      }
+    } finally {
+      if (mounted.current) setCoEditBusy(false);
+    }
+  }
+  async function reconcileUnknownBoard(): Promise<void> {
+    if (!projectId || !targetKind || !targetId || coEditConflict?.kind !== 'claim_unknown') return;
+    setCoEditBusy(true);
+    try {
+      const target = {kind: targetKind, id: targetId, revision: coEditConflict.revision};
+      const result = await reconcileAgentEditingTargetClaim(projectId, target, coEditConflict.requestId);
+      if (!mounted.current) return;
+      if (result.status === 'acquired') setCoEditConflict(null);
+      else setCoEditConflict(parseCoEditingClaimResult(result, target));
+    } finally {
+      if (mounted.current) setCoEditBusy(false);
+    }
+  }
   const filmShotIds = (props.board.projection.films.find(film => film.id === props.activeFilmId)
     ?? props.board.projection.films[0])?.items.filter(item => item.kind === 'shot').map(item => item.nodeId) ?? [];
   const shotIndex = shot ? (filmShotIds.includes(shot.id) ? filmShotIds.indexOf(shot.id) : props.shots.findIndex(item => item.id === shot.id)) : -1;
@@ -343,24 +465,27 @@ export default function BoardInspector(props: BoardInspectorProps): React.ReactE
     </section>
   </div>;
   const saveShot = async (): Promise<void> => {
-    if (!shot || draftRevision.current === null || !shotDirty || !props.onUpdateShot) return;
+    if (!shot || draftRevision.current === null || !shotDirty || !props.onUpdateShot || coEditConflict || mioWrite) return;
     const result = await props.onUpdateShot(shot.id, {title: title.trim() || String(shot.title ?? ''),
       prompt, duration}, draftRevision.current);
-    if (result.ok) {setShotError(''); setShotSaved(true);} else if (result.code) setShotError(result.code);
+    if (result.ok) {
+      setShotError(''); setShotSaved(true);
+      if (projectId) void releaseAgentEditingTarget(projectId, {kind: 'shot', id: shot.id});
+    } else if (result.code) setShotError(result.code);
   };
   const shotTitleRow = selected?.kind === 'shot' && <div className="board-shot-title-row">
     <div className="board-shot-heading">
       <Icon name="film" size={15}/>
       {titleEditing
-        ? <input className="board-shot-title-input" data-testid="board-shot-title" autoFocus maxLength={150}
-            value={title} disabled={props.busy || shotRevision === null}
+        ? <input className="board-shot-title-input" data-testid="board-shot-title" data-coedit-field-conflict={boardDiff.conflictedFields.has('title') ? 'true' : undefined} autoFocus maxLength={150}
+            value={title} disabled={props.busy || shotRevision === null || Boolean(mioWrite)}
             aria-label={t('boardUi.inspector.shotTitle')}
-            onChange={event => {setTitle(event.target.value); setShotSaved(false);}}
+            onChange={event => {setTitle(event.target.value); setShotSaved(false); claimOnBoardInput();}}
             onBlur={() => setTitleEditing(false)}
             onKeyDown={event => {if (event.key === 'Enter' || event.key === 'Escape') {event.preventDefault();
               if (event.key === 'Escape' && shot) setTitle(String(shot.title ?? ''));
               setTitleEditing(false);}}}/>
-        : <button type="button" className="board-shot-title-button" data-testid="board-inspector-shot-title"
+        : <button type="button" className="board-shot-title-button" data-testid="board-inspector-shot-title" disabled={Boolean(mioWrite)}
             onClick={() => setTitleEditing(true)}>{shotNumber && shot
               ? t('boardUi.inspector.shotHeading', {number: shotNumber, title: shot.title ?? ''})
               : shot?.title ?? selected.name}</button>}
@@ -370,22 +495,26 @@ export default function BoardInspector(props: BoardInspectorProps): React.ReactE
       {t('boardUi.inspector.openInEditing')}</button>}
   </div>;
   const shotProperties = selected?.kind === 'shot' ? <div className="board-shot-properties" data-testid="board-shot-properties">
-    <section className="board-shot-fields" data-testid="board-shot-fields">
+    <section className="board-shot-fields mio-coedit-section" data-testid="board-shot-fields" data-mio-editing={mioWrite ? 'true' : undefined} data-coedit-conflict={coEditConflict && !mioWrite ? 'true' : undefined} style={mioWrite ? {'--mio-coedit-color': mioWrite.color} as React.CSSProperties : undefined}>
+      {mioWrite && <div className="mio-coedit-section-header"><MioEditingBadge color={mioWrite.color} testId="mio-editing-badge-shot" /></div>}
+      {coEditConflict && <MioCoEditingConflictCard conflict={coEditConflict} groupLabel={t('agent.coEdit.group.shot')} rows={boardDiff.rows} busy={coEditBusy} testId="coedit-conflict-shot" onAdoptMio={adoptMioBoard} onKeepMine={keepMineBoard} onReconcile={reconcileUnknownBoard} onCheckInMio={props.onOpenMioPanel} />}
       <label>{t('boardUi.inspector.description')}
-        <textarea data-testid="board-shot-prompt" rows={4} maxLength={5000} value={prompt}
-          disabled={props.busy || shotRevision === null} placeholder={t('boardUi.inspector.descriptionPlaceholder')}
-          onChange={event => {setPrompt(event.target.value); setShotSaved(false);}}/>
+        <textarea data-testid="board-shot-prompt" data-coedit-field-conflict={boardDiff.conflictedFields.has('prompt') ? 'true' : undefined} rows={4} maxLength={5000} value={prompt}
+          disabled={props.busy || shotRevision === null || Boolean(mioWrite)} placeholder={t('boardUi.inspector.descriptionPlaceholder')}
+          onChange={event => {setPrompt(event.target.value); setShotSaved(false); claimOnBoardInput();}}/>
         <span className="board-shot-count" data-testid="board-shot-prompt-count">{formatNumber(prompt.length)} / 5000</span>
       </label>
-      {(shotDirty || shotSaved || shotError) && <div className="board-shot-save" data-testid="board-shot-save-row">
-        <button type="button" data-testid="board-shot-save" disabled={!shotDirty || props.busy}
+      {(shotDirty || shotSaved || shotError || coEditConflict) && <div className="board-shot-save" data-testid="board-shot-save-row">
+        <button type="button" className="mio-coedit-save-btn" data-testid="board-shot-save" disabled={!shotDirty || props.busy || Boolean(coEditConflict || mioWrite)}
           onClick={() => {void saveShot();}}>{t('boardUi.inspector.saveShot')}</button>
-        <button type="button" data-testid="board-shot-discard" disabled={!shotDirty || props.busy}
+        <button type="button" data-testid="board-shot-discard" disabled={(!shotDirty && !coEditConflict) || props.busy}
           onClick={() => {if (!shot) return; setTitle(String(shot.title ?? '')); setPrompt(String(shot.prompt ?? ''));
             setDuration(Number(shot.duration ?? 4)); draftRevision.current = shotRevision;
-            setShotError(''); setShotSaved(false);}}>{t('common.cancel')}</button>
-        {shotSaved && <span role="status">{t('boardUi.inspector.saved')}</span>}
-        {shotError && <span role="alert" data-testid="board-shot-error">{t(shotError.includes('REVISION_CONFLICT')
+            setShotError(''); setShotSaved(false); setCoEditConflict(null);
+            if (projectId) void releaseAgentEditingTarget(projectId, {kind: 'shot', id: shot.id});}}>{t('common.cancel')}</button>
+        {coEditConflict && <span role="status">{t('agent.coEdit.unresolvedConflict')}</span>}
+        {shotSaved && !coEditConflict && <span role="status">{t('boardUi.inspector.saved')}</span>}
+        {shotError && !coEditConflict && <span role="alert" data-testid="board-shot-error">{t(shotError.includes('REVISION_CONFLICT')
           ? 'boardUi.inspector.shotConflict' : 'boardUi.inspector.shotSaveFailed')}</span>}
       </div>}
     </section>
@@ -470,22 +599,25 @@ export default function BoardInspector(props: BoardInspectorProps): React.ReactE
         ? <p>{film ? t('boardUi.aspectDuration', {aspect: film.aspectRatio ?? t('boardUi.aspectUnknown'),
           duration: film.durationFrames === null ? t('boardUi.durationUnknown') : t('boardUi.seconds', {seconds: formatNumber((film.durationFrames ?? 0) / 30, {maximumFractionDigits: 2})})}) : ''}</p>
         : <p data-testid="board-inspector-kind">{t(`boardUi.kind.${selected.kind}`)}</p>}
-      {editableNode && <section data-testid="board-inspector-node-edit" className="board-inspector-node-edit">
+      {editableNode && <section data-testid="board-inspector-node-edit" className="board-inspector-node-edit mio-coedit-section" data-mio-editing={mioWrite ? 'true' : undefined} data-coedit-conflict={coEditConflict && !mioWrite ? 'true' : undefined} style={mioWrite ? {'--mio-coedit-color': mioWrite.color} as React.CSSProperties : undefined}>
+        {mioWrite && <div className="mio-coedit-section-header"><MioEditingBadge color={mioWrite.color} testId="mio-editing-badge-node" /></div>}
+        {coEditConflict && <MioCoEditingConflictCard conflict={coEditConflict} groupLabel={t('agent.coEdit.group.node')} rows={boardDiff.rows} busy={coEditBusy} testId="coedit-conflict-node" onAdoptMio={adoptMioBoard} onKeepMine={keepMineBoard} onReconcile={reconcileUnknownBoard} onCheckInMio={props.onOpenMioPanel} />}
         <h4>{t('inspector.nodeName')}</h4>
-        <input aria-label={t('inspector.nodeName')} data-testid="board-node-name" maxLength={150}
-          value={nodeName} disabled={props.busy || nodeRevision === null}
-          onChange={event => setNodeName(event.target.value)}/>
+        <input aria-label={t('inspector.nodeName')} data-testid="board-node-name" data-coedit-field-conflict={boardDiff.conflictedFields.has('name') ? 'true' : undefined} maxLength={150}
+          value={nodeName} disabled={props.busy || nodeRevision === null || Boolean(mioWrite)}
+          onChange={event => {setNodeName(event.target.value); claimOnBoardInput();}}/>
         {editableNode.kind === 'text' && <>
           <h4>{t('inspector.textContent')}</h4>
-          <textarea aria-label={t('inspector.textContent')} data-testid="board-node-text" rows={6} maxLength={5000}
-            value={nodeText} disabled={props.busy || nodeRevision === null}
-            onChange={event => setNodeText(event.target.value)}/>
+          <textarea aria-label={t('inspector.textContent')} data-testid="board-node-text" data-coedit-field-conflict={boardDiff.conflictedFields.has('text') ? 'true' : undefined} rows={6} maxLength={5000}
+            value={nodeText} disabled={props.busy || nodeRevision === null || Boolean(mioWrite)}
+            onChange={event => {setNodeText(event.target.value); claimOnBoardInput();}}/>
         </>}
-        <button type="button" data-testid="board-node-save" disabled={!nodeDirty || props.busy || nodeRevision === null}
+        <button type="button" className="mio-coedit-save-btn" data-testid="board-node-save" disabled={!nodeDirty || props.busy || nodeRevision === null || Boolean(coEditConflict || mioWrite)}
           onClick={() => {
             if (!editableNode || nodeRevision === null || !nodeDirty) return;
             props.onUpdateNode(editableNode.id, {name: nodeName.trim() || editableNode.name,
               ...(editableNode.kind === 'text' ? {text: nodeText} : {})}, nodeRevision);
+            if (projectId) void releaseAgentEditingTarget(projectId, {kind: 'node', id: editableNode.id});
           }}>{t('inspector.saveNode')}</button>
       </section>}
       {selected.kind === 'subject' && subject && <section data-testid="board-inspector-subject">

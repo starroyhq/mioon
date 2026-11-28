@@ -1,0 +1,423 @@
+/* Section 25: Co-editing with Mio — group-level Mio lock, inline conflict diff,
+   11-27 disabled primary Save button, and collapsed/expanded unfinished edits bar. */
+
+/* Keep full-height inspectors constrained inside AgentEditingBoundary so their ScrollArea scrolls and bottom Save bar stays pinned. */
+.agent-editing-owner:has(> .agent-editing-fields > .inspector) {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+}
+
+.edit-inspector-group.is-open .edit-inspector-group-heading > svg {
+  transform: rotate(90deg);
+}
+
+.edit-inspector-group[data-mio-editing="true"],
+.mio-coedit-section[data-mio-editing="true"] {
+  position: relative;
+  border-left: 3px solid var(--mio-coedit-color, var(--wb-accent));
+  background: color-mix(in srgb, var(--mio-coedit-color, var(--wb-accent)) 6%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mio-coedit-color, var(--wb-accent)) 28%, transparent);
+}
+
+.edit-inspector-group[data-mio-editing="true"] {
+  margin: 4px 6px;
+  padding: 0 10px 0 9px;
+  border-radius: var(--wb-radius-control);
+  border-bottom: 0;
+}
+
+.mio-coedit-section[data-mio-editing="true"] {
+  padding: 8px 10px 8px 9px;
+  border-radius: var(--wb-radius-control);
+}
+
+.mio-coedit-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.mio-coedit-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border-radius: var(--wb-radius-panel);
+  background: color-mix(in srgb, var(--mio-coedit-color, var(--wb-accent)) 16%, transparent);
+  color: var(--mio-coedit-color, var(--wb-accent));
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.45;
+  white-space: nowrap;
+  flex: none;
+}
+
+:root[data-theme="light"] .mio-coedit-badge,
+:root.light .mio-coedit-badge {
+  color: color-mix(in srgb, var(--mio-coedit-color, var(--wb-accent)) 78%, var(--wb-text));
+}
+
+.mio-coedit-badge > svg {
+  width: 11px;
+  height: 11px;
+  flex: none;
+}
+
+.mio-coedit-lock-fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  display: contents;
+}
+
+.edit-inspector-group[data-mio-editing="true"] .edit-inspector-group-content,
+.mio-coedit-section[data-mio-editing="true"] .mio-coedit-lock-body {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+/* Conflict state (25-02): warning outline on group, inline card with side-by-side values */
+.edit-inspector-group[data-coedit-conflict="true"],
+.mio-coedit-section[data-coedit-conflict="true"] {
+  margin: 4px 6px;
+  padding: 0 10px;
+  border-radius: var(--wb-radius-control);
+  border: 1px solid color-mix(in srgb, var(--wb-warning) 55%, transparent);
+  background: color-mix(in srgb, var(--wb-warning) 4%, transparent);
+}
+
+.mio-coedit-section[data-coedit-conflict="true"] {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+}
+
+.mio-coedit-conflict-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 4px 0 10px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--wb-warning) 65%, transparent);
+  border-radius: var(--wb-radius-control);
+  background: var(--wb-warning-subtle);
+  color: var(--wb-text);
+  font-size: 11px;
+  line-height: 1.5;
+  min-width: 0;
+}
+
+.mio-coedit-conflict-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  color: var(--wb-warning);
+}
+
+.mio-coedit-conflict-head > svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.mio-coedit-conflict-head > strong {
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--wb-warning);
+  overflow-wrap: anywhere;
+}
+
+.mio-coedit-diff {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: var(--wb-radius-control);
+  background: var(--wb-input);
+  border: 1px solid var(--wb-line-subtle);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.mio-coedit-diff-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mio-coedit-diff-row > dt {
+  color: var(--wb-soft);
+  font-size: 11px;
+}
+
+.mio-coedit-diff-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 0;
+  min-width: 0;
+}
+
+.mio-coedit-val-mine {
+  color: var(--wb-text);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.mio-coedit-val-mio {
+  color: var(--wb-warning);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.mio-coedit-diff-loading {
+  margin: 0;
+  color: var(--wb-soft);
+  font-size: 11px;
+}
+
+.mio-coedit-conflict-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mio-coedit-conflict-actions > button {
+  flex: 1 1 auto;
+  min-height: 26px;
+  height: auto;
+  padding: 4px 10px;
+  font-size: 11px;
+}
+
+[data-coedit-field-conflict="true"],
+[data-coedit-field-conflict="true"] input,
+[data-coedit-field-conflict="true"] textarea,
+[data-coedit-field-conflict="true"] select {
+  border-color: var(--wb-warning) !important;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--wb-warning) 32%, transparent);
+}
+
+/* Footer conflict status + 11-27 disabled primary Save button (bg-raised + text-disabled, never dimmed white) */
+.edit-inspector-save > span.is-conflict {
+  color: var(--wb-warning);
+}
+
+.edit-inspector-save > span.is-conflict::before {
+  background: var(--wb-warning);
+}
+
+.edit-inspector-save > button.button.primary:disabled,
+.mio-coedit-save-btn:disabled {
+  background: var(--wb-raised);
+  color: var(--wb-disabled);
+  border-color: var(--wb-line-subtle);
+  opacity: 1;
+}
+
+/* Mio panel: collapsed & expanded "没结束的编辑" (25-02) */
+.mio-retained-container {
+  flex: none;
+  border-bottom: 1px solid var(--wb-line-subtle);
+  background: var(--wb-panel);
+  font-size: 11px;
+}
+
+.mio-retained-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-height: 32px;
+  padding: 4px 12px;
+}
+
+.mio-retained-toggle.wb-button {
+  flex: 1;
+  min-width: 0;
+  min-height: 24px;
+  height: 24px;
+  justify-content: flex-start;
+  padding: 0 4px 0 0;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--wb-text);
+}
+
+.mio-retained-toggle > svg {
+  width: 12px;
+  height: 12px;
+  color: var(--wb-soft);
+  transition: transform 0.12s ease;
+}
+
+.mio-retained-toggle[aria-expanded="true"] > svg {
+  transform: rotate(90deg);
+}
+
+.mio-retained-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+
+.mio-retained-reload-icon.wb-button {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
+  color: var(--wb-soft);
+}
+
+.mio-retained-reload-icon.wb-button:hover:not(:disabled) {
+  color: var(--wb-text);
+}
+
+.mio-retained-end-all.wb-button {
+  flex: none;
+  min-height: 24px;
+  height: 24px;
+  padding: 0 8px;
+  font-size: 11px;
+}
+
+.mio-retained-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 12px 10px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.mio-retained-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 8px;
+  border: 1px solid var(--wb-line-subtle);
+  border-radius: var(--wb-radius-control);
+  background: var(--wb-card);
+  min-width: 0;
+}
+
+.mio-retained-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+
+.mio-retained-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--wb-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mio-retained-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--wb-soft);
+}
+
+.mio-retained-status[data-status="local_unsaved"] {
+  color: var(--wb-warning);
+}
+
+.mio-retained-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--wb-warning);
+  flex: none;
+}
+
+.mio-retained-status > svg {
+  width: 11px;
+  height: 11px;
+  flex: none;
+}
+
+.mio-retained-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+
+.mio-retained-locate.wb-button {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
+  color: var(--wb-soft);
+}
+
+.mio-retained-locate.wb-button:hover:not(:disabled) {
+  color: var(--wb-text);
+}
+
+.mio-retained-end.wb-button {
+  min-height: 24px;
+  height: 24px;
+  padding: 0 8px;
+  font-size: 11px;
+}
+
+.mio-retained-in-use {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: var(--wb-radius-control);
+  background: var(--wb-raised);
+  color: var(--wb-soft);
+  border: 1px solid var(--wb-line-subtle);
+  font-size: 11px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: default;
+  user-select: none;
+}
+
+.mio-retained-unknown-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--wb-warning);
+  border-radius: var(--wb-radius-control);
+  background: var(--wb-warning-subtle);
+}
+
+.mio-retained-unknown-row > p {
+  margin: 0;
+  font-size: 11px;
+  color: var(--wb-warning);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mio-retained-toggle > svg {
+    transition: none;
+  }
+}

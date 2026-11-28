@@ -9,18 +9,22 @@ import type { TimelineFormatState } from './timeline-format-state.ts';
 import type { MessageKey } from '../../../packages/i18n/src/index.ts';
 type TimelineFormatController = ReturnType<typeof createTimelineFormatController>;
 import './timeline-format.css';
+import { findMioWriteForTarget, useMioActiveWrites } from './mio-co-editing.ts';
+import { MioEditingBadge } from './MioCoEditingControls.tsx';
 
 export default function TimelineFormatPanel({ state, controller, onBack, onOpenTasks }: {state?: TimelineFormatState | null; controller: TimelineFormatController; onBack: () => void; onOpenTasks: () => void}) {
   const { t, renderMessage } = useI18n();
   const saved = state?.saved, draft = TIMELINE_OUTPUT_PRESETS.find(preset => preset.id === state?.draftPresetId);
+  const mioWrites = useMioActiveWrites(state?.projectId, Boolean(state?.projectId));
+  const mioWrite = state?.projectId ? findMioWriteForTarget(mioWrites, { kind: 'timeline', id: state.projectId }) : null;
   return <aside className="timeline-format-panel" data-testid="timeline-format-panel" aria-labelledby="timeline-format-title">
-    <header><Button variant="ghost" type="button" size="sm" data-testid="timeline-format-back" onClick={onBack}>{t('subtitles.ui.back')}</Button><h2 id="timeline-format-title">{t('timeline.format.title')}</h2></header>
-    <div className="timeline-format-body">
+    <header><Button variant="ghost" type="button" size="sm" data-testid="timeline-format-back" onClick={onBack}>{t('subtitles.ui.back')}</Button><h2 id="timeline-format-title">{t('timeline.format.title')}</h2>{mioWrite && <MioEditingBadge color={mioWrite.color} testId="mio-editing-badge-format" />}</header>
+    <div className="timeline-format-body mio-coedit-section" data-mio-editing={mioWrite ? 'true' : undefined} style={mioWrite ? { '--mio-coedit-color': mioWrite.color } as React.CSSProperties : undefined}>
       <p>{t('timeline.format.eligibility')}</p>
       <div role="status" aria-live="polite">{state?.submitting ? t('timeline.format.saving') : state?.dirty ? t('timeline.format.dirty') : state?.phase === 'error' ? t('timeline.format.unavailable') : saved ? saved.timelineId ? t('timeline.format.saved') : t('timeline.format.default') : t('timeline.format.checking')}</div>
       {saved && <p data-testid="timeline-format-saved">{saved.width} × {saved.height} · {saved.fps} fps · {saved.timelineId ? t('timeline.format.revision', { revision: saved.timelineRevision }) : t('timeline.format.notCreated')}</p>}
       <Label htmlFor="timeline-format-preset">{t('timeline.format.aspect')}</Label>
-      <WorkbenchSelect id="timeline-format-preset" data-testid="timeline-format-preset" className={undefined} required={undefined} name={undefined} value={state?.draftPresetId || ''} disabled={!saved || !saved.eligible || !state?.connected} onChange={event => controller.choose(event.target.value, state?.scope ?? null)}>
+      <WorkbenchSelect id="timeline-format-preset" data-testid="timeline-format-preset" className={undefined} required={undefined} name={undefined} value={state?.draftPresetId || ''} disabled={!saved || !saved.eligible || !state?.connected || Boolean(mioWrite)} onChange={event => controller.choose(event.target.value, state?.scope ?? null)}>
         {!saved && <option value="">{t('timeline.format.waiting')}</option>}{TIMELINE_OUTPUT_PRESETS.filter(preset => preset.id.endsWith('_1080') || preset.id === saved?.presetId).map(preset => <option key={preset.id} value={preset.id}>{t(`timeline.format.preset.${preset.id}` as MessageKey)} · {preset.width} × {preset.height}</option>)}
       </WorkbenchSelect>
       {draft && <p className="input-hint">{t('timeline.format.selected', { width: draft.width, height: draft.height })}</p>}
