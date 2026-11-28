@@ -20,10 +20,10 @@ import {
 } from '../../../packages/contracts/src/project-entry-native.ts';
 import type {ProjectFormatUpgradePreview} from '../../../packages/contracts/src/project-format-upgrade.ts';
 import {projectCopyInputSchema, projectCopyToInputSchema, projectTemplateInputSchema, projectCopySourceSchema} from '../../../packages/contracts/src/project-copies.ts';
-import {projectEntryInspectCopyInputSchema} from '../../../packages/contracts/src/project-entry-control.ts';
+import {fcpChooseDestinationControlInputSchema, fcpCompletedBundleControlInputSchema, projectEntryInspectCopyInputSchema} from '../../../packages/contracts/src/project-entry-control.ts';
 import type {ProjectCopyResponse} from '../../../packages/contracts/src/project-copies.ts';
 import type {ProjectDesktopTemplate} from '../../../packages/contracts/src/project-entry-desktop.ts';
-import type {ProjectEntryControlPort, ProjectEntryWindow, ProjectEntryWindowRevoked, ProjectEntryCreateInput} from '../../../packages/contracts/src/project-entry-native.ts';
+import type {NativeFcpExportControlPort, ProjectEntryControlPort, ProjectEntryWindow, ProjectEntryWindowRevoked, ProjectEntryCreateInput} from '../../../packages/contracts/src/project-entry-native.ts';
 import type {RecentProject} from '../../../packages/contracts/src/project-registry.ts';
 import type {ProjectHostManager} from './project-host/manager.ts';
 import type {ProjectHostRuntime, ProjectLease} from './project-host/host.ts';
@@ -47,6 +47,11 @@ interface WindowSlot<Runtime extends ProjectHostRuntime> {
   revoke: (() => void) | null;
   readyContextId: string | null;
 }
+type ProjectFcpExportServices = {
+  [Method in keyof NativeFcpExportControlPort]: (
+    input: Omit<Parameters<NativeFcpExportControlPort[Method]>[0], 'windowId'>,
+  ) => Awaited<ReturnType<NativeFcpExportControlPort[Method]>>;
+};
 const invalid = (): AppError => new AppError('VALIDATION_ERROR', '项目入口参数无效', 400);
 const unavailable = (): AppError => new AppError('PROJECT_ENTRY_UNAVAILABLE', '项目入口已失效，请重新打开', 503);
 const desktopEditingOwner = /^desktop:([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}):.+$/u;
@@ -64,7 +69,7 @@ export function projectEntryWithinRoot(root: string, file: string): boolean {
 
 /** A production capability owned by one server instance. Neither its window
  * bindings nor its path-taking methods are registered as HTTP operations. */
-export function createProjectEntries<Runtime extends ProjectHostRuntime>({manager, registry, projectsDir, channel, signal, readScope, createProject, refreshSummaries, markRecentOpened, copies, trash, assertProjectFile, copyOriginal, nativeRelink, templates, targetFormat = FORMAT5_PROJECT_SCHEMA_VERSION, catalogClient, catalogTimeoutMs, updateActivity}: {
+export function createProjectEntries<Runtime extends ProjectHostRuntime>({manager, registry, projectsDir, channel, signal, readScope, createProject, refreshSummaries, markRecentOpened, copies, trash, assertProjectFile, copyOriginal, nativeRelink, nativeFcpExportFor, templates, targetFormat = FORMAT5_PROJECT_SCHEMA_VERSION, catalogClient, catalogTimeoutMs, updateActivity}: {
   readonly manager: ProjectHostManager<Runtime>;
   readonly registry: ProjectRegistryPort;
   readonly projectsDir: string;
@@ -82,6 +87,7 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
   readonly catalogTimeoutMs?: number;
   readonly copyOriginal?: (candidate:{projectId:string;projectFile:string}) => RecentProject|null;
   readonly nativeRelink?: NativeAssetMediaPort;
+  readonly nativeFcpExportFor?: (runtime: Runtime) => ProjectFcpExportServices | undefined;
   readonly trash?: ProjectTrashActions;
   readonly targetFormat?: ProjectFileFormat;
 }) {
@@ -298,9 +304,29 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
     })().then(resolve, error => {releaseSlot(windowId, slot); reject(error);});
     return promise;
   };
+  const fcpServiceForWindow = (projectId: string, windowId: string, requestSignal?: AbortSignal): ProjectFcpExportServices => {
+    scope();
+    requestSignal?.throwIfAborted();
+    const slot = windows.get(windowId), lease = slot?.lease;
+    if (!slot?.readyContextId || !lease || lease.signal.aborted || lease.host.projectId !== projectId) throw unavailable();
+    const service = nativeFcpExportFor?.(lease.host.runtime);
+    if (!service) throw unavailable();
+    return service;
+  };
+  const nativeFcpExport: NativeFcpExportControlPort | undefined = channel !== 'web' && nativeFcpExportFor ? {
+    async chooseDestination(raw, options) {
+      const {windowId, ...input} = parse(fcpChooseDestinationControlInputSchema, raw);
+      return fcpServiceForWindow(input.projectId, windowId, options?.signal).chooseDestination(input);
+    },
+    async completedBundle(raw, options) {
+      const {windowId, ...input} = parse(fcpCompletedBundleControlInputSchema, raw);
+      return fcpServiceForWindow(input.projectId, windowId, options?.signal).completedBundle(input);
+    },
+  } : undefined;
   const control: ProjectEntryControlPort = {
     ...(templates?.length?{templates:Object.freeze(templates.map(template=>Object.freeze({...template})))}:{}),
     ...(scopedNative?{nativeRelink:scopedNative}:{}),
+    ...(nativeFcpExport ? {nativeFcpExport} : {}),
     inspectSelectedCopy: async raw => {
       scope();
       const {projectFile} = parse(projectEntryInspectCopyInputSchema, raw);

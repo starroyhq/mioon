@@ -2,6 +2,7 @@ import {exportAssetName, generatedVideoAssetName} from './output-asset-names.ts'
 import {CLIP_AUDIO_EXPORT_MODE, isClipAudioExportRecord} from '../../contracts/src/clip-audio-export.ts';
 import type {ClipAudioExportRecord} from '../../contracts/src/clip-audio-export.ts';
 import {runClipAudioExport} from './clip-audio-export.ts';
+import {FCPXML_EXPORT_TASK_SQL, isFcpExportTaskRecord} from './fcpxml-export-task.ts';
 import {isBackgroundTaskIndexUncertain} from './background-task-events.ts';
 import type {BackgroundTaskRef} from './background-task-events.ts';
 import {AppError} from '../../contracts/src/app-error.ts';
@@ -118,12 +119,12 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
  const exportUuid=(value: string): boolean=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
  const exportRowBytes=4*1024*1024,identity=(column: string): string=>`CASE WHEN typeof(${column})='text' AND length(CAST(${column} AS BLOB))=36 THEN ${column} END AS ${column}`;
  const exportColumns=`${identity('id')},${identity('projectId')},
-  CASE WHEN typeof(data)='text' THEN CASE WHEN json_valid(data) THEN CASE WHEN json_type(data)='object' THEN
+  CASE WHEN ${FCPXML_EXPORT_TASK_SQL} THEN NULL WHEN typeof(data)='text' THEN CASE WHEN json_valid(data) THEN CASE WHEN json_type(data)='object' THEN
    CASE WHEN (SELECT count(*) FROM json_each(exports.data) WHERE key='mode')<=1 THEN
     CASE WHEN json_type(data,'$.mode')='text' AND length(CAST(json_extract(data,'$.mode') AS BLOB))=8 AND json_extract(data,'$.mode')='timeline'
      THEN CASE WHEN length(CAST(data AS BLOB)) BETWEEN 1 AND ${exportRowBytes} THEN data END
      ELSE ${'data'} END
-   END END END END AS data`;
+   END END END END AS data, ${FCPXML_EXPORT_TASK_SQL} AS fcpxml`;
  let invalidExportReported=false;
  const invalidExport=(): null=>{if(!invalidExportReported){invalidExportReported=true;console.error('Skipped invalid local export record.');}return null;};
  function decodeExport(row: Record<string, unknown>|null|undefined): ExportRecord|null {
@@ -131,6 +132,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   if(typeof row.data!=='string')return invalidExport();
   let record: unknown;try{record=JSON.parse(row.data);}catch{return invalidExport();}
   if(!isRecord(record)||!exportUuid(String(row.id))||!exportUuid(String(row.projectId))||!exportUuid(String(record.id))||!exportUuid(String(record.projectId)))return invalidExport();
+  if(isFcpExportTaskRecord(record))return null;
   const value=record as ExportRecord;
   if(value.id!==row.id||value.projectId!==row.projectId)return invalidExport();
   if(value.mode==='timeline'&&property(property(value.snapshot,'timeline'),'projectId')!==row.projectId)return invalidExport();
@@ -138,7 +140,10 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   return value;
  }
  const workerExport=(id: string,observe=true): ExportRecord|null=>{
-  const value=decodeExport(store.db.prepare(`SELECT ${exportColumns} FROM exports WHERE id=?`).get(id) as Record<string,unknown>|undefined);
+  const row=store.db.prepare(`SELECT ${exportColumns} FROM exports WHERE id=?`).get(id);
+  // FCPXML owns its worker, interruption records and publication fences.
+  if(row?.fcpxml===1)return null;
+  const value=decodeExport(row);
   if(!value&&observe)observeInvalid('export',id);return value;
  };
  // Custom delivery adds an awaited capability step. Preserve the complete

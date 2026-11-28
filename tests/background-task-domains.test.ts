@@ -23,6 +23,7 @@ import {PROJECT_OUTPUT_FOLDERS} from '../packages/contracts/src/project-output-p
 import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
 import {beginFixtureToolStep} from './helpers/mio-model-fixture.ts';
 import {createProviderRegistry,registerInputProfileWrapper} from '../packages/business/src/provider-registry.ts';
+import {FCPXML_EXPORT_TASK_KIND} from '../packages/contracts/src/project-registry.ts';
 
 const object = (value: unknown): Record<string, unknown> => {assert.ok(value && typeof value === 'object' && !Array.isArray(value)); return value as Record<string, unknown>;};
 async function fixture(t: TestContext, providers: ReadonlyMap<string, Provider> = new Map(), options: CreateServicesOptions = {}) {
@@ -310,6 +311,31 @@ test('a missing frozen export source pauses the real worker without failed rewri
     assert.equal(f.services.isBusy(), false); await worker.tick(); assert.deepEqual(f.store.get('exports', String(accepted.id)), original);
     assert.deepEqual(f.store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(input.requestId), receipt);
     assert.equal(f.store.list('assets').length, 1); assert.equal(f.store.list('versions').length, 0);
+  } finally {await worker.stop();}
+});
+
+test('the MP4 worker and export controls leave an owned running FCPXML task to its dedicated executor', async t => {
+  const f = await fixture(t);
+  const kind = FCPXML_EXPORT_TASK_KIND, id = randomUUID(), at = new Date().toISOString();
+  const visible = {id, kind, mode: kind, title: 'Final edit', projectId: f.projectId, requestId: randomUUID(), revision: 1,
+    status: 'running', progress: {files: 0, totalFiles: 1, bytes: 0, totalBytes: 4}, createdAt: at, updatedAt: at};
+  const record = {...visible, publication: {bundlePath: '/private/synthetic/editorial.fcpxmld'}, requestHash: 'private-fingerprint'};
+  f.store.put('exports', record);
+  // Even an old generic idempotency record with the same ID cannot grant its
+  // render and file controls authority over this separate task family.
+  f.store.db.prepare("INSERT INTO idempotency(scope,requestId,requestHash,resourceId) VALUES('export',?,?,?)")
+    .run(record.requestId, 'private-fingerprint', id);
+  const baseline = f.store.db.prepare('SELECT total_changes() AS n').get()!.n;
+  const worker = startWorker(f.store, f.services, new Map());
+  try {
+    await worker.tick();
+    assert.deepEqual(f.store.get('exports', id), record);
+    assert.equal(f.state().snapshot().find(task => task.taskId === id)?.keepAlive, true);
+    for (const operation of ['export.activity.get', 'export.output.get', 'export.cancel']) {
+      await assert.rejects(f.services.call(operation, {projectId: f.projectId, exportId: id}), {code: 'NOT_FOUND'});
+    }
+    assert.deepEqual(f.store.get('exports', id), record);
+    assert.equal(f.store.db.prepare('SELECT total_changes() AS n').get()!.n, baseline);
   } finally {await worker.stop();}
 });
 

@@ -2,7 +2,7 @@ import {PROJECT_ENTRY_DESKTOP_CHANNEL,PROJECT_ENTRY_DESKTOP_PENDING_OPEN_EVENT,P
 import type {ProjectEntriesDesktopBridge,ProjectPendingOpenNotice} from '../../../packages/contracts/src/project-entry-desktop.ts';
 import {projectEntriesResponseSchema} from '../../../packages/contracts/src/project-entry.ts';
 import {projectCopyResponseSchema} from '../../../packages/contracts/src/project-copies.ts';
-import {projectEntryControlErrorSchema} from '../../../packages/contracts/src/project-entry-control.ts';
+import {projectEntryControlErrorSchema} from '../../../packages/contracts/src/project-entry-control-error.ts';
 import {projectDesktopFormatUpgradeResultSchema} from '../../../packages/contracts/src/project-entry-desktop.ts';
 interface PendingOpenTransport{
  on(channel:typeof PROJECT_ENTRY_DESKTOP_PENDING_OPEN_EVENT,listener:(event:unknown,value:unknown)=>void):void;

@@ -2,6 +2,7 @@ import type {DatabaseSync} from 'node:sqlite';
 import {lstatSync, realpathSync} from 'node:fs';
 import {AppError} from '../../contracts/src/app-error.ts';
 import {parseVideoBinding} from '../../contracts/src/video-providers.ts';
+import {FCPXML_EXPORT_TASK_KIND} from '../../contracts/src/project-registry.ts';
 import type {ProjectStore} from './project-file/store.ts';
 import {assertProjectStore} from './store-runtime.ts';
 import {agentTaskJobBinding} from './agent/task-effects-v2.ts';
@@ -109,7 +110,10 @@ export function createProjectBackgroundState(input: unknown): ProjectBackgroundS
     CASE WHEN json_valid(data) THEN json_extract(data,'$.snapshot.capabilities.reconciliation') END AS reconciliation,
     CASE WHEN json_valid(data) AND length(CAST(json_extract(data,'$.snapshot.executionBinding') AS BLOB))<=16384
       THEN json_extract(data,'$.snapshot.executionBinding') END AS executionBinding`;
-  const columns = (kind: BackgroundTaskKind): string => kind === 'job' || kind === 'export' ? jsonColumns
+  const exportColumns = `${jsonColumns},
+    CASE WHEN json_valid(data) THEN json_extract(data,'$.mode') END AS mode,
+    CASE WHEN json_valid(data) THEN json_extract(data,'$.kind') END AS kind`;
+  const columns = (kind: BackgroundTaskKind): string => kind === 'job' ? jsonColumns : kind === 'export' ? exportColumns
     : kind === 'subject_variant_batch' ? 'id,projectId,state,revision'
       : kind === 'edit_task' ? 'id,projectId,status,revision,errorCode'
         : kind === 'image_task' ? 'id,projectId,state,revision,errorCode,requestId,stagedReceipt IS NOT NULL AS receipt'
@@ -140,6 +144,13 @@ export function createProjectBackgroundState(input: unknown): ProjectBackgroundS
     if (row.projectId !== store.projectId || (ref.kind === 'job' || ref.kind === 'export') && (row.jsonId !== row.id || row.jsonProjectId !== row.projectId))
       return result('waiting_user', false, 'BACKGROUND_TASK_INVALID');
     const state = String(row.status ?? row.state), errorCode = code(row.errorCode, 'BACKGROUND_TASK_REQUIRES_ATTENTION');
+    if (ref.kind === 'export' && (row.mode === FCPXML_EXPORT_TASK_KIND || row.kind === FCPXML_EXPORT_TASK_KIND)) {
+      if (row.mode !== FCPXML_EXPORT_TASK_KIND || row.kind !== FCPXML_EXPORT_TASK_KIND || revision(row.revision) === 0)
+        return result('waiting_user', false, 'BACKGROUND_TASK_INVALID');
+      if (state === 'running') return result('running', true);
+      if (['done', 'failed', 'cancelled'].includes(state)) return result('terminal', false);
+      return result('waiting_user', false, 'BACKGROUND_TASK_INVALID');
+    }
     let value: TaskProjection;
     if (ref.kind === 'job' || ref.kind === 'export') {
       if (state === 'succeeded' || state === 'failed') return result('terminal', false);
@@ -251,7 +262,10 @@ export function createProjectBackgroundState(input: unknown): ProjectBackgroundS
       COALESCE(json_extract(data,'$.status'),'invalid') NOT IN ('succeeded','failed','cancelled') OR
       (json_extract(data,'$.status')='cancelled' AND json_extract(data,'$.cancelScope')='local_only' AND
         (json_extract(data,'$.providerJobId') IS NOT NULL OR COALESCE(json_extract(data,'$.submissionCount'),0)>0)) ELSE 1 END`
-      : kind === 'export' ? "COALESCE(CASE WHEN json_valid(data) THEN json_extract(data,'$.status') END,'invalid') NOT IN ('succeeded','failed','cancelled')"
+      : kind === 'export' ? `CASE WHEN json_valid(data) THEN CASE
+        WHEN json_extract(data,'$.mode') IS '${FCPXML_EXPORT_TASK_KIND}' AND json_extract(data,'$.kind') IS '${FCPXML_EXPORT_TASK_KIND}'
+        THEN COALESCE(json_extract(data,'$.status'),'invalid') NOT IN ('done','failed','cancelled')
+        ELSE COALESCE(json_extract(data,'$.status'),'invalid') NOT IN ('succeeded','failed','cancelled') END ELSE 1 END`
         : kind === 'edit_task' ? "status NOT IN ('applied','not_applied')"
           : kind === 'subject_variant_batch' ? `state='active' AND EXISTS(SELECT 1 FROM subject_variant_items i LEFT JOIN image_tasks t
             ON t.requestId=i.imageRequestId AND t.projectId=i.projectId WHERE i.batchId=subject_variant_batches.id AND i.projectId=subject_variant_batches.projectId
