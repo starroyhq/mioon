@@ -1,26 +1,31 @@
 import test,{type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash,randomUUID} from 'node:crypto';
-import {appendFileSync,chmodSync,closeSync,createReadStream,existsSync,fstatSync,linkSync,mkdirSync,mkdtempSync,openSync,readFileSync,readdirSync,renameSync,rmSync,statSync,truncateSync,unlinkSync,utimesSync,writeFileSync,writeSync} from 'node:fs';
+import {appendFileSync,chmodSync,closeSync,createReadStream,existsSync,fstatSync,fsyncSync,linkSync,lstatSync,mkdirSync,mkdtempSync,openSync,readFileSync,readdirSync,renameSync,rmSync,statSync,truncateSync,unlinkSync,utimesSync,writeFileSync,writeSync,type BigIntStats} from 'node:fs';
 import {open,type FileHandle} from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {realpathSync} from 'node:fs';
 import {createProjectFile,openProjectStore} from '../packages/business/src/project-file/index.ts';
 import {registerProjectMediaStore,registeredProjectAssetReferences} from '../packages/business/src/project-media-storage.ts';
-import {registerProjectOutputAdmission} from '../packages/business/src/project-output-owner.ts';
+import {outputFileIdentity,registerProjectOutputAdmission,sameOutputIdentity} from '../packages/business/src/project-output-owner.ts';
 import {createOutputArtifactStage,writeOutputArtifact} from '../packages/business/src/output-artifact-storage.ts';
 import {ensurePrivateDirectory} from '../packages/contracts/src/private-storage.ts';
-import {publishProjectOutput,inspectProjectOutput,readPublishedProjectOutput,markProjectOutputRegistered,assertPublishedProjectOutput,registerVerifiedProjectOutputs,isPublishedProjectOutput,restorePublishedProjectOutput,setProjectOutputPublicationTestHooks} from '../packages/business/src/project-output-publication.ts';
+import {publishProjectOutput,inspectProjectOutput,readPublishedProjectOutput,markProjectOutputRegistered,assertPublishedProjectOutput,registerVerifiedProjectOutputs,isPublishedProjectOutput,restorePublishedProjectOutput,setProjectOutputPublicationTestHooks,discardUnregisteredFatOutput} from '../packages/business/src/project-output-publication.ts';
 import type {ProjectOutputInput,PublishedProjectOutput} from '../packages/business/src/project-output-publication.ts';
 import {png,pngChunk} from './helpers/timeline-image-fixtures.ts';
 import {mp4HeaderFixture} from './helpers/media-reference-fixtures.ts';
 import {canonicalJson} from '../packages/business/src/project-versions/document.ts';
+import {mountProjectVolumeFixture} from './helpers/project-volume-fixture.ts';
 
 const sha=(bytes:Buffer)=>createHash('sha256').update(bytes).digest('hex');
 const bytes=png({rgba:false,extra:[pngChunk('tEXt',Buffer.from('comment\0'+'x'.repeat(150000)))]});
-function fixture(t:TestContext,kind:ProjectOutputInput['targetKind']='generated'){
- const root=mkdtempSync(path.join(realpathSync(tmpdir()),'mioon-output-pub-')),projectDir=path.join(root,'movie');mkdirSync(projectDir,{mode:0o755});
+function describeOutputStat(info:BigIntStats){
+ return {...outputFileIdentity(info),size:String(info.size),nlink:String(info.nlink),mtimeNs:String(info.mtimeNs),ctimeNs:String(info.ctimeNs)};
+}
+function fixture(t:TestContext,kind:ProjectOutputInput['targetKind']='generated',volume?:string){
+ const root=mkdtempSync(path.join(realpathSync(tmpdir()),'mioon-output-pub-'));
+ const projectDir=path.join(volume??root,volume?randomUUID():'movie');mkdirSync(projectDir,{mode:0o755});
  const projectFile=path.join(projectDir,'movie.mioon'),projectId=createProjectFile(projectFile);
  const store=openProjectStore({projectFile,locate:()=>({localDir:path.join(root,'local'),cacheDir:path.join(root,'cache'),tempDir:path.join(root,'tmp')})});
  store.put('projects',{id:projectId,name:'Publication fixture',revision:1});const release=registerProjectMediaStore(store);
@@ -60,9 +65,10 @@ for (const {kind, mask, forceCopy} of [
  {kind: 'exports', mask: 0o022, forceCopy: false},
  {kind: 'generated', mask: 0o022, forceCopy: false},
  {kind: 'generated', mask: 0o002, forceCopy: true},
+ {kind: 'assets', mask: 0o002, forceCopy: true},
  {kind: 'exports', mask: 0o077, forceCopy: false},
 ] as const) test(`${kind} publication honors umask ${mask.toString(8)} with a private stage`, async t => {
- const f = fixture(t, kind), expectedMode = 0o666 & ~mask;
+ const f = fixture(t, kind), expectedMode = (kind==='assets'?0o644:0o666) & ~mask;
  useUmask(t, mask);
  let createdMode: number | undefined;
  setProjectOutputPublicationTestHooks(f.store, {forceCopy, fault(point, proof, workingFile) {
@@ -71,7 +77,7 @@ for (const {kind, mask, forceCopy} of [
    if (kind === 'exports') {
     assert.ok(workingFile);
     assert.equal(existsSync(finalFile), false);
-   }
+   } else assert.equal(workingFile,undefined,'keep the existing ordinary-volume publication path');
    createdMode = permissionBits(workingFile ?? finalFile);
    assert.equal(permissionBits(f.input.stageFile), 0o600);
   }
@@ -454,6 +460,119 @@ test('publication collisions are bounded and do not destroy the complete artifac
  const f=fixture(t),remove=setProjectOutputPublicationTestHooks(f.store,{forceCopy:true,fault:(point,proof)=>{if(point==='after_target_create')throw Error('unknown new target');}});
  for(let i=0;i<16;i++)await assert.rejects(publishProjectOutput(f.store,f.input));remove();await assert.rejects(publishProjectOutput(f.store,f.input),{code:'INVALID_MEDIA'});
  assert.equal(readdirSync(path.join(f.projectDir,'生成')).length,16);assert.deepEqual(readFileSync(f.input.stageFile),bytes);assert.equal(f.store.get('assets',f.input.assetId),null);
+});
+
+for(const format of ['exFAT','FAT32'] as const)test(`real ${format} media publication replays disk-full and legacy receipts without clobbering`,{timeout:120000},async t=>{
+ const volume=await mountProjectVolumeFixture(t,format);
+ if(!volume)return;
+ for(const kind of ['assets','generated'] as const)await t.test(`${kind} disk full keeps the staged bytes and exact request`,async sub=>{
+  const f=fixture(sub,kind,volume.mount);
+  let final='',candidate='',assetId='',publicationId='';
+  const remove=setProjectOutputPublicationTestHooks(f.store,{fault(point,proof,workingFile){
+   if(point!=='after_target_create')return;
+   assert.ok(workingFile);
+   candidate=workingFile;
+   final=path.join(f.projectDir,proof.relativePath);
+   ({assetId,publicationId}=proof);
+  }});
+  const prototype=await outputHandlePrototype(f.input.stageFile),original=prototype.write;
+  let diskFull:Error|undefined;
+  const patched=sub.mock.method(prototype,'write',async function(this:FileHandle,...args:unknown[]){
+   if(Number(args[3])>0&&targetInfo(this,candidate)&&!diskFull){
+    assert.equal(statSync(candidate).size,args[3]);
+    assert.equal(existsSync(final),false);
+    diskFull=Object.assign(Error('Disk is full'),{code:'ENOSPC',path:candidate});
+    throw diskFull;
+   }
+   return Reflect.apply(original,this,args);
+  });
+  try{
+   await assert.rejects(publishProjectOutput(f.store,f.input),error=>error instanceof Error&&diskFull!==undefined&&error.cause===diskFull);
+  }finally{patched.mock.restore();remove();}
+  assert.equal(f.store.get('assets',f.input.assetId),null);
+  assert.deepEqual(readdirSync(path.dirname(final)),[]);
+  assert.deepEqual(readdirSync(path.dirname(candidate)),[]);
+  assert.deepEqual(readFileSync(f.input.stageFile),bytes);
+  const output=await publishProjectOutput(f.store,f.input);
+  assert.equal(output.publication.assetId,assetId);
+  assert.equal(output.publication.publicationId,publicationId);
+  assert.deepEqual(readFileSync(path.join(f.projectDir,output.relativePath)),bytes);
+  f.store.tx(()=>{assertPublishedProjectOutput(f.store,output.publication);f.register(output);});
+  await markProjectOutputRegistered(f.store,output.publication);
+  assert.equal(f.store.list('assets',f.projectId).length,1);
+  assert.deepEqual(await publishProjectOutput(f.store,f.input),output);
+ });
+ for(const owned of [true,false])await t.test(`legacy ${owned?'owned partial is reclaimed':'mismatching complete image is preserved'}`,async sub=>{
+  const f=fixture(sub,owned?'assets':'generated',volume.mount);
+  let final='',receiptFile='';
+  const stop=Error('Stop before copying a legacy output');
+  const remove=setProjectOutputPublicationTestHooks(f.store,{fault(point,proof){
+   if(point!=='after_intent')return;
+   final=path.join(f.projectDir,proof.relativePath);
+   receiptFile=path.join(f.store.tempDir,'publications',`${proof.publicationId}.json`);
+   throw stop;
+  }});
+  try{await assert.rejects(publishProjectOutput(f.store,f.input),stop);}finally{remove();}
+  const receipt=JSON.parse(readFileSync(receiptFile,'utf8')) as Record<string,unknown>;
+  const payload=owned?bytes.subarray(0,65536):bytes;
+  const writeLegacyFile=()=>{
+   const fd=openSync(final,'wx',0o644);
+   try{
+    const empty=fstatSync(fd,{bigint:true});
+    writeFileSync(fd,payload);
+    const written=fstatSync(fd,{bigint:true});
+    fsyncSync(fd);
+    const synced=fstatSync(fd,{bigint:true}), visibleWhileOpen=lstatSync(final,{bigint:true});
+    return {empty,written,synced,visibleWhileOpen};
+   }finally{closeSync(fd);}
+  };
+  const {empty,written,synced,visibleWhileOpen}=writeLegacyFile();
+  // Recovery uses a closed pathname. FAT may report different facts on the
+  // still-open writer, so use the closed file to seed the provably owned case.
+  const closed=lstatSync(final,{bigint:true});
+  const emptyIdentity=outputFileIdentity(empty), closedIdentity=outputFileIdentity(closed);
+  const targetIdentity=owned?closedIdentity:sameOutputIdentity(emptyIdentity,closedIdentity)
+   ?{...emptyIdentity,ino:String(BigInt(emptyIdentity.ino)-1n)}:emptyIdentity;
+  writeFileSync(receiptFile,JSON.stringify({...receipt,phase:'copying',mode:'copy',targetIdentity}));
+  const beforeRecovery=lstatSync(final,{bigint:true});
+  sub.diagnostic(`legacy ${format} file identity ${JSON.stringify({empty:describeOutputStat(empty),written:describeOutputStat(written),
+   synced:describeOutputStat(synced),visibleWhileOpen:describeOutputStat(visibleWhileOpen),closed:describeOutputStat(closed),
+   receipt:targetIdentity,beforeRecovery:describeOutputStat(beforeRecovery)})}`);
+  assert.equal(beforeRecovery.size,BigInt(payload.length));
+  assert.equal(sameOutputIdentity(targetIdentity,outputFileIdentity(beforeRecovery)),owned);
+  if(owned){
+   const output=await publishProjectOutput(f.store,f.input);
+   assert.equal(output.relativePath,path.relative(f.projectDir,final));
+   assert.deepEqual(readFileSync(final),bytes);
+   assert.deepEqual(readdirSync(path.dirname(final)).filter(name=>!name.startsWith('._')),[path.basename(final)]);
+  }else{
+   const identity=outputFileIdentity(statSync(final,{bigint:true}));
+   await assert.rejects(inspectProjectOutput(f.store,f.key()),{code:'INVALID_MEDIA',details:{publicationFailure:'target-identity'}});
+   for(let replay=0;replay<2;replay++)await assert.rejects(publishProjectOutput(f.store,f.input),{code:'INVALID_MEDIA'});
+   assert.deepEqual(outputFileIdentity(statSync(final,{bigint:true})),identity);
+   assert.deepEqual(readFileSync(final),payload);
+   assert.deepEqual(readdirSync(path.dirname(final)).filter(name=>!name.startsWith('._')),[path.basename(final)]);
+   assert.equal(JSON.parse(readFileSync(receiptFile,'utf8')).failure,'target-identity');
+  }
+  assert.equal(f.store.get('assets',f.input.assetId),null);
+ });
+ await t.test('rollback after private install and before registration',async t=>{
+  const f=fixture(t,'generated',volume.mount),published=await publishProjectOutput(f.store,f.input);
+  const final=path.join(f.projectDir,published.relativePath);
+  let receiptReset=false;
+  discardUnregisteredFatOutput(f.store,published.publication,()=>{
+   assert.ok(existsSync(final));receiptReset=true;
+  });
+  assert.equal(receiptReset,true);
+  assert.deepEqual(readdirSync(path.dirname(final)),[]);
+  assert.deepEqual(readFileSync(f.input.stageFile),bytes);
+  const replay=await publishProjectOutput(f.store,f.input);
+  assert.deepEqual(replay.publication,published.publication);
+  assert.deepEqual(readFileSync(final),bytes);
+  f.register(replay);
+  discardUnregisteredFatOutput(f.store,replay.publication,()=>assert.fail('a committed asset cannot be rolled back'));
+  assert.deepEqual(readFileSync(final),bytes);
+ });
 });
 
 function videoExport(f: ReturnType<typeof fixture>, displayName: string, payload: Buffer): ProjectOutputInput {

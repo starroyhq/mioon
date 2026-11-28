@@ -18,11 +18,31 @@ export interface IdentityStats {
   isFile(): boolean;
 }
 
+const signedStatId = /^-[1-9][0-9]{0,18}$/u;
+function decimalFileId(id: bigint | string): string {
+  // Some Darwin exFAT IDs have the high bit set. Node exposes those
+  // unsigned 64-bit stat fields as signed BigInts.
+  if (typeof id === 'bigint') return (id < 0n ? BigInt.asUintN(64, id) : id).toString();
+  if (!signedStatId.test(id)) return id;
+  const value = BigInt(id);
+  return value >= -(1n << 63n) ? BigInt.asUintN(64, value).toString() : id;
+}
+
+export function fileIdentityOfStats(info: Pick<IdentityStats, 'dev' | 'ino'>): ProjectFileIdentity {
+  return {dev: decimalFileId(info.dev), ino: decimalFileId(info.ino)};
+}
+
+/** A held file may be checked using either fresh stat fields or an identity
+ * string produced by a caller. Both must reach the same lock entry. */
+export function fileIdentityKey(identity: {readonly dev: bigint | string; readonly ino: bigint | string}): string {
+  return `${decimalFileId(identity.dev)}:${decimalFileId(identity.ino)}`;
+}
+
 /** Device and file ID as decimal strings, so 64-bit IDs (and 128-bit ones
  * later) survive; null for anything but a regular file. On Windows Node's
  * bigint lstat gives the volume serial number and the 64-bit file index. */
 export function identityOfStats(info: IdentityStats | undefined): ProjectFileIdentity | null {
-  return info?.isFile() ? {dev: info.dev.toString(10), ino: info.ino.toString(10)} : null;
+  return info?.isFile() ? fileIdentityOfStats(info) : null;
 }
 
 const errorCode = (error: unknown): unknown => (error as {code?: unknown} | null | undefined)?.code;

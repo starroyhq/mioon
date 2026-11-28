@@ -1,5 +1,6 @@
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
+import {spawnSync} from 'node:child_process';
 import {createHash, randomUUID} from 'node:crypto';
 import {existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
@@ -8,6 +9,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {startServer, type InspectApplication, type InspectProject, type ServerOptions} from './helpers/test-server.ts';
 import {serverAppDirectories, projectLocation} from '../apps/server/src/project-host/directories.ts';
 import {ensureProjectRow} from '../apps/server/src/project-host/project-initialization.ts';
+import {fileIdentityOfStats} from '../packages/business/src/app-db/identity.ts';
 import type {ProjectTemplateCatalogEntry} from '../apps/server/src/project-host/templates.ts';
 import {createProjectFile} from '../packages/business/src/project-file/connection.ts';
 import {openProjectStore} from '../packages/business/src/project-file/store.ts';
@@ -19,17 +21,21 @@ import type {ProjectCopyResponse, ProjectTemplateInput} from '../packages/contra
 import {projectCopyResponseSchema} from '../packages/contracts/src/project-copies.ts';
 import type {MediaReference} from '../packages/contracts/src/media-reference.ts';
 import {readProjectState, changeMarks} from './helpers/project-state.ts';
-import {png} from './helpers/timeline-image-fixtures.ts';
+import {png, pngChunk} from './helpers/timeline-image-fixtures.ts';
+import {mountProjectVolumeFixture} from './helpers/project-volume-fixture.ts';
+import {testEnv} from './helpers/test-env.ts';
+import {interruptTemplateWrite} from './helpers/template-write-fault.ts';
 
 const token = 'synthetic-template-server-authentication';
 const hash = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 interface Wire<T> {ok: boolean; data?: T; error?: {code: string; details?: unknown}}
 const snapshot = (db: DatabaseSync) => ({...readProjectState(db), marks: changeMarks(db)});
-async function fixture(t: TestContext) {
-  const root = mkdtempSync(path.join(tmpdir(), 'mioon-template-server-')), directory = path.join(root, 'template'), target = path.join(root, 'targets'), dataDir = path.join(root, 'app');
+async function fixture(t: TestContext, targetVolume?: string) {
+  const root = mkdtempSync(path.join(tmpdir(), 'mioon-template-server-')), directory = path.join(root, 'template'), target = path.join(targetVolume ?? root, 'targets'), dataDir = path.join(root, 'app');
   mkdirSync(directory); mkdirSync(target); mkdirSync(path.join(directory, 'media'));
   const projectFile = path.join(directory, 'template.mioon'), projectId = createProjectFile(projectFile), assetId = randomUUID();
-  const bytes = png({width: 16, height: 16, rgba: false, tagged: false}), media = path.join(directory, 'media', 'scene.png'); writeFileSync(media, bytes);
+  const bytes = png({width: 16, height: 16, rgba: false, tagged: false,
+    extra: targetVolume ? [pngChunk('teSt', Buffer.alloc(128_000))] : []}), media = path.join(directory, 'media', 'scene.png'); writeFileSync(media, bytes);
   const reference: MediaReference = {pathForm: 'relative', path: 'media/scene.png', volume: null, sizeBytes: bytes.length,
     mtimeMs: mediaMtimeMs(lstatSync(media, {bigint: true})), sampledSha256: hash(bytes), fullSha256: hash(bytes)};
   const source = openProjectStore({projectFile, locate: () => ({localDir: path.join(root, 'private-history'), cacheDir: path.join(root, 'private-cache'), tempDir: path.join(root, 'private-tmp')})});
@@ -46,7 +52,9 @@ async function fixture(t: TestContext) {
   const start = async () => startServer({dataDir, projectsDir: path.join(root, 'projects'), port: 0, token, projectFormatForTest: FORMAT5_PROJECT_SCHEMA_VERSION, projectTemplates: [entry],
     inspectApplication: value => {application = value;}, inspectProject: value => {inspect = value;}, projectCopyActionBoundaryForTest: (phase, input) => boundary?.(phase, input)});
   server = await start();
-  t.after(async () => {await server.close(); rmSync(root, {recursive: true, force: true});});
+  let stopped = false;
+  const stop = async () => {if (!stopped) {await server.close(); stopped = true;}};
+  t.after(async () => {await stop(); rmSync(root, {recursive: true, force: true});});
   const input = (name = 'Instance'): ProjectTemplateInput => ({templateId: 'starter', templateVersion: 1, parentDir: target, name, requestId: randomUUID()});
   const rpc = async (input: unknown, authenticated = true): Promise<{status: number; body: Wire<ProjectCopyResponse>}> => {
     const result = await fetch(server.url + '/api/rpc', {method: 'POST', headers: {'content-type': 'application/json', ...(authenticated ? {authorization: `Bearer ${token}`} : {})},
@@ -59,7 +67,8 @@ async function fixture(t: TestContext) {
     inspect: <T>(id: string, read: (db: DatabaseSync) => T) => inspect(id, read),
     get native() {return server.projectEntries;},
     setBoundary(value: typeof boundary) {boundary = value;},
-    async restart() {await server.close(); boundary = undefined; server = await start();},
+    stop,
+    async restart() {await stop(); boundary = undefined; server = await start(); stopped = false;},
     targetStore(copy: ProjectCopyResponse) {assert.equal(isProjectFileHeld(copy.project.fileIdentity), false); return openProjectStore({projectFile: copy.project.projectFile,
       locate: id => projectLocation(serverAppDirectories(dataDir, {projectsDir: path.join(root, 'projects')}), id)});},
   };
@@ -140,7 +149,7 @@ test('same-key replay preserves edited and held target content and writes one fi
 });
 
 for (const bad of ['project-hash', 'asset-hash', 'asset-missing'] as const)
-  test(`${bad} rejects template publication and startup cleans captured hidden stages without registering`, async t => {
+  test(`${bad} rejects template publication and cleans captured hidden stages without registering`, async t => {
     const f = await fixture(t), input = f.input(), project = readFileSync(f.projectFile);
     if (bad === 'project-hash') {const changed = Buffer.from(project); changed[changed.length - 1] ^= 1; writeFileSync(f.projectFile, changed);}
     if (bad === 'asset-hash') writeFileSync(f.media, Buffer.alloc(f.bytes.length));
@@ -148,11 +157,81 @@ for (const bad of ['project-hash', 'asset-hash', 'asset-missing'] as const)
     const before = f.application(snapshot), sourceAfterDamage = readFileSync(f.projectFile);
     denied(await f.rpc(input), 422, 'PROJECT_TEMPLATE_INVALID');
     assert.equal(existsSync(path.join(f.target, input.name)), false); assert.deepEqual(f.application(snapshot), before);
+    assert.deepEqual(readdirSync(f.target), []);
     assert.deepEqual(readFileSync(f.projectFile), sourceAfterDamage); assert.equal((await f.native.listRecent()).registered.length, 0);
     await f.restart();
     assert.deepEqual(readdirSync(f.target), []); assert.equal((await f.native.listRecent()).registered.length, 0);
     assert.equal(f.application(db => db.prepare('SELECT count(*) n FROM app_operation_receipts WHERE requestId=?').get(input.requestId)!.n), 0);
   });
+
+for (const format of ['exFAT', 'FAT32'] as const) {
+  test(`${format} example copies verify all bytes, clean a full-volume write, and replay the same request after SIGKILL`, {timeout: 120_000}, async t => {
+    const volume = await mountProjectVolumeFixture(t, format);
+    if (!volume) return;
+    const f = await fixture(t, volume.mount), diskFull = f.input('Disk full'), interrupted = f.input('Interrupted');
+    const intentFile = (requestId: string) => path.join(f.dataDir, 'project-copy-actions', `project.template.instantiate-${requestId}.json`);
+    const saved = (requestId: string) => JSON.parse(readFileSync(intentFile(requestId), 'utf8')) as {
+      projectId: string; contentToken: string; phase: string;
+      stageDirectory: string | null; resumableTemplate?: true; retainedTemplateStage?: true;
+      templateStage?: {entries: Array<{kind: string; path: string; identity: {dev: string; ino: string; birthtimeNs: string}}>};
+    };
+    const valid = (name: string, copy: ProjectCopyResponse) => {
+      assert.deepEqual(readFileSync(path.join(f.target, name, 'media', 'scene.png')), f.bytes);
+      const store = f.targetStore(copy);
+      try {
+        const asset = store.get('assets', f.assetId) as {reference: MediaReference};
+        assert.equal(asset.reference.path, 'media/scene.png');
+        assert.equal(asset.reference.fullSha256, hash(f.bytes));
+      } finally {store.close();}
+    };
+    const visible = () => readdirSync(f.target).filter(name => !name.startsWith('._')).sort();
+    let wrote = false;
+    const restore = interruptTemplateWrite(f.target, () => {
+      wrote = true;
+      throw Object.assign(Error('synthetic full volume'), {code: 'ENOSPC'});
+    });
+    try {denied(await f.rpc(diskFull), 507, 'PROJECT_COPY_CAPACITY');}
+    finally {restore();}
+    assert.equal(wrote, true);
+    assert.deepEqual(visible(), []);
+    const recoveredDisk = saved(diskFull.requestId), copiedDisk = success(await f.rpc(diskFull));
+    assert.equal(recoveredDisk.resumableTemplate, true);
+    assert.equal(copiedDisk.project.projectId, recoveredDisk.projectId);
+    assert.equal(copiedDisk.contentToken, recoveredDisk.contentToken);
+    valid(diskFull.name, copiedDisk);
+
+    await f.stop();
+    const program = `
+      import {startServer} from ${JSON.stringify(new URL('./helpers/test-server.ts', import.meta.url).href)};
+      import {interruptTemplateWrite} from ${JSON.stringify(new URL('./helpers/template-write-fault.ts', import.meta.url).href)};
+      const server = await startServer(${JSON.stringify({dataDir: f.dataDir, projectsDir: path.join(f.root, 'projects'),
+        port: 0, token, projectFormatForTest: FORMAT5_PROJECT_SCHEMA_VERSION, projectTemplates: [f.entry]})});
+      interruptTemplateWrite(${JSON.stringify(f.target)}, () => process.kill(process.pid, 'SIGKILL'));
+      try { await server.projectEntries.instantiateTemplate(${JSON.stringify(interrupted)}); }
+      finally { await server.close(); }
+    `;
+    const killed = spawnSync(process.execPath, ['--input-type=module', '--eval', program], {env: testEnv(), encoding: 'utf8', timeout: 60_000});
+    assert.equal(killed.error, undefined); assert.equal(killed.signal, 'SIGKILL', killed.stderr);
+    const crashed = saved(interrupted.requestId);
+    assert.equal(crashed.phase, 'captured'); assert.ok(crashed.stageDirectory);
+    const stagedFile = path.join(crashed.stageDirectory, 'media', 'scene.png'), staged = lstatSync(stagedFile, {bigint: true});
+    assert.equal(staged.size, 65_536n);
+    assert.deepEqual(crashed.templateStage?.entries.find(entry => entry.path === 'media/scene.png')?.identity,
+      {...fileIdentityOfStats(staged), birthtimeNs: String(staged.birthtimeNs)});
+    const foreign = path.join(crashed.stageDirectory, 'foreign.txt'); writeFileSync(foreign, 'foreign');
+    await f.restart();
+    assert.equal(existsSync(stagedFile), false);
+    assert.deepEqual(readdirSync(crashed.stageDirectory).filter(name => !name.startsWith('._')), ['foreign.txt']);
+    assert.equal(saved(interrupted.requestId).retainedTemplateStage, true);
+    const result = success(await f.rpc(interrupted));
+    assert.equal(result.project.projectId, crashed.projectId); assert.equal(result.contentToken, crashed.contentToken);
+    valid(interrupted.name, result);
+    assert.deepEqual(success(await f.rpc(interrupted)), result);
+    assert.equal(readFileSync(foreign, 'utf8'), 'foreign');
+    assert.deepEqual(visible(), [path.basename(crashed.stageDirectory), diskFull.name, interrupted.name].sort());
+    assert.equal(f.application(db => db.prepare('SELECT count(*) n FROM app_operation_receipts WHERE requestId=?').get(interrupted.requestId)!.n), 1);
+  });
+}
 
 for (const phase of ['ready', 'directory-placeholder', 'project-published', 'registered'] as const)
   test(`template ${phase} interruption resumes the same ID, folder and single receipt after server restart`, async t => {

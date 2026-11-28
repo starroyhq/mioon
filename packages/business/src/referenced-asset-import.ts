@@ -5,8 +5,8 @@ import path from 'node:path';
 import {AppError} from '../../contracts/src/app-error.ts';
 import {assetImportSchema, assetMediaRecordSchema, toAssetMediaDto} from '../../contracts/src/asset-media.ts';
 import {projectOutputPublicationProofSchema} from '../../contracts/src/project-output-publication.ts';
-import {publishProjectOutput,inspectProjectOutput,assertPublishedProjectOutput,markProjectOutputRegistered,registerVerifiedProjectOutputs} from './project-output-publication.ts';
-import type {PublishedProjectOutput,ProjectOutputOwner} from './project-output-publication.ts';
+import {publishProjectOutput,inspectProjectOutput,assertPublishedProjectOutput,markProjectOutputRegistered,registerVerifiedProjectOutputs,discardUnregisteredFatOutput} from './project-output-publication.ts';
+import type {PublishedProjectOutput,ProjectOutputOwner,ProjectOutputPublicationProof} from './project-output-publication.ts';
 import {projectMediaPath} from '../../contracts/src/project-file.ts';
 import {ensurePrivateDirectory, readPrivateFile, writePrivateFileAtomic} from '../../contracts/src/private-storage.ts';
 import {createProjectAssetReferenceServices} from './project-asset-references.ts';
@@ -93,7 +93,9 @@ export function createReferencedAssetImportHandler(store: ProjectStore, options:
     const key = replayKey ? createHash('sha256').update(replayKey).digest('hex') : randomUUID();
     let activeAssetId: string | undefined;
     let effectFailure: unknown;
+    let discardUpload: (() => void) | undefined;
     const normalize = (error: unknown): never => {
+      try {discardUpload?.();} catch {/* Keep a result whose ownership cannot be proved. */}
       if (error === effectFailure && effectFailure !== undefined) throw error;
       if (error instanceof AppError) {
         if (activeAssetId && ['MEDIA_MISSING', 'MEDIA_CHANGED', 'MEDIA_NOT_MEDIA', 'MEDIA_OUTSIDE_NOT_CONFIRMED', 'MEDIA_CHANGED_DURING_READ'].includes(error.code)) {
@@ -141,6 +143,16 @@ export function createReferencedAssetImportHandler(store: ProjectStore, options:
         writePrivateFileAtomic(receiptFile, JSON.stringify(receipt), {root: receipts, maxBytes: 32 * 1024});
       }
       const assetId = String(receipt.assetId);
+      const rememberUpload = (proof: ProjectOutputPublicationProof): void => {
+        if (proof.projectId !== store.projectId || proof.assetId !== assetId || proof.targetKind !== 'assets' ||
+            proof.owner.kind !== 'import' || proof.owner.id !== assetId || proof.owner.requestId !== (replayKey ?? assetId) ||
+            proof.owner.inputHash !== digest) conflict();
+        discardUpload = () => discardUnregisteredFatOutput(store, proof, () => {
+          delete receipt.asset;
+          receipt.phase = 'intent';
+          writePrivateFileAtomic(receiptFile, JSON.stringify(receipt), {root: receipts, maxBytes: 32 * 1024});
+        });
+      };
       activeAssetId = assetId;
       const existing: unknown = store.get('assets', assetId);
       if (existing) {
@@ -158,6 +170,10 @@ export function createReferencedAssetImportHandler(store: ProjectStore, options:
       let publication:PublishedProjectOutput|undefined;
       if (object(receipt.asset)) {
         asset = receipt.asset;
+        if (!('sourcePath' in input)) {
+          const proof = projectOutputPublicationProofSchema.safeParse(asset.publication);
+          if (proof.success) rememberUpload(proof.data);
+        }
         projectImport?.preparedAsset(asset);
         const reference = assetMediaRecordSchema.parse(Object.fromEntries(Object.entries(asset).filter(([key]) => key !== 'url'))).reference;
         const local = resolveReferencePath(store.projectDir, reference);
@@ -190,7 +206,8 @@ export function createReferencedAssetImportHandler(store: ProjectStore, options:
             const decoded=await probe(stage,{signal,beforeEffect:fence});fence();
             if(declared.startsWith('audio/')?(!decoded.hasAudio||decoded.hasVideo||!(decoded.duration>0)):!decoded.hasVideo)throw new AppError('INVALID_MEDIA','无法解码素材或媒体类型不符');
           }
-          publication=await publishProjectOutput(store,{owner,assetId,targetKind:'assets',stageFile:stage,mimeType:declared,sha256:createHash('sha256').update(bytes).digest('hex'),sizeBytes:bytes.length,displayName:input.name},{signal,beforeEffect:fence});fence();
+          publication=await publishProjectOutput(store,{owner,assetId,targetKind:'assets',stageFile:stage,mimeType:declared,sha256:createHash('sha256').update(bytes).digest('hex'),sizeBytes:bytes.length,displayName:input.name},{signal,beforeEffect:fence});
+          rememberUpload(publication.publication);fence();
           file=path.join(store.projectDir,publication.relativePath);
         }
         const preparation = await prepareReferencedAssetImportFile(store, file, {assetId, outsidePaths: options.outsidePaths, signal, beforeEffect: fence, ...(declared ? {declared} : {})}); fence();

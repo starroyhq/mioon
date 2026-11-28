@@ -6,7 +6,7 @@ import type {BigIntStats} from 'node:fs';
 import {FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION, inspectProjectFileReadOnly, inspectCopiedProjectFile, isProjectFileHeld, projectFileError, sameContentStamp} from '@mioon/business/project-file/index';
 import type {ProjectFileFormat} from '@mioon/business/project-file/index';
 import {readClosedProjectForFormatUpgrade} from '../../../packages/business/src/project-file/closed-copy.ts';
-import {isAppLibraryHeld, projectFileIdentity, sameProjectFileIdentity} from '@mioon/business/app-db/index';
+import {fileIdentityOfStats, isAppLibraryHeld, projectFileIdentity, sameProjectFileIdentity} from '@mioon/business/app-db/index';
 import {AppError} from '../../../packages/contracts/src/app-error.ts';
 import {projectEntriesResponseSchema, projectEntryIdentitySchema, projectEntryResponseSchema, PROJECT_ENTRY_LIMITS} from '../../../packages/contracts/src/project-entry.ts';
 import {isProjectId} from '../../../packages/contracts/src/project-file.ts';
@@ -137,7 +137,7 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
   // Before any descriptor is opened (including journal/header reads), refuse
   // every held SQLite inode. Closing an alias would drop the owner's POSIX lock.
   const sourceMetadata = (file:string):BigIntStats => {
-    const info=lstatSync(file,{bigint:true}),identity={dev:String(info.dev),ino:String(info.ino)};
+    const info=lstatSync(file,{bigint:true}),identity=fileIdentityOfStats(info);
     if(isProjectFileHeld(identity)||isAppLibraryHeld(identity))throw projectFileError('PROJECT_LOCKED',{database:'project',reason:'locked'});
     if(!info.isFile()||info.isSymbolicLink()||info.nlink!==1n)throw projectFileError('PROJECT_INVALID',{database:'project',reason:'not-a-regular-file'});
     return info;
@@ -185,7 +185,7 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
     const metadata=inspectCopiedProjectFile(file);
     const after=sourceMetadata(file);
     if(generation(before)!==generation(after)||stamp.projectId!==metadata.projectId||stamp.contentSequence!==metadata.contentSequence||stamp.contentToken!==metadata.contentToken)throw unavailable();
-    return {metadata,identity:{dev:String(after.dev),ino:String(after.ino)}};
+    return {metadata,identity:fileIdentityOfStats(after)};
   };
   const registeredFormatSource = (projectId: string): RecentProject => {
     scope();
@@ -196,10 +196,7 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
     assertProjectFile?.(entry.projectFile);
     return refreshRegisteredIdentity(registry, entry, projectFileIdentity(entry.projectFile)) ?? entry;
   };
-  const fileIdentity = (file: string) => {
-    const info = lstatSync(file, {bigint: true});
-    return {dev: String(info.dev), ino: String(info.ino)};
-  };
+  const fileIdentity = (file: string) => fileIdentityOfStats(lstatSync(file, {bigint: true}));
   const readOnly = (projectId: string, file: string, identity: RecentProject['fileIdentity'], preview?: ProjectFormatUpgradePreview) => {
     const current = scope();
     if (!supportsFormatUpgrades) throw unavailable();
@@ -215,7 +212,7 @@ export function createProjectEntries<Runtime extends ProjectHostRuntime>({manage
     try{
       assertProjectFile?.(original.projectFile);
       const before=lstatSync(original.projectFile,{bigint:true});
-      const identity={dev:String(before.dev),ino:String(before.ino)};
+      const identity=fileIdentityOfStats(before);
       if(!before.isFile()||before.isSymbolicLink()||before.nlink!==1n||!matchesRegisteredInode(original,identity))return null;
       const unchanged=()=>generation(lstatSync(original.projectFile,{bigint:true}))===generation(before);
       // An open host is the only reader allowed to touch its live connection;

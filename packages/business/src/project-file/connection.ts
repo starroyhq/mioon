@@ -31,6 +31,7 @@ import {addFormat4HistoryStructureInside, addFormat4ProjectStructureInside, addF
 import {FORMAT4_INITIAL_HISTORY_MANIFEST} from './schema/history-v11-manifest.ts';
 import {createFormat4UpgradeBackup, FORMAT4_RESTORE_ACTIVE} from './format4-backup.ts';
 import {isAppLibraryHeld} from '../app-db/connection.ts';
+import {fileIdentityKey, fileIdentityOfStats} from '../app-db/identity.ts';
 import {assertProjectTimelineGeometryProfile} from './schema/format4-geometry.ts';
 import {clearProjectProcessRevisions, HISTORY_UPGRADES} from './schema/history-upgrades.ts';
 import type {HistoryUpgrade} from './schema/history-upgrades.ts';
@@ -213,7 +214,7 @@ const existingFile = (file: string): string => `${pathToFileURL(file).href}?mode
  * Closing any other descriptor of such a file drops this process's POSIX locks
  * on it (SQLite's own connections share them safely), so the kernel never
  * reads a held file with fs: a second open fails before touching it. */
-const identityOf = (info: BigIntStats, file: string): string => info.ino ? `${info.dev}:${info.ino}` : `path:${file}`;
+const identityOf = (info: BigIntStats, file: string): string => info.ino ? fileIdentityKey(info) : `path:${file}`;
 type HeldFile = readonly [key: string, kind: DatabaseKind];
 
 // ---------------------------------------------------------------------------
@@ -693,7 +694,7 @@ export function withFormat4RestoreLocks<T>(inputs: readonly Format4RestoreLockIn
     for (const [index, {file, database, identity}] of inputs.entries()) {
       active = database;
       if (projectFileOwnerKind(keys[index]!) !== undefined ||
-        isAppLibraryHeld({dev: String(identity.dev), ino: String(identity.ino)})) throw projectFileError('PROJECT_LOCKED', describe(database, 'locked'));
+        isAppLibraryHeld(fileIdentityOfStats(identity))) throw projectFileError('PROJECT_LOCKED', describe(database, 'locked'));
       if (!identity.isFile() || identity.nlink !== 1n) throw invalid(database, 'not-a-regular-file');
       const fd = openSync(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
       descriptors.set(file, fd);
@@ -977,7 +978,8 @@ function attachDatabases(
     const directory = validatePrivateDirectory(path.dirname(historyFile));
     const history = validateManagedFile(historyFile, {root: path.dirname(historyFile)});
     if (!directory || !history) throw invalid('history', 'unusable', projectId);
-    if (history.ino && `${history.dev}:${history.ino}` !== held[1]![0]) throw invalid('history', 'unusable', projectId);
+    const currentHistory = lstatSync(historyFile, {bigint: true});
+    if (!currentHistory.isFile() || identityOf(currentHistory, historyFile) !== held[1]![0]) throw invalid('history', 'unusable', projectId);
     return {db, held, backupDescriptors, historyIdentity: {directory: privateStorageIdentity(directory), db: privateStorageIdentity(history), birthtimeMs: history.birthtimeMs}, historyState: historyAdmission.state, historyAdmission};
   } catch (error) {
     try { opened?.close(); } catch {}
@@ -1129,7 +1131,7 @@ const recoveryOf = (error: unknown): ProjectFileRecovery => {
  * probe to a helper process, whose connection registry is independent. */
 export function projectFileRecoveryForHeld(identity: ProjectFileIdentity): ProjectFileRecovery | undefined {
   if (identity.ino === '0') return undefined;
-  const held = projectFileOwnerKind(`${identity.dev}:${identity.ino}`);
+  const held = projectFileOwnerKind(fileIdentityKey(identity));
   if (held === 'project') return {state: 'open-here'};
   if (held !== undefined) return {state: 'invalid', reason: 'not-a-project-file'};
   return undefined;

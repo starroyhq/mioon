@@ -1,6 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {lstatSync} from 'node:fs';
 import path from 'node:path';
+import {fileIdentityOfStats} from '../../../packages/business/src/app-db/identity.ts';
 import {AppError} from '../../../packages/contracts/src/app-error.ts';
 import {projectTrashRequestSchema, projectTrashReserveInputSchema, projectTrashCommandSchema as commandSchema, projectTrashReplySchema as replySchema, ProjectTrashRefusedError} from '../../../packages/contracts/src/project-trash-native.ts';
 import type {ProjectTrashPort, ProjectTrashRequest, ProjectTrashReservation, ProjectTrashRefusedCode, ProjectTrashCommand as Command, ProjectTrashReply as Reply} from '../../../packages/contracts/src/project-trash-native.ts';
@@ -34,7 +35,8 @@ function verifySource(input: ProjectTrashRequest): void {
     if (!info.isDirectory() || info.isSymbolicLink()) throw new ProjectTrashRefusedError('PROJECT_TRASH_SOURCE_CHANGED');
   }
   const info = lstatSync(file, {bigint: true}), expected = input.fileIdentity;
-  if (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1n || info.dev.toString() !== expected.dev || info.ino.toString() !== expected.ino
+  const identity = fileIdentityOfStats(info);
+  if (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1n || identity.dev !== expected.dev || identity.ino !== expected.ino
     || info.size !== BigInt(expected.size) || info.mtimeNs.toString() !== expected.mtimeNs || info.ctimeNs.toString() !== expected.ctimeNs
     || info.birthtimeNs.toString() !== expected.birthtimeNs) throw new ProjectTrashRefusedError('PROJECT_TRASH_SOURCE_CHANGED');
   for (const suffix of ['-journal', '-wal', '-shm']) if (lstatSync(file + suffix, {throwIfNoEntry: false})) throw new ProjectTrashRefusedError('PROJECT_TRASH_SOURCE_CHANGED');

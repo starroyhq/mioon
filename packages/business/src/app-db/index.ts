@@ -27,7 +27,7 @@ export type {AppDocumentName} from './schema.ts';
 export {appLibraryError, projectFileCopyError} from './errors.ts';
 export type {AppLibraryErrorCode, AppLibraryErrorDetails, AppLibraryInvalidReason} from './errors.ts';
 export {
-  DEFAULT_FIND_MOVED_DEPTH, DEFAULT_FIND_MOVED_LIMIT, findMovedProjectFile, findMovedSearchRoots, identityOfStats, isProjectFileName,
+  DEFAULT_FIND_MOVED_DEPTH, DEFAULT_FIND_MOVED_LIMIT, fileIdentityOfStats, findMovedProjectFile, findMovedSearchRoots, identityOfStats, isProjectFileName,
   isSkippedEntry, NODE_FIND_MOVED_FILE_SYSTEM, projectFileIdentity, sameProjectFileIdentity,
 } from './identity.ts';
 export type {DirectoryEntry, FindMovedFileSystem, FindMovedOptions, FindMovedPath, IdentityStats} from './identity.ts';

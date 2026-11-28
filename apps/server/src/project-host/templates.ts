@@ -1,15 +1,17 @@
 import {createHash} from 'node:crypto';
-import {closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readSync, rmdirSync, unlinkSync, writeSync} from 'node:fs';
+import {closeSync, constants, fstatSync, ftruncateSync, lstatSync, mkdirSync, openSync, readSync, rmdirSync, unlinkSync, writeSync} from 'node:fs';
 import type {BigIntStats} from 'node:fs';
 import path from 'node:path';
 import {AppError} from '../../../../packages/contracts/src/app-error.ts';
 import {projectTemplateManifestSchema} from '../../../../packages/contracts/src/project-template-manifest.ts';
 import type {ProjectTemplateManifest} from '../../../../packages/contracts/src/project-template-manifest.ts';
+import type {TemplateStageEntry, TemplateStageIdentity} from '../../../../packages/contracts/src/project-copy-action-records.ts';
 import type {MediaReference} from '../../../../packages/contracts/src/media-reference.ts';
 import type {Locale} from '../../../../packages/i18n/src/types.ts';
 import {projectHomeNativeMessages} from '../../../../packages/i18n/src/catalogs/project-home-native.ts';
 import type {CopyProjectOptions} from '../../../../packages/business/src/project-file/copy.ts';
 import {isAppLibraryHeld} from '../../../../packages/business/src/app-db/connection.ts';
+import {fileIdentityOfStats} from '../../../../packages/business/src/app-db/identity.ts';
 import {isProjectFileHeld} from '../../../../packages/business/src/project-file/held-files.ts';
 import {inspectCopiedProjectFile, syncCopiedDirectory, syncCopiedFile, validateProjectCopyStagingDirectory} from '../../../../packages/business/src/project-file/backup.ts';
 import {detectMediaType, MEDIA_HEADER_BYTES, mediaTypeOfName} from '../../../../packages/business/src/media-reference/media-type.ts';
@@ -31,15 +33,35 @@ export interface PreparedProjectTemplateAssets {
 }
 export interface ProjectTemplateCatalog {
   describe(templateId: string, version: number): ProjectTemplateDescription;
-  prepareAssets(templateId: string, version: number, options: {readonly directory: string; readonly targetDirectory: string; readonly locale?: Locale; readonly assertMutationAllowed?: () => void}): PreparedProjectTemplateAssets;
+  prepareAssets(templateId: string, version: number, options: {readonly directory: string; readonly targetDirectory: string; readonly locale?: Locale;
+    readonly assertMutationAllowed?: () => void; readonly rememberEntry?: (entry: TemplateStageEntry) => void}): PreparedProjectTemplateAssets;
   /** Recheck a complete stage or a published folder without reopening or
    * comparing the newly keyed/renamed project against the source template. */
   verifyPreparedAssets(templateId: string, version: number, directory: string): void;
 }
 const invalid = (reason: string, relativePath?: string): AppError => new AppError('PROJECT_TEMPLATE_INVALID', '模板不完整或不安全，未创建项目。', 422, {reason, ...(relativePath === undefined ? {} : {path: relativePath})});
 const generation = (info: BigIntStats): string => [info.dev, info.ino, info.size, info.mtimeNs, info.ctimeNs].join(':');
-const identity = (info: BigIntStats) => ({dev: String(info.dev), ino: String(info.ino)});
-const sameIdentity = (a: BigIntStats, b: BigIntStats): boolean => a.dev === b.dev && a.ino === b.ino;
+export const templateStageIdentity = (info: BigIntStats): TemplateStageIdentity => ({...fileIdentityOfStats(info), birthtimeNs: String(info.birthtimeNs)});
+const sameIdentity = (info: BigIntStats, expected: TemplateStageIdentity): boolean => {
+  const actual = templateStageIdentity(info);
+  return actual.dev === expected.dev && actual.ino === expected.ino && actual.birthtimeNs === expected.birthtimeNs;
+};
+/** The ledger names exactly the entries the copier created. Child names and
+ * parents are rechecked independently, and foreign siblings are never swept. */
+export function removeTemplateStageEntries(directory: string, root: TemplateStageIdentity, entries: readonly TemplateStageEntry[]): void {
+  for (const item of [...entries].reverse()) {
+    try {
+      if (!sameIdentity(validateProjectCopyStagingDirectory(directory), root)) return;
+      const file = path.join(directory, ...item.path.split('/'));
+      if (path.relative(directory, file).split(path.sep).join('/') !== item.path || item.path.startsWith('../')) continue;
+      validateProjectCopyStagingDirectory(path.dirname(file));
+      const actual = lstatSync(file, {bigint: true, throwIfNoEntry: false});
+      if (!actual || !sameIdentity(actual, item.identity)) continue;
+      if (item.kind === 'directory' && actual.isDirectory()) rmdirSync(file);
+      else if (item.kind === 'file' && actual.isFile() && actual.nlink === 1n) unlinkSync(file);
+    } catch { /* A foreign occupant or unavailable volume must stay untouched. */ }
+  }
+}
 
 function sourceFile(directory: string, item: ProjectTemplateManifest['projectFile']): {file: string; info: BigIntStats} {
   const resolved = path.join(directory, ...item.path.split('/'));
@@ -47,7 +69,8 @@ function sourceFile(directory: string, item: ProjectTemplateManifest['projectFil
     validateProjectCopyStagingDirectory(path.dirname(resolved));
     const info = lstatSync(resolved, {bigint: true});
     if (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1n) throw invalid('not-a-single-link-file', item.path);
-    if (isProjectFileHeld(identity(info)) || isAppLibraryHeld(identity(info))) throw invalid('held-file', item.path);
+    const identity = fileIdentityOfStats(info);
+    if (isProjectFileHeld(identity) || isAppLibraryHeld(identity)) throw invalid('held-file', item.path);
     if (info.size !== BigInt(item.sizeBytes)) throw invalid('size', item.path);
     return {file: resolved, info};
   } catch (error) {if (error instanceof AppError && error.code === 'PROJECT_TEMPLATE_INVALID') throw error; throw invalid('unreadable-or-linked-path', item.path);}
@@ -121,11 +144,16 @@ export function createProjectTemplateCatalog(entries: readonly ProjectTemplateCa
       const verified = readManifestFile(directory, item);
       if (!detectMediaType(item.path, verified.header)) throw invalid('not-media', item.path);
     }
-  }, prepareAssets(templateId, version, {directory, targetDirectory, locale, assertMutationAllowed = () => {}}) {
+  }, prepareAssets(templateId, version, {directory, targetDirectory, locale, assertMutationAllowed = () => {}, rememberEntry}) {
     const selected = select(templateId, version), description = describe(templateId, version);
     if (!path.isAbsolute(directory) || path.normalize(directory) !== directory || !path.isAbsolute(targetDirectory) || path.normalize(targetDirectory) !== targetDirectory) throw invalid('target-path');
-    validateProjectCopyStagingDirectory(directory);
-    const referenceTargets = new Map<string, MediaReference>(), created: Array<{file: string; info: BigIntStats}> = [], directories: string[] = [];
+    const root = templateStageIdentity(validateProjectCopyStagingDirectory(directory));
+    const referenceTargets = new Map<string, MediaReference>(), created: TemplateStageEntry[] = [], directories: string[] = [];
+    const claim = (file: string, kind: TemplateStageEntry['kind'], info: BigIntStats) => {
+      const entry = {path: path.relative(directory, file).split(path.sep).join('/'), kind, identity: templateStageIdentity(info)};
+      created.push(entry);
+      return entry;
+    };
     try {
       for (const item of selected.manifest.assets) {
         assertMutationAllowed();
@@ -133,22 +161,55 @@ export function createProjectTemplateCatalog(entries: readonly ProjectTemplateCa
         let parent = directory;
         for (const part of item.path.split('/').slice(0, -1)) {
           parent = path.join(parent, part);
-          if (!lstatSync(parent, {throwIfNoEntry: false})) {mkdirSync(parent, {mode: 0o700}); directories.push(parent);}
+          if (!lstatSync(parent, {throwIfNoEntry: false})) {
+            mkdirSync(parent, {mode: 0o700}); directories.push(parent);
+            const entry = claim(parent, 'directory', lstatSync(parent, {bigint: true}));
+            rememberEntry?.(entry);
+          }
           validateProjectCopyStagingDirectory(parent);
         }
         const fd = openSync(destination, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW ?? 0), 0o600);
-        const claimed = fstatSync(fd, {bigint: true}); created.push({file: destination, info: claimed});
         let verified: ReturnType<typeof readManifestFile>;
+        let owned: TemplateStageEntry;
         try {
+          const empty = fstatSync(fd, {bigint: true});
+          owned = claim(destination, 'file', empty);
+          const checkTarget = () => {
+            const before = lstatSync(destination, {bigint: true});
+            if (!before.isFile() || before.nlink !== 1n || !sameIdentity(before, owned.identity)) throw invalid('target-changed', item.path);
+          };
+          checkTarget();
+          // Some FAT32 implementations expose the allocated inode at truncate
+          // but delay it until close for a write to an empty file. Other FAT
+          // implementations can require the physical write to allocate it.
+          let allocate = item.sizeBytes > 0 && (rememberEntry !== undefined || empty.ino < 0n);
+          rememberEntry?.({...owned});
           verified = readManifestFile(selected.directory, item, chunk => {
             assertMutationAllowed();
-            for (let offset = 0; offset < chunk.length;) offset += writeSync(fd, chunk, offset, chunk.length - offset);
+            if (allocate) {
+              try {ftruncateSync(fd, 1);}
+              finally {owned.identity = templateStageIdentity(fstatSync(fd, {bigint: true}));}
+              checkTarget();
+              try {
+                // A positional write leaves the handle offset at zero so the
+                // normal streaming write below also hashes/copies this byte.
+                if (writeSync(fd, chunk, 0, 1, 0) !== 1) throw invalid('target-changed', item.path);
+              } finally {owned.identity = templateStageIdentity(fstatSync(fd, {bigint: true}));}
+              checkTarget();
+              rememberEntry?.({...owned});
+              allocate = false;
+            }
+            for (let offset = 0; offset < chunk.length;) {
+              const count = writeSync(fd, chunk, offset, chunk.length - offset);
+              if (count === 0) throw invalid('target-changed', item.path);
+              offset += count;
+            }
           });
         } finally {closeSync(fd);}
         if (!detectMediaType(item.path, verified.header)) throw invalid('not-media', item.path);
-        syncCopiedFile(destination);
         const finalInfo = lstatSync(destination, {bigint: true});
-        if (!sameIdentity(finalInfo, claimed) || finalInfo.size !== BigInt(item.sizeBytes)) throw invalid('target-changed', item.path);
+        if (!finalInfo.isFile() || finalInfo.nlink !== 1n || !sameIdentity(finalInfo, owned.identity) || finalInfo.size !== BigInt(item.sizeBytes)) throw invalid('target-changed', item.path);
+        syncCopiedFile(destination);
         const source = sourceFile(selected.directory, item).file;
         const target = path.join(targetDirectory, ...item.path.split('/'));
         const relativeTarget = path.relative(targetDirectory, target).split(path.sep).join('/');
@@ -171,13 +232,9 @@ export function createProjectTemplateCatalog(entries: readonly ProjectTemplateCa
           ['media/sound-bed.wav', projectHomeNativeMessages['projectHomeNative.example.soundBed'][locale]],
         ]),
       } : undefined;
-      return {referenceTargets, files: created.map(value => value.file), ...(presentation ? {presentation} : {})};
+      return {referenceTargets, files: created.filter(value => value.kind === 'file').map(value => path.join(directory, ...value.path.split('/'))), ...(presentation ? {presentation} : {})};
     } catch (error) {
-      for (const item of created.reverse()) {
-        const actual = lstatSync(item.file, {bigint: true, throwIfNoEntry: false});
-        if (actual && sameIdentity(actual, item.info)) unlinkSync(item.file);
-      }
-      for (const folder of directories.reverse()) {try {rmdirSync(folder);} catch { /* Never remove another owner's content. */ }}
+      removeTemplateStageEntries(directory, root, created);
       throw error;
     }
   }};

@@ -406,6 +406,21 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+      - name: Test project publication on macOS FAT disk images
+        id: project-volumes
+        timeout-minutes: 10
+        env:
+          MIOON_REQUIRE_PROJECT_VOLUME_FIXTURES: '1'
+        run: |
+          sw_vers
+          scratch="$(mktemp -d /private/tmp/mioon-project-volume-ci.XXXXXX)"
+          trap 'rmdir "$scratch/home" "$scratch/tmp" "$scratch" 2>/dev/null || true' EXIT
+          mkdir -m 700 "$scratch/home" "$scratch/tmp"
+          export HOME="$scratch/home" CFFIXED_USER_HOME="$scratch/home" TMPDIR="$scratch/tmp"
+          node --test --test-concurrency=1 --test-reporter=tap --test-name-pattern='exFAT|FAT32' \
+            tests/project-output-publication.test.ts tests/project-output-crash-recovery.test.ts \
+            tests/project-copy-startup-recovery.test.ts tests/project-template-server.test.ts
+
       - name: Test the reviewed macOS desktop group
         id: desktop
         run: node scripts/tooling.ts test --suite=macos-desktop --concurrency=2 --reporter=tap
@@ -418,12 +433,13 @@ jobs:
           HELPER_RESULT: ${{ steps.helpers.outcome }}
           INTERP_RESULT: ${{ steps.interp.outcome }}
           DESKTOP_RESULT: ${{ steps.desktop.outcome }}
+          PROJECT_VOLUMES_RESULT: ${{ steps.project-volumes.outcome }}
         run: |
           mkdir -p artifacts/checks-macos
           {
             node --version
             pnpm --version
-            printf 'typecheck=%s\nportable-tests=%s\nhelper-tests=%s\nspeed-interp=%s\ndesktop-tests=%s\n' "$TYPECHECK_RESULT" "$TEST_RESULT" "$HELPER_RESULT" "$INTERP_RESULT" "$DESKTOP_RESULT"
+            printf 'typecheck=%s\nportable-tests=%s\nhelper-tests=%s\nspeed-interp=%s\ndesktop-tests=%s\nproject-volumes=%s\n' "$TYPECHECK_RESULT" "$TEST_RESULT" "$HELPER_RESULT" "$INTERP_RESULT" "$DESKTOP_RESULT" "$PROJECT_VOLUMES_RESULT"
           } > artifacts/checks-macos/status.log
           cat artifacts/checks-macos/status.log >> "$GITHUB_STEP_SUMMARY"
 

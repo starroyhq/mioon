@@ -180,6 +180,19 @@ export async function inspectLocation(file: string, {platform = process.platform
   });
 }
 
+/** FAT volumes can replace the empty-file inode on first allocation. Use the
+ * mount table instead of Darwin's boot-dependent statfs type numbers. */
+export async function detectFatProjectVolume(file: string): Promise<boolean | null> {
+  if (process.platform !== 'darwin' && process.platform !== 'linux') return false;
+  const {fileSystem, network} = await inspectLocation(file);
+  if (fileSystem === null || network === null) return null;
+  return !network && ['exfat', 'msdos', 'vfat', 'fat', 'fat32'].includes(fileSystem.toLowerCase());
+}
+
+export async function isFatProjectVolume(file: string): Promise<boolean> {
+  return await detectFatProjectVolume(file) === true;
+}
+
 export type ProjectFileLocationVerdict =
   | {readonly allowed: true; readonly warnings: readonly ('cloud-sync' | 'no-permission-bits')[]}
   | {readonly allowed: false; readonly reason: 'network' | 'symbolic-link'};

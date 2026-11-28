@@ -5,6 +5,7 @@ import {backup,DatabaseSync} from 'node:sqlite';
 import {ensurePrivateDirectory} from '../../../contracts/src/private-storage.ts';
 import {AppError} from '../../../contracts/src/app-error.ts';
 import type {ProjectFileIdentity} from '../../../contracts/src/project-registry.ts';
+import {fileIdentityOfStats} from '../app-db/identity.ts';
 import {isAppLibraryHeld} from '../app-db/connection.ts';
 import {inspectProjectFileReadOnly,openProjectCopyReplacementConnections} from './connection.ts';
 import type {Format4Options} from './connection.ts';
@@ -34,8 +35,10 @@ export interface LockedProjectCopyOptions {
  /** Trusted crash/concurrency seam; never populated by a public request. */
  readonly onBoundary?:(phase:'locked'|'captured')=>void|Promise<void>;
 }
-const identity=(info:BigIntStats):ProjectFileIdentity=>({dev:String(info.dev),ino:String(info.ino)});
-const sameIdentity=(info:BigIntStats|undefined,expected:ProjectFileIdentity):boolean=>Boolean(info&&String(info.dev)===expected.dev&&String(info.ino)===expected.ino);
+const sameIdentity=(info:BigIntStats|undefined,expected:ProjectFileIdentity):boolean=>{
+ const identity=info&&fileIdentityOfStats(info);
+ return identity?.dev===expected.dev&&identity.ino===expected.ino;
+};
 const generation=(info:BigIntStats):string=>[info.dev,info.ino,info.size,info.mtimeNs,info.ctimeNs].join(':');
 const sameStamp=(a:Stamp,b:Stamp):boolean=>a.projectId===b.projectId&&a.contentSequence===b.contentSequence&&a.contentToken===b.contentToken;
 const changed=():AppError=>new AppError('PROJECT_COPY_SOURCE_CHANGED','选中的副本已改变，未替换。',409);
@@ -49,7 +52,7 @@ function assertNoSidecars(file:string):void {
   const entry=lstatSync(file+suffix,{bigint:true,throwIfNoEntry:false});
   if(!entry)continue;
   if(!entry.isFile()||entry.isSymbolicLink()||entry.nlink!==1n)throw invalid();
-  const id=identity(entry);
+  const id=fileIdentityOfStats(entry);
   if(isProjectFileHeld(id)||isAppLibraryHeld(id))throw projectFileError('PROJECT_LOCKED',{database:'project',reason:'locked'});
   throw invalid();
  }
@@ -67,7 +70,8 @@ export async function withLockedProjectCopy<T>(options:LockedProjectCopyOptions,
  const before=lstatSync(file,{bigint:true});
  if(!before.isFile()||before.isSymbolicLink()||before.nlink!==1n)throw projectFileError('PROJECT_INVALID',{database:'project',reason:'not-a-regular-file'});
  if(!sameIdentity(before,options.expectedIdentity))throw changed();
- if(isProjectFileHeld(identity(before))||isAppLibraryHeld(identity(before)))throw projectFileError('PROJECT_LOCKED',{database:'project',reason:'locked'});
+ const id=fileIdentityOfStats(before);
+ if(isProjectFileHeld(id)||isAppLibraryHeld(id))throw projectFileError('PROJECT_LOCKED',{database:'project',reason:'locked'});
  assertNoSidecars(file);
  const preflight=inspectProjectFileReadOnly(file,options.format4);
  if(!sameStamp(preflight,options.expectedSource)||generation(lstatSync(file,{bigint:true}))!==generation(before))throw changed();
