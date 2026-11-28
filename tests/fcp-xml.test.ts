@@ -123,7 +123,7 @@ test('projects connected track offsets and ITT captions using the primary source
   assert.match(xml, /name="Separated dialog" lane="-1" offset="35\/30s" start="13\/30s" duration="35\/30s" srcEnable="audio" audioRole="dialogue"/u);
   assert.match(xml, /name="Audio tail" lane="-1" offset="3\/30s".*? audioRole="music"/u);
   assert.match(xml, /name="Muted track audio" lane="-2" offset="24\/30s"/u);
-  assert.match(xml, /<caption lane="3" offset="41\/30s" duration="12\/30s" role="Mioon Subtitles\?captionFormat=ITT\.zh-Hans"><text>字幕 &lt;A&gt; &amp; then\n第二行<\/text>/u);
+  assert.match(xml, /<caption lane="3" offset="41\/30s" duration="12\/30s" role="Mioon Subtitles\?captionFormat=ITT\.cmn-Hans"><text>字幕 &lt;A&gt; &amp; then\n第二行<\/text>/u);
   assert.match(xml, /<caption lane="3" offset="5\/30s" duration="5\/30s".*?<text>Caption over gap<\/text>/u);
   assert.match(xml, /<spine lane="1" offset="5\/30s"><gap name="Other ungenerated shot" start="0s" offset="0s" duration="7\/30s">/u);
 });

@@ -331,7 +331,7 @@ export function serializeFcpXml({timeline, projectName, assets}: {
   for (const cue of timeline.subtitles?.cues ?? []) {
     attach(cue, captionLane, offset => element('caption', {
       lane: captionLane, offset: frameTime(offset), duration: frameTime(cue.durationFrames),
-      role: 'Mioon Subtitles?captionFormat=ITT.zh-Hans',
+      role: 'Mioon Subtitles?captionFormat=ITT.cmn-Hans',
     }, element('text', {}, xmlText(cue.text))));
   }
 
