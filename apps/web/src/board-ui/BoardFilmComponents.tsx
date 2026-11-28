@@ -1,4 +1,5 @@
 import React, {useId} from 'react';
+import {Film as FilmIcon} from '@mioon/ui/components/workbench-icons';
 import {useI18n} from '../i18n/I18nProvider.tsx';
 import type {BoardUiProjection} from './projection.ts';
 import './board-ui.css';
@@ -68,7 +69,7 @@ export function BoardFilmStrip({film, open, onOpenChange, selectedNodeId, onLoca
       {film.items.length ? <ol>{film.items.map((item, index) => <li key={item.nodeId}>
         <button type="button" className={`board-film-thumbnail${selectedNodeId === item.nodeId ? ' is-selected' : ''}`} data-testid={`board-film-item-${item.nodeId}`}
           aria-label={t('boardUi.locate', {name: item.name})} aria-pressed={selectedNodeId === item.nodeId} title={item.name} onClick={() => onLocateNode(item.nodeId)}>
-          {item.thumbnailUrl ? item.thumbnailKind === 'video' ? <video src={item.thumbnailUrl} muted playsInline preload="metadata" aria-hidden="true" draggable={false}/> : <img src={item.thumbnailUrl} alt="" draggable={false}/> : <span className="board-thumbnail-placeholder" aria-hidden="true">▱</span>}
+          {item.thumbnailUrl ? item.thumbnailKind === 'video' ? <video src={item.thumbnailUrl} muted playsInline preload="metadata" aria-hidden="true" draggable={false}/> : <img src={item.thumbnailUrl} alt="" draggable={false}/> : <span className="board-thumbnail-placeholder" aria-hidden="true"><FilmIcon size={16}/></span>}
           <span className="board-film-order">{formatNumber(index + 1, {minimumIntegerDigits: 2})}</span>
           <span className="board-film-duration">{durationLabel(item.durationFrames, true)}</span>
         </button>

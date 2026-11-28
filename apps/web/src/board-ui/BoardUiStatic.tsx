@@ -1,7 +1,11 @@
 import React, {memo, useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {Background, BackgroundVariant, ReactFlow, ReactFlowProvider, useReactFlow, useStore} from '@xyflow/react';
 import type {Node, NodeChange, NodeProps} from '@xyflow/react';
+import {WorkbenchButton} from '@mioon/ui/components/workbench-controls';
+import {Circle, CircleAlert, CircleCheck, Clapperboard, Film, Focus, Layers, Minus, Plus} from '@mioon/ui/components/workbench-icons';
 import type {ChainReferenceRole} from '../../../../packages/contracts/src/board-sequence.ts';
+import CompactNodePlayer from '../CompactNodePlayer.tsx';
+import {measuredFitPadding} from '../canvas-fit.ts';
 import {useI18n} from '../i18n/I18nProvider.tsx';
 import {BoardPorts} from './BoardPorts.tsx';
 import {boardEdgeTypes} from './BoardEdges.tsx';
@@ -62,6 +66,10 @@ export interface BoardUiStaticProps {
    * shows the same state as the property panel (empty while no service is
    * selected). */
   readonly unsupportedEdgeIds?: ReadonlySet<string>;
+  /** Open the shot's versions tab in the inspector from the shot card footer. */
+  readonly onOpenVersions?: (nodeId: string) => void;
+  /** Report measured card dimensions so the live board's tidy layout avoids overlap. */
+  readonly onMeasuredSizesChange?: (sizes: Readonly<Record<string, {readonly width: number; readonly height: number}>>) => void;
 }
 
 type Film = BoardUiProjection['films'][number];
@@ -72,8 +80,28 @@ interface CardData extends Record<string, unknown> {
   floating: boolean;
   drag: BoardPortEndpoint | null;
   activatePort: (endpoint: BoardPortEndpoint) => void;
+  onOpenVersions?: (nodeId: string) => void;
 }
 type CardNode = Node<CardData, 'board-card'>;
+
+const BoardZoomControls = memo(function BoardZoomControls() {
+  const {t} = useI18n();
+  const flow = useReactFlow();
+  const zoom = useStore(state => Math.round(state.transform[2] * 100));
+  return <div className="board-zoom-controls" data-testid="board-zoom-controls" role="group" aria-label={t('boardUi.board')}>
+    <WorkbenchButton variant="icon" size="compact" data-testid="board-zoom-out" aria-label={t('shell.zoomOut')} title={t('shell.zoomOutCanvas')}
+      onClick={() => void flow.zoomOut({duration: 150})}><Minus size={14} aria-hidden="true"/></WorkbenchButton>
+    <span className="board-zoom-value" data-testid="board-zoom-value">{zoom}%</span>
+    <WorkbenchButton variant="icon" size="compact" data-testid="board-zoom-in" aria-label={t('shell.zoomIn')} title={t('shell.zoomInCanvas')}
+      onClick={() => void flow.zoomIn({duration: 150})}><Plus size={14} aria-hidden="true"/></WorkbenchButton>
+    <i className="board-zoom-divider" aria-hidden="true"/>
+    <WorkbenchButton variant="icon" size="compact" data-testid="board-zoom-fit" aria-label={t('shell.fitCanvas')} title={t('shell.fitCanvasHint')}
+      onClick={() => {
+        const padding = (typeof document !== 'undefined' ? measuredFitPadding(document.querySelector('[data-testid="canvas-drop-zone"]'), 0.16) : 0.16) as never;
+        void flow.fitView({padding, duration: 250, maxZoom: 1});
+      }}><Focus size={14} aria-hidden="true"/></WorkbenchButton>
+  </div>;
+});
 
 const BoardCardView = memo(function BoardCardView({data, selected}: NodeProps<CardNode>) {
   const {model, film} = data;
@@ -81,16 +109,53 @@ const BoardCardView = memo(function BoardCardView({data, selected}: NodeProps<Ca
   const durationLabel = useBoardDuration();
   const frames = film ? film.durationFrames : model.durationFrames ?? null;
   const duration = durationLabel(frames, !film);
-  const statusKey = model.status === 'ready' ? 'redesign.board.completed' : model.status === 'generating' ? 'redesign.board.generating' : 'redesign.board.waiting';
+  const status = model.status ?? 'pending';
+  const statusKey = status === 'ready' ? 'redesign.board.completed'
+    : status === 'generating' ? 'redesign.board.generating'
+    : status === 'failed' ? 'redesign.board.failed'
+    : 'redesign.board.waiting';
+  const progress = model.generationProgress ?? null;
+  const shotVideoPlayer = model.kind === 'shot' && Boolean(model.thumbnailUrl) && model.thumbnailKind === 'video';
   return <article className={`board-ui-card board-ui-card-${model.kind}${selected ? ' is-selected' : ''}`} data-testid={`board-card-${model.id}`} aria-label={model.name}>
     {data.floating && <BoardFloatingLabel/>}
-    {film ? <div className="board-film-root"><span aria-hidden="true">▱</span><div><strong>{film.name}</strong><span>{t('boardUi.aspectDuration', {aspect: film.aspectRatio ?? t('boardUi.aspectUnknown'), duration})}</span></div></div>
+    {film ? <div className="board-film-root"><span className="board-film-root-icon" aria-hidden="true"><Clapperboard size={18}/></span><div><strong>{film.name}</strong><span>{t('boardUi.aspectDuration', {aspect: film.aspectRatio ?? t('boardUi.aspectUnknown'), duration})}</span></div></div>
       : <><header>{data.order !== undefined && <span className="board-card-order">{formatNumber(data.order, {minimumIntegerDigits: 2})}</span>}<strong title={model.name}>{model.name}</strong>
-        {model.kind === 'shot' && <span className={`board-card-status status-${model.status ?? 'pending'}`}>{t(statusKey)}</span>}
+        {model.kind === 'shot' && <span className={`board-card-status status-${status}`} data-status={status}>
+          {status === 'ready' ? <CircleCheck size={11} aria-hidden="true"/>
+            : status === 'generating' ? <span className="board-status-spinner" aria-hidden="true"/>
+            : status === 'failed' ? <CircleAlert size={11} aria-hidden="true"/>
+            : <Circle size={10} aria-hidden="true"/>}
+          <span>{t(statusKey)}</span>
+        </span>}
         {model.kind === 'subject' && model.subjectKind && <span className="board-card-subject-kind">{t(`boardUi.kind.${model.subjectKind}`)}</span>}</header>
-        {model.kind === 'text' ? <p className="board-text-content">{model.name}</p> : <div className="board-card-picture">{model.thumbnailUrl ? model.thumbnailKind === 'video' ? <video src={model.thumbnailUrl} muted playsInline preload="metadata" aria-hidden="true" draggable={false}/> : <img src={model.thumbnailUrl} alt="" draggable={false}/> : <span aria-hidden="true">▱</span>}</div>}
+        {model.kind === 'text' ? <p className="board-text-content">{model.name}</p>
+          : <div className="board-card-picture">
+            {shotVideoPlayer
+              ? <CompactNodePlayer sourceKey={`${model.id}:${model.thumbnailUrl}`} renderMedia={events =>
+                <video src={model.thumbnailUrl!} muted playsInline preload="metadata" draggable={false} className="media-content" {...events}/>} />
+              : model.thumbnailUrl
+                ? model.thumbnailKind === 'video'
+                  ? <video src={model.thumbnailUrl} muted playsInline preload="metadata" aria-hidden="true" draggable={false}/>
+                  : <img src={model.thumbnailUrl} alt="" draggable={false}/>
+                : model.kind === 'shot' && status === 'failed'
+                  ? <CircleAlert size={24} className="board-card-failed-icon" aria-hidden="true"/>
+                  : <Film size={22} className="board-card-placeholder-icon" aria-hidden="true"/>}
+            {model.kind === 'shot' && status === 'generating' && <div className="board-card-generating" data-testid={`board-card-generating-${model.id}`}>
+              <span className="spinner" aria-hidden="true"/>
+              <span>{progress !== null ? `${progress}% · ${t('redesign.board.generating')}` : t('redesign.board.generating')}</span>
+              <div className="board-card-progress" role="progressbar" aria-label={t('redesign.board.generating')}
+                aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress ?? 0}>
+                <span style={{width: `${Math.max(8, progress ?? 15)}%`}}/>
+              </div>
+            </div>}
+          </div>}
         {(model.kind === 'shot' || (model.kind === 'video' || model.kind === 'image') && (model.aspectRatio || frames !== null)) && <footer>
-          <span>{model.aspectRatio ? t('boardUi.aspectDuration', {aspect: model.aspectRatio, duration}) : duration}</span>
+          <span className="board-card-meta">{model.aspectRatio ? t('boardUi.aspectDuration', {aspect: model.aspectRatio, duration}) : duration}</span>
+          {model.kind === 'shot' && <button type="button" className="board-card-versions nodrag" data-testid={`board-card-versions-${model.id}`}
+            onClick={event => {event.stopPropagation(); data.onOpenVersions?.(model.id);}}>
+            <Layers size={12} aria-hidden="true"/>
+            <span>{t('shell.node.versionCount', {count: model.versionCount ?? 0})}</span>
+          </button>}
         </footer>}
       </>}
     <BoardPorts nodeId={model.id} kind={model.kind} drag={data.drag} onActivate={data.activatePort}/>
@@ -154,9 +219,9 @@ function BoardUiCanvas(props: BoardUiStaticProps) {
       // Missing dimensions make React Flow hide replacement nodes and drop keyboard focus.
       measured: sizes[model.id],
       selected: selectedId === model.id, ariaLabel: model.name,
-      data: {model, film: films.get(model.id), order: order.get(model.id), floating: floating.has(model.id), drag, activatePort},
+      data: {model, film: films.get(model.id), order: order.get(model.id), floating: floating.has(model.id), drag, activatePort, onOpenVersions: props.onOpenVersions},
     }));
-  }, [nodes, projection, props.positions, selectedId, moved, sizes, drag, activatePort]);
+  }, [nodes, projection, props.positions, selectedId, moved, sizes, drag, activatePort, props.onOpenVersions]);
   const flowEdges = useMemo(() => edges.flatMap((edge): (BoardSequenceEdge | BoardReferenceEdge)[] => {
     const source = byId.get(edge.sourceId), target = byId.get(edge.targetId);
     if (!source || !target) return [];
@@ -192,6 +257,7 @@ function BoardUiCanvas(props: BoardUiStaticProps) {
         next[id] = {width: size.width, height: size.height};
         changed = true;
       }
+      if (changed) props.onMeasuredSizesChange?.(next);
       return changed ? next : previous;
     });
     const selected = changes.find(change => change.type === 'select' && change.selected);
@@ -242,6 +308,7 @@ function BoardUiCanvas(props: BoardUiStaticProps) {
         isValidConnection={value => normalizeConnection(value) !== null}
         onConnect={value => {const result = normalizeConnection(value); if (result) props.onConnect(result); setDrag(null);}}
       ><Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="var(--wb-canvas-dot, #ffffff1f)"/></ReactFlow>
+      <BoardZoomControls/>
       {film && <BoardFilmStrip film={film} open={open} onOpenChange={setOpen} selectedNodeId={selectedId} onLocateNode={locate} onAddShot={props.onAddShot} synced={props.filmSynced ?? true}/>}
     </div>
     {props.showInspector !== false && <aside className="board-ui-inspector">{!selected ? <BoardFilmOverview overview={projection.overview}/>

@@ -23,6 +23,7 @@ export const boardUiMessages = {
   'boardUi.newShotName': {'zh-Hans':'镜头 {count}','zh-Hant':'鏡頭 {count}',en:'Shot {count}',ja:'ショット {count}'},
   'boardUi.newFilmName': {'zh-Hans':'成片 {count}','zh-Hant':'成片 {count}',en:'Film {count}',ja:'完成映像 {count}'},
   'boardUi.addShot': {'zh-Hans':'添加镜头','zh-Hant':'新增鏡頭',en:'Add shot',ja:'ショットを追加'},
+  'boardUi.generateImage': {'zh-Hans':'生成图像','zh-Hant':'生成圖像',en:'Generate image',ja:'画像を生成'},
   'boardUi.addRoot': {'zh-Hans':'新建成片','zh-Hant':'新增成片',en:'New film',ja:'完成映像を追加'},
   'boardUi.menu.copy': {'zh-Hans':'复制','zh-Hant':'複製',en:'Copy',ja:'コピー'},
   'boardUi.menu.addText': {'zh-Hans':'添加文字','zh-Hant':'新增文字',en:'Add text',ja:'テキストを追加'},

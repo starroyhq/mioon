@@ -12,7 +12,7 @@ interface FrameProject {
 }
 
 export function aspectFrameSnapshot({projectFormatVersion, project, timeline}: FrameProject, scope: string) {
-  if (projectFormatVersion !== 4 || !project || !timeline || timeline.projectId !== project.id ||
+  if ((projectFormatVersion !== 4 && projectFormatVersion !== 5) || !project || !timeline || timeline.projectId !== project.id ||
       !Number.isSafeInteger(project.revision) || project.revision < 1 ||
       !Number.isSafeInteger(timeline.revision) || timeline.revision < 1) return null;
   const ratio = timelineOutputRatio(timeline);
@@ -87,7 +87,7 @@ export function readAspectFrameAssetSize(url: string, mimeType: string, signal: 
 export function aspectFrameFailureMessage(error: unknown) {
   const code = (error as {code?: string} | null)?.code;
   if (code === 'TIMELINE_FORMAT_LOCKED' || code === 'MUTATION_PENDING' || code === 'EDIT_TASK_CONFLICT') return message('timeline.aspectFrame.locked');
-  if (code === 'REVISION_CONFLICT') return message('timeline.aspectFrame.conflict');
+  if (code === 'REVISION_CONFLICT' || code === 'SEQUENCE_EDIT_REVISION_CONFLICT' || code === 'SEQUENCE_EDIT_HISTORY_CONFLICT') return message('timeline.aspectFrame.conflict');
   return message('timeline.aspectFrame.failed');
 }
 

@@ -2,8 +2,11 @@
  * format-5 projection and routes every graph command through the one
  * preview -> commit RPC. Selection, errors and the undo notice stay local; the
  * surrounding workbench supplies data, session and refresh. */
-import React, {useCallback, useEffect, useState} from 'react';
+import React, {useCallback, useEffect, useRef, useState} from 'react';
+import {WorkbenchButton} from '@mioon/ui/components/workbench-controls';
+import {Box, Clapperboard, ClipboardPaste, Copy, CopyPlus, Grid2X2, Image, Plus, Sparkles, Trash2, Type, User, Video} from '@mioon/ui/components/workbench-icons';
 import {useI18n} from '../i18n/I18nProvider.tsx';
+import {canvasEditMacShortcuts} from '../CanvasEditingControls.tsx';
 import {format5BoardFailureMessageKey} from '../edit-ui/session.ts';
 import {isSequenceEditNoop} from '../edit-ui/lost-response.ts';
 import EditUiNoticeBar from '../edit-ui/EditUiNotice.tsx';
@@ -13,7 +16,8 @@ import type {BoardPortConnection} from './connection-ports.ts';
 import type {BoardUiEdge} from './BoardUiStatic.tsx';
 import type {BoardLive} from './live.ts';
 import {boardConnectIntent, boardDeleteIntent, boardDisconnectIntent, boardDuplicateIntent, boardInsertIntent,
-  boardLayoutIntent, boardNodeCreateIntent, boardRestoreIntent, boardRootCreateIntent, boardShotAppendIntent} from './live.ts';
+  boardLayoutIntent, boardNodeCreateIntent, boardRestoreIntent, boardRootCreateIntent, boardShotAppendIntent,
+  computeBoardTidyMoves} from './live.ts';
 import type {BoardHistoryView, BoardMountView, BoardOutcome} from './live-session.ts';
 import type {SequenceEditAllocation, SequenceEditIntent, SubjectEditOperation} from '../../../../packages/contracts/src/sequence-edit.ts';
 import {subjectBindingCreateOperation, subjectBindingDetachOperation, subjectBindingRestoreOperation,
@@ -61,6 +65,11 @@ export interface BoardUiLiveProps {
   readonly onAddPrevis?: () => void;
   readonly addingPrevis?: boolean;
   readonly previsDisabled?: boolean;
+  /** 21-01 toolbar parity callbacks owned by the surrounding workbench. */
+  readonly onAddImage?: () => void;
+  readonly onAddVideo?: () => void;
+  readonly onGenerateImage?: () => void;
+  readonly onOpenVersions?: (nodeId: string) => void;
 }
 
 function messageOf(t: ReturnType<typeof useI18n>['t'], failure: {code: string; reason?: string}): string {
@@ -68,7 +77,7 @@ function messageOf(t: ReturnType<typeof useI18n>['t'], failure: {code: string; r
 }
 
 export default function BoardUiLive(props: BoardUiLiveProps): React.ReactElement {
-  const {t} = useI18n();
+  const {t, formatNumber} = useI18n();
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [subjectPicker, setSubjectPicker] = useState(false);
@@ -76,7 +85,17 @@ export default function BoardUiLive(props: BoardUiLiveProps): React.ReactElement
   const [copied, setCopied] = useState<readonly {kind: 'shot' | 'node'; id: string}[]>([]);
   const [menu, setMenu] = useState<{x: number; y: number; nodeId: string} | null>(null);
   const [paneMenu, setPaneMenu] = useState<{x: number; y: number; position: {x: number; y: number}} | null>(null);
+  const measuredSizesRef = useRef<Readonly<Record<string, {readonly width: number; readonly height: number}>>>({});
   const busy = Boolean(props.busy);
+  const mac = canvasEditMacShortcuts();
+  const commandKey = mac ? '⌘' : 'Ctrl+';
+  const shortcut = {
+    copy: `${commandKey}C`,
+    paste: `${commandKey}V`,
+    duplicate: `${commandKey}D`,
+    tidy: mac ? '⇧⌘L' : 'Ctrl+Shift+L',
+    del: mac ? '⌫' : 'Del',
+  };
   const selected = props.selectedNodeId ? props.board.nodes.find(node => node.id === props.selectedNodeId) ?? null : null;
   const selectedEdge = selectedEdgeId ? props.board.edges.find(edge => edge.id === selectedEdgeId) ?? null : null;
   const film = props.board.projection.films.find(item => item.id === props.activeFilmId) ?? props.board.projection.films[0] ?? null;
@@ -193,6 +212,22 @@ export default function BoardUiLive(props: BoardUiLiveProps): React.ReactElement
     const maxX = Math.max(0, ...Object.values(props.board.positions).map(position => position.x));
     edit(boardRootCreateIntent(uuid(), name, {x: maxX + 360, y: 0}), t('boardUi.notice.rootCreated', {name}));
   };
+  const addText = (position?: {x: number; y: number}): void => {
+    const points = Object.values(props.board.positions);
+    const target = position ?? (points.length
+      ? {x: Math.min(...points.map(point => point.x)), y: Math.max(...points.map(point => point.y)) + 260}
+      : {x: 120, y: 260});
+    edit(boardNodeCreateIntent(uuid(), 'text', t('projects.default.note'), target, {text: ''}), t('boardUi.notice.textAdded'));
+  };
+  const tidyBoard = (): void => {
+    if (busy || !props.board.nodes.length) return;
+    const moves = computeBoardTidyMoves(props.board, measuredSizesRef.current);
+    setMenu(null);
+    setPaneMenu(null);
+    if (!moves.length) return;
+    edit(boardLayoutIntent(moves), t('canvas.edit.tidiedToast', {count: moves.length}));
+  };
+  const canTidy = !busy && props.board.nodes.length > 0;
   const moveNodes = (moves: readonly {readonly nodeId: string; readonly x: number; readonly y: number}[]): void => {
     if (!moves.length || busy) return;
     edit(boardLayoutIntent(moves), t('boardUi.notice.moved', {count: moves.length}));
@@ -233,6 +268,10 @@ export default function BoardUiLive(props: BoardUiLiveProps): React.ReactElement
       if (!(event.metaKey || event.ctrlKey)) return;
       if (event.key.toLowerCase() === 'c') { if (props.selectedNodeId) {copy(props.selectedNodeId); event.preventDefault();} return; }
       if (event.key.toLowerCase() === 'v') { if (copied.length) {duplicate(copied); event.preventDefault();} return; }
+      if (event.key.toLowerCase() === 'l' && event.shiftKey) {
+        if (canTidy) {tidyBoard(); event.preventDefault();}
+        return;
+      }
       if (event.key.toLowerCase() === 'd') {
         const node = props.selectedNodeId ? props.board.nodes.find(value => value.id === props.selectedNodeId) : null;
         if (node && node.kind !== 'film' && node.kind !== 'subject') {
@@ -243,17 +282,24 @@ export default function BoardUiLive(props: BoardUiLiveProps): React.ReactElement
     };
     document.addEventListener('keydown', keydown);
     return () => document.removeEventListener('keydown', keydown);
-  }, [busy, copied, props.onDelete, props.selectedNodeId, props.board.nodes]);
+  }, [busy, canTidy, copied, props.onDelete, props.selectedNodeId, props.board]);
   const archived = props.mount?.archived ?? [];
   const unsupportedEdges = unsupportedReferenceEdgeIds(props.inputs, props.board.edges);
   const error = failure?.code === 'REFERENCE_READONLY' ? t('boardUi.referenceReadonly')
     : failure ? messageOf(t, failure) : null;
+  const clampMenuPoint = (x: number, y: number, width = 204, height = 248): {x: number; y: number} => {
+    const vw = typeof window !== 'undefined' ? window.innerWidth : 1440;
+    const vh = typeof window !== 'undefined' ? window.innerHeight : 900;
+    return {x: Math.max(8, Math.min(x, vw - width)), y: Math.max(8, Math.min(y, vh - height))};
+  };
   const contextMenu = (event: React.MouseEvent<HTMLDivElement>): void => {
     const target = (event.target as HTMLElement).closest('[data-testid^="board-card-"]');
     const nodeId = target?.getAttribute('data-testid')?.replace('board-card-', '') ?? null;
     if (!nodeId || !props.board.nodes.some(node => node.id === nodeId)) {setMenu(null); return;}
     event.preventDefault();
-    setMenu({x: event.clientX, y: event.clientY, nodeId});
+    setPaneMenu(null);
+    const point = clampMenuPoint(event.clientX, event.clientY);
+    setMenu({...point, nodeId});
   };
   const menuNode = menu ? props.board.nodes.find(node => node.id === menu.nodeId) : null;
   return <div className="board-ui-live" data-testid="board-ui-live" data-busy={busy ? 'true' : undefined}
@@ -261,46 +307,101 @@ export default function BoardUiLive(props: BoardUiLiveProps): React.ReactElement
     <BoardUiStatic projection={props.board.projection} nodes={props.board.nodes} edges={props.board.edges}
       positions={props.board.positions} reduceMotion={props.reduceMotion} selectedNodeId={props.selectedNodeId}
       onSelectNode={props.onSelectNode} onConnect={connectSequence} onAddShot={addShot}
+      onOpenVersions={props.onOpenVersions}
+      onMeasuredSizesChange={sizes => {measuredSizesRef.current = sizes;}}
       showInspector={false} selectedEdgeId={selectedEdgeId} onSelectEdge={setSelectedEdgeId}
       onNodesMoved={moveNodes} filmSynced={props.mount?.inSync ?? true} virtualize={props.board.nodes.length > 200}
       onSubjectDrop={dropSubject} unsupportedEdgeIds={unsupportedEdges} onAssetDrop={props.onAssetDrop}
-      onPaneContextMenu={(position, screen) => setPaneMenu({position, x: screen.x, y: screen.y})}
+      onPaneContextMenu={(position, screen) => {
+        setMenu(null);
+        const point = clampMenuPoint(screen.x, screen.y, 196, 152);
+        setPaneMenu({position, ...point});
+      }}
       revealNodeId={props.revealNodeId}/>
     <div className="board-ui-live-toolbar" role="toolbar" aria-label={t('boardUi.board')}>
-      <button type="button" data-testid="board-ui-add-shot" disabled={busy} onClick={addShot}>{t('boardUi.addShot')}</button>
-      <button type="button" data-testid="board-ui-add-root" disabled={busy} onClick={addRoot}>{t('boardUi.addRoot')}</button>
-      <button type="button" data-testid="board-ui-add-subject" disabled={busy} aria-expanded={subjectPicker}
-        onClick={() => setSubjectPicker(open => !open)}>{t('boardUi.addSubject')}</button>
-      {props.onAddPrevis && <button type="button" data-testid="board-ui-add-previs"
-        aria-label={t('previs.toolbar.add')} disabled={busy || props.previsDisabled || props.addingPrevis}
-        onClick={props.onAddPrevis}>{t('previs.toolbar.add')}</button>}
-      <button type="button" data-testid="board-ui-archive" disabled={busy} aria-expanded={archiveOpen}
-        onClick={() => setArchiveOpen(open => !open)}>{t('boardUi.archiveCount', {count: archived.length})}</button>
+      <WorkbenchButton variant="primary" data-testid="board-ui-add-shot" disabled={busy} onClick={addShot}>
+        <Plus size={15} aria-hidden="true"/><span>{t('boardUi.addShot')}</span>
+      </WorkbenchButton>
+      <span className="board-toolbar-separator" aria-hidden="true"/>
+      <WorkbenchButton variant="ghost" data-testid="board-ui-add-text" aria-label={t('shell.text')} title={t('shell.text')}
+        disabled={busy} onClick={() => addText()}>
+        <Type size={15} aria-hidden="true"/><span className="board-tool-label">{t('shell.text')}</span>
+      </WorkbenchButton>
+      {props.onAddImage && <WorkbenchButton variant="ghost" data-testid="board-ui-add-image" aria-label={t('assets.image')} title={t('assets.image')}
+        disabled={busy} onClick={props.onAddImage}>
+        <Image size={15} aria-hidden="true"/><span className="board-tool-label">{t('assets.image')}</span>
+      </WorkbenchButton>}
+      {props.onAddVideo && <WorkbenchButton variant="ghost" data-testid="board-ui-add-video" aria-label={t('assets.video')} title={t('assets.video')}
+        disabled={busy} onClick={props.onAddVideo}>
+        <Video size={15} aria-hidden="true"/><span className="board-tool-label">{t('assets.video')}</span>
+      </WorkbenchButton>}
+      {props.onGenerateImage && <WorkbenchButton variant="ghost" data-testid="board-ui-generate-image" aria-label={t('boardUi.generateImage')} title={t('boardUi.generateImage')}
+        disabled={busy} onClick={props.onGenerateImage}>
+        <Sparkles size={15} aria-hidden="true"/><span className="board-tool-label">{t('boardUi.generateImage')}</span>
+      </WorkbenchButton>}
+      <WorkbenchButton variant="ghost" data-testid="board-ui-tidy" aria-label={t('canvas.edit.tidy')}
+        title={`${t('canvas.edit.tidyHint')} · ${mac ? '⇧⌘L' : 'Ctrl+Shift+L'}`}
+        aria-keyshortcuts={mac ? 'Meta+Shift+L' : 'Control+Shift+L'} disabled={!canTidy} onClick={tidyBoard}>
+        <Grid2X2 size={15} aria-hidden="true"/><span className="board-tool-label">{t('canvas.edit.tidy')}</span>
+      </WorkbenchButton>
+      <span className="board-toolbar-separator" aria-hidden="true"/>
+      <WorkbenchButton variant="ghost" data-testid="board-ui-add-root" aria-label={t('boardUi.addRoot')} title={t('boardUi.addRoot')}
+        disabled={busy} onClick={addRoot}>
+        <Clapperboard size={15} aria-hidden="true"/><span className="board-tool-label">{t('boardUi.addRoot')}</span>
+      </WorkbenchButton>
+      <WorkbenchButton variant="ghost" data-testid="board-ui-add-subject" aria-label={t('boardUi.addSubject')} title={t('boardUi.addSubject')}
+        disabled={busy} aria-expanded={subjectPicker} onClick={() => setSubjectPicker(open => !open)}>
+        <User size={15} aria-hidden="true"/><span className="board-tool-label">{t('boardUi.addSubject')}</span>
+      </WorkbenchButton>
+      {props.onAddPrevis && <WorkbenchButton variant="ghost" data-testid="board-ui-add-previs"
+        aria-label={t('previs.toolbar.add')} title={t('previs.toolbar.add')}
+        disabled={busy || props.previsDisabled || props.addingPrevis} onClick={props.onAddPrevis}>
+        <Box size={15} aria-hidden="true"/><span className="board-tool-label">{t('previs.toolbar.add')}</span>
+      </WorkbenchButton>}
+      <WorkbenchButton variant="ghost" className="board-toolbar-archive" data-testid="board-ui-archive"
+        aria-label={t('boardUi.archiveCount', {count: archived.length})} title={t('boardUi.archiveCount', {count: archived.length})}
+        disabled={busy} aria-expanded={archiveOpen} onClick={() => setArchiveOpen(open => !open)}>
+        <Trash2 size={15} aria-hidden="true"/><span className="board-tool-label">{t('canvas.edit.archive')}</span>
+        <span className="board-archive-count" aria-hidden="true">{formatNumber(archived.length)}</span>
+      </WorkbenchButton>
     </div>
     {paneMenu && <div className="board-ui-context-menu" role="menu" data-testid="board-pane-menu"
-      style={{left: paneMenu.x, top: paneMenu.y}} onPointerDown={event => event.stopPropagation()}>
+      aria-label={t('boardUi.board')} style={{left: paneMenu.x, top: paneMenu.y}} onPointerDown={event => event.stopPropagation()}>
       <button type="button" role="menuitem" data-testid="board-pane-add-text" disabled={busy}
         onClick={() => {
-          const nodeId = uuid();
-          edit(boardNodeCreateIntent(nodeId, 'text', t('projects.default.note'), paneMenu.position, {text: ''}),
-            t('boardUi.notice.textAdded'));
+          addText(paneMenu.position);
           setPaneMenu(null);
-        }}>{t('boardUi.menu.addText')}</button>
+        }}><Type size={14} aria-hidden="true"/><span>{t('boardUi.menu.addText')}</span></button>
       <button type="button" role="menuitem" data-testid="board-pane-paste" disabled={busy || !copied.length}
         onClick={() => {
           duplicate(copied);
           setPaneMenu(null);
-        }}>{t('boardUi.menu.paste')}</button>
+        }}><ClipboardPaste size={14} aria-hidden="true"/><span>{t('boardUi.menu.paste')}</span><kbd aria-hidden="true">{shortcut.paste}</kbd></button>
+      <hr className="board-context-separator" aria-hidden="true"/>
+      <button type="button" role="menuitem" data-testid="board-pane-tidy" disabled={!canTidy}
+        onClick={tidyBoard}><Grid2X2 size={14} aria-hidden="true"/><span>{t('canvas.edit.tidy')}</span><kbd aria-hidden="true">{shortcut.tidy}</kbd></button>
     </div>}
     {menu && menuNode && menuNode.kind !== 'film' && menuNode.kind !== 'subject' && <div className="board-ui-context-menu"
-      role="menu" data-testid="board-ui-context-menu" style={{left: menu.x, top: menu.y}}>
-      <button type="button" role="menuitem" data-testid="board-menu-copy" onClick={() => copy(menu.nodeId)}>{t('boardUi.menu.copy')}</button>
-      <button type="button" role="menuitem" data-testid="board-menu-duplicate" disabled={busy}
-        onClick={() => duplicate([{kind: menuNode.kind === 'shot' ? 'shot' : 'node', id: menuNode.id}])}>{t('boardUi.menu.duplicate')}</button>
+      role="menu" data-testid="board-ui-context-menu" aria-label={t('canvas.edit.menu')} style={{left: menu.x, top: menu.y}}>
+      <button type="button" role="menuitem" data-testid="board-menu-copy" onClick={() => copy(menu.nodeId)}>
+        <Copy size={14} aria-hidden="true"/><span>{t('boardUi.menu.copy')}</span><kbd aria-hidden="true">{shortcut.copy}</kbd>
+      </button>
       <button type="button" role="menuitem" data-testid="board-menu-paste" disabled={busy || !copied.length}
-        onClick={() => duplicate(copied)}>{t('boardUi.menu.paste')}</button>
-      <button type="button" role="menuitem" data-testid="board-menu-delete" disabled={busy}
-        onClick={() => deleteNode(menuNode.id, menuNode.name)}>{t('boardUi.deleteNode')}</button>
+        onClick={() => duplicate(copied)}>
+        <ClipboardPaste size={14} aria-hidden="true"/><span>{t('boardUi.menu.paste')}</span><kbd aria-hidden="true">{shortcut.paste}</kbd>
+      </button>
+      <button type="button" role="menuitem" data-testid="board-menu-duplicate" disabled={busy}
+        onClick={() => duplicate([{kind: menuNode.kind === 'shot' ? 'shot' : 'node', id: menuNode.id}])}>
+        <CopyPlus size={14} aria-hidden="true"/><span>{t('boardUi.menu.duplicate')}</span><kbd aria-hidden="true">{shortcut.duplicate}</kbd>
+      </button>
+      <hr className="board-context-separator" aria-hidden="true"/>
+      <button type="button" role="menuitem" data-testid="board-menu-tidy" disabled={!canTidy} onClick={tidyBoard}>
+        <Grid2X2 size={14} aria-hidden="true"/><span>{t('canvas.edit.tidy')}</span>
+      </button>
+      <hr className="board-context-separator" aria-hidden="true"/>
+      <button type="button" role="menuitem" className="is-destructive" data-testid="board-menu-delete" disabled={busy} onClick={() => deleteNode(menuNode.id, menuNode.name)}>
+        <Trash2 size={14} aria-hidden="true"/><span>{t('boardUi.deleteNode')}</span><kbd aria-hidden="true">{shortcut.del}</kbd>
+      </button>
     </div>}
     {subjectPicker && <div className="board-ui-live-subject-picker" data-testid="board-ui-subject-picker" role="dialog"
       aria-label={t('boardUi.addSubject')}>

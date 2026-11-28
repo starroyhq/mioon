@@ -621,9 +621,53 @@ test('format 4 frame selection keeps the short edge and both revisions, and reje
   assert.equal(aspect.aspectFrameSnapshot({...state, projectFormatVersion: 3}, 'project:1'), null);
   assert.equal(aspect.aspectFrameSnapshot({...state, projectFormatVersion: undefined}, 'project:1'), null);
   assert.equal(aspect.aspectFrameSnapshot({...state, timeline: {...state.timeline, projectId: id(20)}}, 'project:1'), null);
+  const f5Frame = aspect.aspectFrameSnapshot({...state, projectFormatVersion: 5}, 'project:1')!;
+  assert.deepEqual([f5Frame.ratio, f5Frame.shortEdge], ['9:16', 720]);
+  assert.equal(aspect.aspectFrameIntent(f5Frame, '16:9', id(11))?.input.presetId, 'landscape_720');
+  assert.deepEqual(aspect.aspectFrameFailureMessage({code: 'SEQUENCE_EDIT_REVISION_CONFLICT'}), message('timeline.aspectFrame.conflict'));
+  assert.deepEqual(aspect.aspectFrameFailureMessage({code: 'SEQUENCE_EDIT_HISTORY_CONFLICT'}), message('timeline.aspectFrame.conflict'));
   assert.equal(aspect.aspectFrameAssetRatio({mimeType: 'video/mp4', width: 1920, height: 1080}), '16:9');
   assert.equal(aspect.aspectFrameAssetRatio({mimeType: 'image/png', width: 1000, height: 700}), null);
   assert.equal(aspect.aspectFrameAssetRatio({mimeType: 'audio/mpeg', width: 1920, height: 1080}), null);
+});
+
+test('actual format 5 saveTimelineFormat routes ratio changes through sequence preview/commit and handles unconfirmed outcomes', async () => {
+  const f5Timeline = timeline('landscape_1080', 4);
+  const formats: string[] = [], busy: boolean[] = [], refreshed: string[] = [];
+  let outcome: Record<string, unknown> = {ok: true, actionId: id(90), operation: 'timeline.format.set'};
+  const save = appFunction('async function saveTimelineFormat(', 'const timelineFormat =', {
+    dataRef: {current: {projectFormatVersion: 5, timeline: f5Timeline}},
+    currentProject: {current: projectId},
+    setFormat5SessionBusy: (value: boolean) => { busy.push(value); },
+    format5Session: () => ({format: async (presetId: string) => { formats.push(presetId); return outcome; }}),
+    isSequenceEditNoop: (result: {code?: unknown}) => result?.code === 'SEQUENCE_EDIT_NOOP',
+    notifyFormat5CommandFailure: () => { refreshed.push('notify'); },
+    clearFormat5ConflictToast: () => { refreshed.push('clear'); },
+    refresh: async () => { refreshed.push('refresh'); },
+    format5RefreshHistory: async () => { refreshed.push('history'); },
+    format5LoadBoard: async () => { refreshed.push('board'); },
+  });
+  const intent = {scope: 'project:1', projectId, timelineId, serial: 0, input: {projectId, expectedProjectRevision: 2, expectedRevision: 3, requestId: id(12), presetId: 'landscape_1080'}};
+  const applied = await (save as (i: unknown, o?: unknown) => Promise<{status: string; timeline?: unknown; error?: unknown}>)(intent, {canExecute: () => true});
+  assert.equal(applied.status, 'applied');
+  assert.equal(applied.timeline, f5Timeline);
+  assert.deepEqual(formats, ['landscape_1080']);
+  assert.deepEqual(busy, [true, false]);
+  assert.deepEqual(refreshed, ['clear', 'refresh', 'history', 'board']);
+
+  outcome = {ok: false, code: 'SEQUENCE_EDIT_REVISION_CONFLICT'};
+  const rejected = await (save as (i: unknown, o?: unknown) => Promise<{status: string; error?: unknown}>)(intent, {canExecute: () => true});
+  assert.equal(rejected.status, 'rejected');
+  assert.deepEqual(rejected.error, outcome);
+  assert.equal(refreshed.includes('notify'), false, 'aspect frame options suppress duplicate toast');
+
+  outcome = {ok: false, code: 'SEQUENCE_EDIT_UNCONFIRMED', unconfirmed: true};
+  const unknown = await (save as (i: unknown, o?: unknown) => Promise<{status: string; error?: unknown}>)(intent, {canExecute: () => true});
+  assert.equal(unknown.status, 'unknown');
+
+  outcome = {ok: false, code: 'SEQUENCE_EDIT_NOOP'};
+  const noop = await (save as (i: unknown, o?: unknown) => Promise<{status: string; error?: unknown}>)(intent, {canExecute: () => true});
+  assert.equal(noop.status, 'not_applied');
 });
 
 test('actual format 4 selection reports locked edits and refreshes conflicts without resubmitting', async () => {

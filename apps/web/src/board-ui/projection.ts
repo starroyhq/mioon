@@ -1,6 +1,6 @@
 import type {ChainNodeKind, FilmChainDerivation, BoardSequenceIssue} from '../../../../packages/contracts/src/board-sequence.ts';
 
-export type BoardGenerationStatus = 'ready' | 'generating' | 'pending';
+export type BoardGenerationStatus = 'ready' | 'generating' | 'pending' | 'failed';
 
 /** Presentation data, independent of the project's stored node shape. */
 export interface BoardUiNode {
@@ -10,6 +10,8 @@ export interface BoardUiNode {
   readonly aspectRatio?: string | null;
   readonly durationFrames?: number | null;
   readonly status?: BoardGenerationStatus;
+  readonly versionCount?: number;
+  readonly generationProgress?: number | null;
   readonly thumbnailUrl?: string | null;
   /** Video thumbnails must render through `<video>`; a video file in `<img>`
    * shows the browser's broken-image glyph even though the media is readable. */
