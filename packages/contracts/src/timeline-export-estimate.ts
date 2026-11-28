@@ -15,6 +15,8 @@ export const TIMELINE_EXPORT_RESOURCE_REJECTION_CODES = [
   'EXPORT_DISK_SPACE_INSUFFICIENT',
 ] as const;
 const [fpsCode, memoryCode, rasterCode, stagingCode, artifactCode, diskCode] = TIMELINE_EXPORT_RESOURCE_REJECTION_CODES;
+const crfSizeWarningCode = 'EXPORT_CRF_SIZE_UNCERTAIN';
+export const TIMELINE_EXPORT_RESOURCE_ISSUE_CODES = [...TIMELINE_EXPORT_RESOURCE_REJECTION_CODES, crfSizeWarningCode] as const;
 
 export const timelineExportResourceIssueSchema = z.discriminatedUnion('code', [
   z.object({...issueFields, code: z.literal(fpsCode), details: z.object({fps, maxFps: fps}).strict()}).strict(),
@@ -25,6 +27,9 @@ export const timelineExportResourceIssueSchema = z.discriminatedUnion('code', [
   }).strict()}).strict(),
   z.object({...issueFields, code: z.literal(artifactCode), details: z.object({estimatedBytes: bytes, maxBytes: bytes}).strict()}).strict(),
   z.object({...issueFields, code: z.literal(diskCode), details: z.object({estimatedBytes: bytes, availableBytes: bytes}).strict()}).strict(),
+  z.object({code: z.literal(crfSizeWarningCode), severity: z.literal('warning'), message: issueFields.message, details: z.object({
+    estimatedBytes: bytes, availableBytes: bytes.nullable(), maxBytes: bytes, lowerBoundBytes: bytes, warningThresholdBytes: bytes,
+  }).strict()}).strict(),
 ]);
 
 const [v1Profile, floatProfile] = timelineExportSettingsSchema.options;
@@ -46,7 +51,7 @@ const estimateSchema = z.object({
   height: edge,
   estimatedBytes: bytes,
   estimatedSeconds: z.number().nonnegative().finite(),
-  issues: z.array(timelineExportResourceIssueSchema).max(TIMELINE_EXPORT_RESOURCE_REJECTION_CODES.length),
+  issues: z.array(timelineExportResourceIssueSchema).max(TIMELINE_EXPORT_RESOURCE_ISSUE_CODES.length),
 }).strict();
 
 export const timelineExportEstimateResponseSchema = z.object({
@@ -61,6 +66,7 @@ export const timelineExportEstimateResponseSchema = z.object({
 export type TimelineExportEstimateInput = z.infer<typeof timelineExportEstimateSchemas['timeline.export.estimate']>;
 export type TimelineExportEstimateResponse = z.infer<typeof timelineExportEstimateResponseSchema>;
 export type TimelineExportResourceIssue = z.infer<typeof timelineExportResourceIssueSchema>;
+export type TimelineExportResourceRejection = Extract<TimelineExportResourceIssue, {severity: 'error'}>;
 
 export function isTimelineExportEstimateResponse(value: unknown, input?: unknown): boolean {
   const parsed = timelineExportEstimateResponseSchema.safeParse(value);

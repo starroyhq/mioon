@@ -13,7 +13,7 @@ import {
 import type {TimelineExportSettings} from '../../contracts/src/timeline-export-profile.ts';
 import {timelineExportEstimateSchemas} from '../../contracts/src/timeline-export-estimate.ts';
 import type {
-  TimelineExportEstimateResponse, TimelineExportResourceIssue,
+  TimelineExportEstimateResponse, TimelineExportResourceIssue, TimelineExportResourceRejection,
 } from '../../contracts/src/timeline-export-estimate.ts';
 import {timelineExportRangeFields} from '../../contracts/src/timeline-export-range.ts';
 import type {ProjectStore} from './project-file/store.ts';
@@ -25,6 +25,8 @@ import type {TimelineRecord} from './timeline-inputs.ts';
 import {timeline4kRasterBudget} from './timeline-4k-raster-budget.ts';
 import type {TimelineExportRange} from '../../contracts/src/timeline-export-range.ts';
 import {assertProjectStore} from './store-runtime.ts';
+import {readOwnedTimelineAsset} from './timeline-sources.ts';
+import {estimatedVideoPixels} from './timeline-export-picture-estimate.ts';
 
 interface ExportBasis {
   readonly id: string;
@@ -34,10 +36,11 @@ interface ExportBasis {
   readonly height: number;
   readonly durationFrames: number;
 }
-type RasterTimeline = Pick<TimelineRecord,'width'|'height'|'fps'|'clips'|'tracks'>;
+type RasterTimeline = Pick<TimelineRecord, 'revision' | 'width' | 'height' | 'fps' | 'clips' | 'tracks'>;
 interface RasterContext {
   readonly timeline: RasterTimeline;
   readonly range?: TimelineExportRange;
+  readonly sourceSize: (id: string) => {width: number; height: number} | null;
 }
 
 interface ExportInput {
@@ -96,14 +99,14 @@ function targetVolumeAvailableBytes(store: ProjectStore): number | null {
   }
 }
 
-export function timelineExportFrameRateIssue(fps: number, settings: unknown): TimelineExportResourceIssue | null {
+export function timelineExportFrameRateIssue(fps: number, settings: unknown): TimelineExportResourceRejection | null {
   if ((settings as TimelineExportSettings | undefined)?.resolution !== 'short_2160' || timelineExport4KFrameRateSupported(fps))
     return null;
   return {code: 'EXPORT_4K_FPS_UNSUPPORTED', severity: 'error', message: `${fps} fps 暂不支持 4K`,
     details: {fps, maxFps: TIMELINE_EXPORT_4K_MAX_FPS}};
 }
 
-export function timelineExportResourceError(issue: TimelineExportResourceIssue): AppError {
+export function timelineExportResourceError(issue: TimelineExportResourceRejection): AppError {
   return new AppError(issue.code, issue.message, 409, issue.details);
 }
 
@@ -113,14 +116,20 @@ const CRF23_BITS_PER_PIXEL_FRAME = 0.04;
 // Measured on SDR 4K with the software compositor and x264 veryfast.
 const RENDER_PIXELS_PER_SECOND = 150_000_000;
 const MP4_OVERHEAD = 1.01;
+// Advisory high side at a 30% underestimate relative to the actual size.
+const CRF_ESTIMATE_FRACTION = 0.7;
+const MP4_MEDIA_BOX_HEADER_BYTES = 8;
 
 export function estimateTimelineExportRow(timeline: ExportBasis, settings: TimelineExportSettings, frames: number,
     availableBytes: number | null, memoryAllows: (requiredBytes: number) => boolean, raster?: RasterContext): TimelineExportEstimateResponse['estimates'][number] {
   const {effective} = resolveTimelineExportDelivery({...timeline, fps: TIMELINE_EXPORT_4K_MAX_FPS}, settings);
   const {width, height, rateControl, audioKbps} = effective;
   const pixels = width * height, duration = frames / timeline.fps;
+  const videoPixels = rateControl.mode === 'crf' && raster
+    ? estimatedVideoPixels(raster.timeline, effective, frames, settings.resolution === 'short_2160', raster.range, raster.sourceSize)
+    : pixels;
   const videoKbps = rateControl.mode === 'bitrate' ? rateControl.targetKbps
-    : CRF23_BITS_PER_PIXEL_FRAME * pixels * timeline.fps / 1000 * 2 ** ((23 - rateControl.crf) / 6);
+    : CRF23_BITS_PER_PIXEL_FRAME * videoPixels * timeline.fps / 1000 * 2 ** ((23 - rateControl.crf) / 6);
   const estimatedBytes = Math.ceil((videoKbps + audioKbps) * 1000 / 8 * duration * MP4_OVERHEAD);
   const estimatedSeconds = frames ? 1 + pixels * frames / RENDER_PIXELS_PER_SECOND : 0;
   const issues: TimelineExportResourceIssue[] = [];
@@ -138,14 +147,25 @@ export function estimateTimelineExportRow(timeline: ExportBasis, settings: Timel
       details: {requiredBytes},
     });
   }
-  if (estimatedBytes > OUTPUT_ARTIFACT_MAX_BYTES) issues.push({
-    code: 'EXPORT_OUTPUT_TOO_LARGE', severity: 'error', message: '预计成品将超过单个文件 8 GiB 的上限',
+  // Both render profiles verify one H.264 sample per output frame. Each sample
+  // occupies at least one byte in the MP4 media data box, whatever its content.
+  const lowerBoundBytes = rateControl.mode === 'bitrate' ? estimatedBytes : frames ? MP4_MEDIA_BOX_HEADER_BYTES + frames : 0;
+  if (lowerBoundBytes > OUTPUT_ARTIFACT_MAX_BYTES) issues.push({
+    code: 'EXPORT_OUTPUT_TOO_LARGE', severity: 'error', message: rateControl.mode === 'bitrate'
+      ? '预计成品将超过单个文件 8 GiB 的上限' : '成品大小下界已超过单个文件 8 GiB 的上限',
     details: {estimatedBytes, maxBytes: OUTPUT_ARTIFACT_MAX_BYTES},
   });
-  if (availableBytes !== null && estimatedBytes > availableBytes) issues.push({
+  if (availableBytes !== null && lowerBoundBytes > availableBytes) issues.push({
     code: 'EXPORT_DISK_SPACE_INSUFFICIENT', severity: 'error', message: '导出位置的可用空间不足',
     details: {estimatedBytes, availableBytes},
   });
+  if (rateControl.mode === 'crf' && !issues.length) {
+    const warningThresholdBytes = Math.ceil(estimatedBytes / CRF_ESTIMATE_FRACTION);
+    if (warningThresholdBytes > Math.min(OUTPUT_ARTIFACT_MAX_BYTES, availableBytes ?? OUTPUT_ARTIFACT_MAX_BYTES)) issues.push({
+      code: 'EXPORT_CRF_SIZE_UNCERTAIN', severity: 'warning', message: '实际成品大小可能超过导出位置的可用空间或单个文件上限',
+      details: {estimatedBytes, availableBytes, maxBytes: OUTPUT_ARTIFACT_MAX_BYTES, lowerBoundBytes, warningThresholdBytes},
+    });
+  }
   return {resolution: settings.resolution, width, height, estimatedBytes, estimatedSeconds, issues};
 }
 
@@ -166,17 +186,39 @@ export function createTimelineExportResourceServices(store: ProjectStore, {
     const saved = readTimelineStorage(store.db, input.projectId);
     if (!saved || saved.id !== timeline.id) throw invalidTimelineExportBasis();
     const record = saved.timeline as RasterTimeline;
-    if (!record || !Array.isArray(record.clips) || !Array.isArray(record.tracks)) throw invalidTimelineExportBasis();
+    if (!record || record.revision !== timeline.revision || !Array.isArray(record.clips) || !Array.isArray(record.tracks))
+      throw invalidTimelineExportBasis();
     const {exportRange} = timelineExportRangeFields(input);
-    return {timeline: record, ...(exportRange ? {range: exportRange} : {})};
+    const sizes = new Map<string, ReturnType<RasterContext['sourceSize']>>();
+    const sourceSize: RasterContext['sourceSize'] = id => {
+      const known = sizes.get(id);
+      if (known !== undefined) return known;
+      let asset: ReturnType<typeof readOwnedTimelineAsset>;
+      try { asset = readOwnedTimelineAsset(store.db, input.projectId, id); }
+      catch (error) {
+        if (!(error instanceof AppError) || error.code !== 'INSPECTION_BUDGET_EXCEEDED') throw error;
+        asset = null;
+      }
+      const {width, height} = asset ?? {};
+      const size = typeof width === 'number' && typeof height === 'number' &&
+        Number.isSafeInteger(width) && Number.isSafeInteger(height) && width > 0 && height > 0 ? {width, height} : null;
+      sizes.set(id, size);
+      return size;
+    };
+    return {timeline: record, ...(exportRange ? {range: exportRange} : {}), sourceSize};
   }
 
-  function selectedIssue(input: ExportInput, timeline: ExportBasis): TimelineExportResourceIssue | null {
+  function selectedIssues(input: ExportInput, timeline: ExportBasis): TimelineExportResourceIssue[] {
     const settings = (input.exportSettings ?? TIMELINE_EXPORT_DEFAULT_SETTINGS) as TimelineExportSettings;
     const fpsIssue = timelineExportFrameRateIssue(timeline.fps, settings);
-    if (fpsIssue) return fpsIssue;
-    const raster = settings.resolution === 'short_2160' ? rasterContext(timeline, input) : undefined;
-    return estimateTimelineExportRow(timeline, settings, outputFrames(input, timeline), readSpace(), memoryAllows, raster).issues[0] ?? null;
+    if (fpsIssue) return [fpsIssue];
+    const raster = settings.resolution === 'short_2160' || settings.rateControl.mode === 'crf'
+      ? rasterContext(timeline, input) : undefined;
+    return estimateTimelineExportRow(timeline, settings, outputFrames(input, timeline), readSpace(), memoryAllows, raster).issues;
+  }
+
+  function selectedIssue(input: ExportInput, timeline: ExportBasis): TimelineExportResourceRejection | null {
+    return selectedIssues(input, timeline).find(issue => issue.severity === 'error') ?? null;
   }
 
   function estimate(raw: unknown): TimelineExportEstimateResponse {
@@ -200,5 +242,5 @@ export function createTimelineExportResourceServices(store: ProjectStore, {
     };
   }
 
-  return {handlers: {'timeline.export.estimate': estimate}, selectedIssue};
+  return {handlers: {'timeline.export.estimate': estimate}, selectedIssue, selectedIssues};
 }

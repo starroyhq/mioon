@@ -4,7 +4,7 @@ import {timelineExportRangeSchema,isTimelineExportRangeInput,isTimelineExportRan
 import {timelineDeliveryNameSchema,isTimelineDeliveryNameInput,isTimelineDeliveryNameSnapshot} from './timeline-delivery.ts';
 import {timelineExportSettingsSchema,timelineExportDeliverySchema,isTimelineExportDelivery} from './timeline-export-profile.ts';
 import {z} from 'zod';
-import {TIMELINE_EXPORT_RESOURCE_REJECTION_CODES, timelineExportResourceIssueSchema} from './timeline-export-estimate.ts';
+import {TIMELINE_EXPORT_RESOURCE_ISSUE_CODES, timelineExportResourceIssueSchema} from './timeline-export-estimate.ts';
 import {TIMELINE_OUTPUT_MAX_EDGE,timelineOutputPreset} from './timeline-output-geometry.ts';
 import {TIMELINE_SUBTITLE_PROFILE_IDS} from './timeline-subtitle-profile.ts';
 
@@ -70,7 +70,7 @@ export const exportPreflightResponseSchema = z.object({
     assetId: id.optional(),
     clipId: id.optional(),
     shotTitle: z.string().min(1).max(200).optional(),
-  }).strict().refine(issue => !(TIMELINE_EXPORT_RESOURCE_REJECTION_CODES as readonly string[]).includes(issue.code))])).max(EXPORT_PREFLIGHT_LIMITS.issues),
+  }).strict().refine(issue => !(TIMELINE_EXPORT_RESOURCE_ISSUE_CODES as readonly string[]).includes(issue.code))])).max(EXPORT_PREFLIGHT_LIMITS.issues),
 }).strict().superRefine((value, context) => {
   const fail = (path: (string | number)[], message: string) => context.addIssue({code: z.ZodIssueCode.custom, path, message});
   if (value.checks.checkedAssets > value.checks.totalAssets)

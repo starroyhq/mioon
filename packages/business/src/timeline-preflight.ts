@@ -34,7 +34,7 @@ type PreflightInput = {[key: string]: unknown;projectId: string;expectedRevision
 interface PreflightChecks {totalAssets: number;checkedAssets: number;bytesHashed: number;fullDecode: boolean;subtitles?: {profileId: string;fontVerified: boolean;inkMeasured: boolean}}
 interface PreflightIssue {code: string;severity: string;message: string|undefined;assetId?: string;clipId?: string;details?: TimelineExportResourceIssue['details']}
 export interface TimelinePreflightReport {projectId: string;timelineId: string|null;timelineRevision: number|null;expectedRevision: number;snapshotHash: string|null;checkedAt: string;status: string;summary: unknown;checks: PreflightChecks;issues: PreflightIssue[]}
-interface PreflightServiceOptions {signal?: AbortSignal;probe?: (file: string,options: PreflightProbeOptions)=>Promise<PreflightProbeResult>;limits?: PreflightLimits;/** Trusted host fence; never accepted from RPC input. */beforeEffect?:()=>void;exportResources?: Pick<ReturnType<typeof createTimelineExportResourceServices>,'selectedIssue'>}
+interface PreflightServiceOptions {signal?: AbortSignal;probe?: (file: string,options: PreflightProbeOptions)=>Promise<PreflightProbeResult>;limits?: PreflightLimits;/** Trusted host fence; never accepted from RPC input. */beforeEffect?:()=>void;exportResources?: Pick<ReturnType<typeof createTimelineExportResourceServices>,'selectedIssues'>}
 interface PreflightCallOptions {signal?: AbortSignal}
 interface PreflightAttempt {controller: AbortController;task: Promise<unknown>|null}
 
@@ -123,6 +123,11 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
   const report: TimelinePreflightReport={projectId:input.projectId,timelineId:null,timelineRevision:null,expectedRevision:input.expectedRevision,snapshotHash:null,
    checkedAt:new Date().toISOString(),status:'blocked',summary:null,checks:{totalAssets:0,checkedAssets:0,bytesHashed:0,fullDecode:false},issues:[]};
   if(active.size){report.status='incomplete';report.issues=[issue('PREFLIGHT_BUSY','warning')];return report;}
+  let resourceWarning: TimelineExportResourceIssue|undefined;
+  function reportWithResourceWarning(): TimelinePreflightReport{
+   if(resourceWarning&&(report.status==='ready'||report.status==='incomplete'))report.issues.push(resourceWarning);
+   return report;
+  }
   // Refuse a known resource mismatch before source hashing and media probes.
   let basis;
   try{basis=readTimelineExportBasis(store,input.projectId);}
@@ -133,11 +138,13 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
   }
   if(basis&&basis.revision===input.expectedRevision&&basis.durationFrames>0&&
      !timelineExportRangeBoundsIssue(input,basis.durationFrames)){
-   const resourceIssue=resources.selectedIssue(input,basis);
+   const resourceIssues=resources.selectedIssues(input,basis);
+   const resourceIssue=resourceIssues.find(value=>value.severity==='error');
    if(resourceIssue){
     report.timelineId=basis.id;report.timelineRevision=basis.revision;
     report.issues=[resourceIssue];return report;
    }
+   resourceWarning=resourceIssues.find(value=>value.severity==='warning');
   }
   // Format 5 placeholders and pending too-short follow versions block the exact
   // export range before any media hashing or probe work.
@@ -158,7 +165,7 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
   }
   let initial,referencePreparation: Awaited<ReturnType<typeof prepareTimelineReferenceHashes>>;
   try{if(!hasSampledTimelineReferences(store,input.projectId))initial=readSnapshot(input);}
-  catch(error){const failure=error as {code?:string};if(failure.code==='NOT_FOUND')throw error;const [status,code]=classify(error);report.status=status;report.issues=[issue(code,status==='incomplete'?'warning':'error')];return report;}
+  catch(error){const failure=error as {code?:string};if(failure.code==='NOT_FOUND')throw error;const [status,code]=classify(error);report.status=status;report.issues=[issue(code,status==='incomplete'?'warning':'error')];return reportWithResourceWarning();}
   if(initial?.timeline){
    report.timelineId=initial.timeline.id;report.timelineRevision=initial.timeline.revision;
    if(initial.snapshot&&initial.timeline.revision===input.expectedRevision&&
@@ -185,7 +192,7 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
    const unavailable=error as {details?:{assetId?:unknown}};
    const assetId=unavailable.details?.assetId;
    if(typeof assetId==='string'&&initial?.snapshot?.assets.some(asset=>asset.id===assetId))report.issues[0].assetId=assetId;
-   return report;
+   return reportWithResourceWarning();
   }finally{referenceController.abort();}
   if(!initial.timeline){report.issues=[issue('TIMELINE_MISSING')];return report;}
   report.timelineId=initial.timeline.id;report.timelineRevision=initial.timeline.revision;
@@ -210,8 +217,8 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
   }
   catch{report.issues=[issue('INVALID_TIMELINE_SNAPSHOT')];return report;}
   const remaining=limits.timeoutMs-(performance.now()-started);
-  if(remaining<=0){report.status='incomplete';report.issues=[issue('PREFLIGHT_TIMEOUT','warning')];return report;}
-  if(active.size){report.status='incomplete';report.issues=[issue('PREFLIGHT_BUSY','warning')];return report;}
+  if(remaining<=0){report.status='incomplete';report.issues=[issue('PREFLIGHT_TIMEOUT','warning')];return reportWithResourceWarning();}
+  if(active.size){report.status='incomplete';report.issues=[issue('PREFLIGHT_BUSY','warning')];return reportWithResourceWarning();}
   const controller=new AbortController(),signal=external?AbortSignal.any([external,controller.signal]):controller.signal;
   const entry: PreflightAttempt={controller,task:null};active.add(entry);let timedOut=false;
   const budget={sourceBytes:limits.sourceBytes,totalBytes:limits.totalBytes,bytesHashed:referencePreparation.preparedBytes};
@@ -255,7 +262,7 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
    try{beforeEffect?.();current=readSnapshot(input);}
    catch{if(hostEffectFailure)throw hostEffectFailure;current=null;}
    if(!current?.snapshot||timelineSnapshotHash(current.snapshot)!==report.snapshotHash){report.status='stale';report.issues=[issue('PREFLIGHT_STALE')];}
-   return report;
+   return reportWithResourceWarning();
   })();
   return work;
  }

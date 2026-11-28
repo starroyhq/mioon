@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import test from 'node:test';
 import {
-  hasRequestNotAppliedProof, isExportPreflightResponse, operationEffect,
+  EXPORT_PREFLIGHT_LIMITS, hasRequestNotAppliedProof, isExportPreflightResponse, isTimelineExportEstimateResponse, operationEffect,
   TIMELINE_EXPORT_DEFAULT_SETTINGS, timelineExportEstimateResponseSchema,
 } from '@mioon/contracts';
 import {CLIP_TRANSFORM_PROFILE} from '../packages/contracts/src/timeline-clip-transform.ts';
@@ -15,11 +15,15 @@ import type {TimelineExportEstimateResponse} from '../packages/contracts/src/tim
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {readTimelineHeaderStorage} from '../packages/business/src/project-file/timeline-storage.ts';
 import {createServices} from '../packages/business/src/services.ts';
-import {estimateTimelineExportRow} from '../packages/business/src/timeline-export-estimate.ts';
+import {createTimelineExportResourceServices, estimateTimelineExportRow} from '../packages/business/src/timeline-export-estimate.ts';
+import {estimatedVideoPixels} from '../packages/business/src/timeline-export-picture-estimate.ts';
+import {createTimelinePreflightServices} from '../packages/business/src/timeline-preflight.ts';
 import {png} from './helpers/timeline-image-fixtures.ts';
 
 const bitrate = {mode: 'bitrate', targetKbps: 4000} as const;
 const exportSettings = {profileId: 'mp4_h264_v1', resolution: 'short_2160', rateControl: bitrate} as const;
+const crf = {mode: 'crf', quality: 'standard'} as const;
+const crfSettings = {...exportSettings, rateControl: crf};
 const alwaysFits = () => true;
 
 async function fixture(t: test.TestContext, {availableBytes, memoryAllows}: {
@@ -37,8 +41,8 @@ async function fixture(t: test.TestContext, {availableBytes, memoryAllows}: {
   const project = await services.call('project.create', {name: 'Synthetic 4K estimate'}) as {id: string};
   const projectId = project.id;
   const initial = await services.call('timeline.get', {projectId}) as {revision: number; tracks: {id: string}[]};
-  const bytes = png(), assetId = randomUUID(), relativePath = `media/${assetId}.png`;
-  writeFileSync(join(root, relativePath), bytes);
+  const bytes = png({width: 16, height: 16}), assetId = randomUUID(), relativePath = `media/${assetId}.png`;
+  writeFileSync(join(root, relativePath), bytes, {mode: 0o600});
   store.put('assets', {id: assetId, projectId, name: 'Synthetic pixels', mimeType: 'image/png', relativePath,
     sha256: createHash('sha256').update(bytes).digest('hex'), sizeBytes: bytes.length,
     width: 16, height: 16, duration: 0, hasAudio: false, createdAt: new Date().toISOString()});
@@ -145,6 +149,81 @@ test('a saved transform beyond the 4K raster bound blocks preflight before a pro
   assert.equal(f.probes, 0);
 });
 
+test('a CRF space warning survives preflight and allows an exact export request and replay', async t => {
+  let availableBytes = 98;
+  let memoryAllows = true;
+  const space = () => availableBytes;
+  const f = await fixture(t, {availableBytes: space, memoryAllows: () => memoryAllows});
+  const estimateInput = {...f.estimateInput, rateControl: crf};
+  const result = await f.services.call('timeline.export.estimate', estimateInput) as TimelineExportEstimateResponse;
+  assert.ok(isTimelineExportEstimateResponse(result, estimateInput));
+  const {estimatedBytes, issues} = result.estimates.at(-1)!;
+  assert.equal(issues.length, 1);
+  const warning = issues[0]!;
+  assert.equal(warning.code, 'EXPORT_CRF_SIZE_UNCERTAIN');
+  assert.equal(warning.severity, 'warning');
+  assert.ok(estimatedBytes > availableBytes);
+  assert.deepEqual(warning.details, {estimatedBytes, availableBytes, maxBytes: OUTPUT_ARTIFACT_MAX_BYTES,
+    lowerBoundBytes: availableBytes, warningThresholdBytes: Math.ceil(estimatedBytes / 0.7)});
+
+  const input = {...f.binding, exportSettings: crfSettings};
+  const report = await f.services.call('timeline.export.preflight', input) as {status: string; issues: unknown[]; snapshotHash: string; checks: {checkedAssets: number}};
+  assert.ok(isExportPreflightResponse(report, input), JSON.stringify(report));
+  assert.equal(report.status, 'ready', JSON.stringify(report));
+  assert.equal(report.checks.checkedAssets, 1);
+  assert.deepEqual(report.issues, [warning]);
+  assert.equal(isExportPreflightResponse({...report, issues: [{code: warning.code, severity: warning.severity, message: warning.message}]}, input), false);
+  assert.equal(isExportPreflightResponse({...report, issues: [{...warning, severity: 'error'}]}, input), false);
+
+  const constrained = createTimelinePreflightServices(f.store, {
+    exportResources: createTimelineExportResourceServices(f.store, {availableBytes: space, memoryAllows: alwaysFits}),
+    limits: {...EXPORT_PREFLIGHT_LIMITS, totalBytes: 1},
+  });
+  t.after(() => constrained.drain());
+  const incomplete = await constrained.handlers['timeline.export.preflight'](input);
+  assert.ok(isExportPreflightResponse(incomplete, input));
+  assert.equal(incomplete.status, 'incomplete');
+  assert.deepEqual(incomplete.issues.map(issue => issue.code), ['PREFLIGHT_BUDGET', warning.code]);
+  assert.deepEqual(incomplete.issues[1], warning);
+
+  memoryAllows = false;
+  const blocked = await f.services.call('timeline.export.preflight', input) as {status: string; issues: {code: string}[]};
+  assert.equal(blocked.status, 'blocked');
+  assert.deepEqual(blocked.issues.map(issue => issue.code), ['EXPORT_4K_MEMORY_INSUFFICIENT']);
+  memoryAllows = true;
+  const request = {...input, requestId: randomUUID(), purpose: 'export', preflightSnapshotHash: report.snapshotHash};
+  const accepted = await f.services.call('timeline.render', request) as {status: string};
+  assert.equal(accepted.status, 'queued');
+  assert.equal(f.probes, 1);
+  availableBytes--;
+  assert.deepEqual(await f.services.call('timeline.render', request), accepted);
+  assert.equal(f.probes, 1, 'a finalized request is replayed even after the available space drops');
+  const rejection = {...request, requestId: randomUUID()};
+  await assert.rejects(f.services.call('timeline.render', rejection), (error: unknown) =>
+    (error as {code?: string}).code === 'EXPORT_DISK_SPACE_INSUFFICIENT' &&
+    hasRequestNotAppliedProof(error, rejection, {operation: 'timeline.render'}));
+  assert.equal(f.probes, 1);
+});
+
+test('the CRF floor and risk threshold only cross an exact cap when strictly larger', () => {
+  const basis = {id: randomUUID(), revision: 1, width: 1920, height: 1080, fps: 30, durationFrames: 90};
+  const row = (frames: number, free: number | null) => estimateTimelineExportRow(basis, crfSettings, frames, free, alwaysFits);
+  const estimatedBytes = row(90, null).estimatedBytes;
+  const threshold = Math.ceil(estimatedBytes / 0.7);
+  assert.deepEqual(row(0, 0).issues, []);
+  assert.deepEqual(row(90, threshold).issues, []);
+  assert.deepEqual(row(90, threshold - 1).issues.map(issue => issue.code), ['EXPORT_CRF_SIZE_UNCERTAIN']);
+  assert.deepEqual(row(90, 97).issues.map(issue => [issue.code, issue.severity]), [['EXPORT_DISK_SPACE_INSUFFICIENT', 'error']]);
+
+  const sizeCap = OUTPUT_ARTIFACT_MAX_BYTES;
+  const capOnly = row(sizeCap - 8, null).issues;
+  assert.deepEqual(capOnly.map(issue => [issue.code, issue.severity]), [['EXPORT_CRF_SIZE_UNCERTAIN', 'warning']]);
+  assert.equal((capOnly[0]!.details as {availableBytes: number | null}).availableBytes, null);
+  assert.deepEqual(row(sizeCap - 8, sizeCap).issues.map(issue => issue.code), ['EXPORT_CRF_SIZE_UNCERTAIN'],
+    'overlap between the file cap and free space returns only one warning');
+  assert.deepEqual(row(sizeCap - 7, null).issues.map(issue => [issue.code, issue.severity]), [['EXPORT_OUTPUT_TOO_LARGE', 'error']]);
+});
+
 test('future FPS and the artifact size cap have separate details and do not affect other tiers', () => {
   const basis = {id: randomUUID(), revision: 1, width: 1920, height: 1080, fps: 30, durationFrames: 90};
   for (const fps of [24, 25, 30]) {
@@ -193,4 +272,34 @@ test('space lookup does not create the export folder or follow a substituted sym
   symlinkSync(f.store.tempDir, outputFolder, 'dir');
   await assert.rejects(f.services.call('timeline.export.estimate', f.estimateInput),
     (error: unknown) => (error as {code: string}).code === 'PROJECT_UNAVAILABLE' && !String(error).includes(f.root));
+});
+
+test('CRF picture estimate weights visible coverage over the selected frames and falls back for uncertain geometry', () => {
+  const output = {width: 2160, height: 3840};
+  const video = {id: 'video', kind: 'video', orderIndex: 0, hidden: false, muted: false};
+  const wide = {id: 'wide', trackId: video.id, assetId: 'wide', startFrame: 0, durationFrames: 60, sourceInFrame: 0,
+    rect: {x: 0, y: 0, width: 1080, height: 1920}, gain: 1};
+  const tall = {...wide, id: 'tall', assetId: 'tall', startFrame: 60};
+  const timeline = {width: 1080, height: 1920, fps: 30, tracks: [video], clips: [wide, tall]};
+  const sourceSize = (id: string) => id === 'wide' ? {width: 1280, height: 720} : {width: 720, height: 1280};
+  const fullPixels = output.width * output.height;
+  const fittedPixels = output.width ** 2 * 720 / 1280;
+  const wanted = fittedPixels + (fullPixels - fittedPixels) / 6;
+  const approx = (got: number, want: number) => assert.ok(Math.abs(got - want) < 1e-6, `${got} vs ${want}`);
+  approx(estimatedVideoPixels(timeline, output, 60, true, {startFrame: 0, endFrame: 60}, sourceSize), wanted);
+  approx(estimatedVideoPixels(timeline, output, 60, true, {startFrame: 30, endFrame: 90}, sourceSize), (wanted + fullPixels) / 2);
+  assert.equal(estimatedVideoPixels(timeline, output, 60, true, {startFrame: 60, endFrame: 120}, sourceSize), fullPixels);
+  assert.equal(estimatedVideoPixels(timeline, output, 120, true, undefined, () => null), fullPixels);
+  const overlap = {...timeline, tracks: [video, {...video, id: 'overlay', orderIndex: 1}],
+    clips: [wide, {...tall, trackId: 'overlay', startFrame: 50}]};
+  assert.equal(estimatedVideoPixels(overlap, output, 110, true, undefined, sourceSize), fullPixels);
+  const resized = {...timeline, width: 720, height: 1280, clips: [
+    {...wide, rect: {x: 0, y: 0, width: 720, height: 1280}}]};
+  const resizedOutput = {width: 1080, height: 1920};
+  const resizedPixels = resizedOutput.width * resizedOutput.height;
+  const resizedPicture = resizedOutput.width ** 2 * 720 / 1280;
+  approx(estimatedVideoPixels(resized, resizedOutput, 60, false, undefined, sourceSize),
+    resizedPicture + (resizedPixels - resizedPicture) / 9);
+  const transformed = {...timeline, clips: [{...wide, transform: {rotation: 30}}, tall]};
+  assert.equal(estimatedVideoPixels(transformed, output, 120, true, undefined, sourceSize), fullPixels);
 });
