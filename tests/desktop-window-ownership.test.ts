@@ -11,6 +11,7 @@ import {createProjectEntryControlBroker} from '../apps/desktop/src/project-entry
 import {ASSET_IMPORT_CHANNEL,createAssetImportHost,importNativeAssetPath} from '../apps/desktop/src/asset-import-host.ts';
 import {desktopAppDirectories} from '../apps/server/src/project-host/directories.ts';
 import {isProjectId,projectApiPath} from '../packages/contracts/src/project-file.ts';
+import {PROJECT_READER_UPDATE_REQUIRED} from '../packages/contracts/src/project-reader-requirements.ts';
 import {DEFAULT_UI_PREFERENCES} from '../packages/contracts/src/ui-preferences.ts';
 import type {DesktopHarnessOptions, DesktopHarnessRecords, DesktopHarnessWindow, DesktopHarnessWindowConfig, DesktopHarnessApp, DesktopHarnessMenuList, DesktopHarnessChild, DesktopHarnessBackend, DesktopHarnessSession, DesktopHarnessDialog, DesktopHarnessConnection, DesktopHarnessFrame} from './helpers/strict-desktop-harness-types.ts';
 import {desktopMenuHarness} from './helpers/desktop-menu-harness.ts';
@@ -82,6 +83,7 @@ async function until(predicate: () => unknown) {
 // Deferred gates expose causality; they do not claim native event timing.
 async function harness(t: test.TestContext, options: DesktopHarnessOptions<DesktopHarnessWindow> & {
   beforeCommit?(index: number): Promise<void> | undefined;
+  argv?: readonly string[];
 } = {}) {
   const nativeTray = desktopTrayHarness();
   const launcherStateRoot = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-launcher-owner-'));
@@ -247,11 +249,11 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
     }
   }
   const context = vm.createContext({ FCP_EXPORT_NATIVE_CHANNEL, createFcpExportHost, fcpNativeInvalid, fcpNativeUnavailable,
-    finalCutInstalled: async () => false, openInFinalCut: async () => false, createAssetRelinkHost, createProjectLocationHelp, NATIVE_ASSET_MEDIA_CHANNEL, createProjectEntryDesktopHost, PROJECT_ENTRY_DESKTOP_CHANNEL, PROJECT_ENTRY_DESKTOP_PENDING_OPEN_EVENT:pendingOpenChannel, desktopWindowBackground, createDesktopAppearanceCache:()=>createDesktopHarnessAppearanceCache(options.cache), probeDesktopProjectLocation:options.projectLocation??(async()=>({fileSystem:'apfs',isLocal:true,volumeReadOnly:false,permissionBits:true,cloud:'not-reported'})), projectLocationDecision, desktopAppDirectories, isProjectId, projectApiPath, readNativeBackendMetadata: async () => ({revision:0,preferences:DEFAULT_UI_PREFERENCES,recentOpened:{},recoveredDefaults:false,writable:true}), app, applicationMenuTemplate, createMenuCommandHost, menuCommandGestureScript, MENU_COMMAND_CHANNEL, MENU_COMMAND_EVENT, MENU_COMMAND_IDS, queueMicrotask, createDesktopTray, ...nativeTray, createAppLanguageHost, nt: nativeText, setNativeLanguageReader: () => {}, resolveLocale, APP_LANGUAGE_CHANNEL, readAppLanguagePreference: () => null, writeAppLanguagePreference: () => {}, process: { platform: 'darwin', env: {}, on() {} }, path, randomBytes, randomUUID,
+    finalCutInstalled: async () => false, openInFinalCut: async () => false, createAssetRelinkHost, createProjectLocationHelp, NATIVE_ASSET_MEDIA_CHANNEL, createProjectEntryDesktopHost, PROJECT_ENTRY_DESKTOP_CHANNEL, PROJECT_ENTRY_DESKTOP_PENDING_OPEN_EVENT:pendingOpenChannel, desktopWindowBackground, createDesktopAppearanceCache:()=>createDesktopHarnessAppearanceCache(options.cache), probeDesktopProjectLocation:options.projectLocation??(async()=>({fileSystem:'apfs',isLocal:true,volumeReadOnly:false,permissionBits:true,cloud:'not-reported'})), projectLocationDecision, desktopAppDirectories, isProjectId, projectApiPath, readNativeBackendMetadata: async () => ({revision:0,preferences:DEFAULT_UI_PREFERENCES,recentOpened:{},recoveredDefaults:false,writable:true}), app, applicationMenuTemplate, createMenuCommandHost, menuCommandGestureScript, MENU_COMMAND_CHANNEL, MENU_COMMAND_EVENT, MENU_COMMAND_IDS, queueMicrotask, createDesktopTray, ...nativeTray, createAppLanguageHost, nt: nativeText, setNativeLanguageReader: () => {}, resolveLocale, APP_LANGUAGE_CHANNEL, readAppLanguagePreference: () => null, writeAppLanguagePreference: () => {}, process: { platform: 'darwin', env: {}, argv: options.argv, on() {} }, path, randomBytes, randomUUID,
     __MIOON_DESKTOP_CHANNEL__: 'development', desktopIdentity: { identityForChannel: () => ({ channel: 'development', productName: 'Synthetic', appId: 'synthetic' }) },
     prepareDesktopStorage: () => ({ userData: '/synthetic/userData', dataDir: '/synthetic/data', configFile: '/synthetic/config' }),
     initializeDesktopPrivateStorage: () => {}, privateStorageHelperFile: () => '/synthetic/native/mioon_private_storage.node',
-    CLIP_LUT_RECOVERY_CHANNEL, createDesktopLutRecoveryHost, calculateWorkspaceScope,
+    CLIP_LUT_RECOVERY_CHANNEL, createDesktopLutRecoveryHost, calculateWorkspaceScope, PROJECT_READER_UPDATE_REQUIRED,
     WORKSPACE_TOOLS_CHANNEL, createWorkspaceToolsHost, WORKSPACE_NATIVE_CHANNEL, createWorkspaceNativeHost, ASSET_IMPORT_CHANNEL, createAssetImportHost, importNativeAssetPath, createProjectFileOpener, projectFileArguments,
     nativeTheme: Object.assign(new EventEmitter(), {shouldUseDarkColors:true}),
     createDesktopWindowAppearance,
@@ -466,6 +468,31 @@ test('real main keeps a later valid OS file queued until the earlier failure she
  await until(()=>sheets===1);await tick();assert.deepEqual(probed,[bad]);assert.deepEqual(opened,[bad]);assert.deepEqual(Array.from(f.get('projectFiles.pending')),[good]);
  sheet.resolve({response:0});await readyColdEditor(f);
  assert.deepEqual(opened,[bad,good]);assert.deepEqual(probed,[bad,good]);assert.equal(sheets,1);assert.equal(f.r.windows.filter(window=>window.urls.at(-1)?.includes('?project=')).length,1);assert.equal(f.fatals().length,0);
+});
+
+test('real main offers the same reader update action for macOS file intents and command-line launches', async t => {
+  const file = '/synthetic/Movies/Future.mioon';
+  for (const source of ['open-file', 'startup-argv', 'second-instance'] as const) await t.test(source, async t => {
+    const opened: string[] = [];
+    const f = await harness(t, {
+      ...(source === 'open-file' ? {beforeReady: app => {app.emit('open-file', {preventDefault() {}}, file);}} : {}),
+      ...(source === 'startup-argv' ? {argv: ['mioon', file]} : {}),
+      projectControl: (_index, port) => ({
+        ...port, openPath: async ({projectFile}) => {opened.push(projectFile); throw failure(PROJECT_READER_UPDATE_REQUIRED);},
+      }),
+      dialog: () => ({response: 1}),
+    });
+    await f.initial();
+    if (source === 'second-instance') f.app.emit(source, {}, ['mioon', 'Future.mioon'], '/synthetic/Movies');
+    await until(() => f.r.dialogs.length > 0);
+    assert.deepEqual(opened, [file]);
+    assert.equal(f.r.dialogs.length, 1);
+    const [notice] = f.r.dialogs;
+    assert.equal(notice.message, '需要更新 Mioon');
+    assert.match(notice.detail!, /当前版本不支持/u);
+    assert.deepEqual(Array.from(notice.buttons!), ['检查更新', nativeText('native.acknowledge')]);
+    assert.ok(f.r.windows.every(window => !window.urls.at(-1)?.includes('?project=')));
+  });
 });
 
 test('real main project-entry IPC refuses settings children, their blocked parent and a replaced frame',async t=>{

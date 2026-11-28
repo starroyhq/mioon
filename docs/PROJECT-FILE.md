@@ -235,6 +235,7 @@ P2 当时不改变公开地址、落盘格式、Mio 请求字节、生产入口�
 | `PROJECT_LOCKED` | 已在另一个 Mioon 中打开（12-03b） | 同上 |
 | `PROJECT_ACCESS_DENIED` | 系统明确返回 EACCES/EPERM（含隐私授权拒绝），HTTP 403；不从通用 SQLITE_CANTOPEN 猜权限 | 同上；按项目寻址时 `PROJECT_UNAVAILABLE.details.reason` 保留此码，目录 availability 为 `access-denied` |
 | `PROJECT_FORMAT_NEWER` | 格式比当前 Mioon 支持的新（12-03c） | 另带 `database`（`project`、`history` 或 `cache`，本机记录有自己的格式版本）、`formatVersion`、`supportedFormatVersion` |
+| `PROJECT_READER_UPDATE_REQUIRED` | 格式 6 声明了当前 Mioon 尚未实现的功能 | HTTP 409，另带 `database: 'project'`、`formatVersion` 和 `unsupportedFeatures` |
 | `PROJECT_FORMAT_UPGRADE_REQUIRED` | 格式 3 项目等待可写打开确认 | 项目 ID、内容序号、内容令牌、当前和目标的项目与本机记录版本 |
 | `PROJECT_FORMAT_BACKUP_FAILED` | 无法创建或校验升级前备份 | 格式升级中止，保留原格式 |
 | `PROJECT_INVALID` | 文件损坏、不是项目文件、结构对不上，或在只读位置（12-03d） | 同第一行，另带 `reason`（`PROJECT_INVALID_REASONS`） |
@@ -350,6 +351,9 @@ node tests/helpers/project-file-schema-derivation.ts --check
 ### 格式 6（开发渠道）
 
 - 开发渠道以 `MIOON_FORMAT6_DEV=1` 显式启用格式 6。默认新建格式 5，打开格式 5 时仍使用格式 5。未启用的宿主和旧应用在读取正文前以 `PROJECT_FORMAT_NEWER` 拒绝格式 6。
+- 格式 6 的 `projects.data.requiredReaderFeatures` 是打开项目所需的功能 ID 列表。缺省和空列表等价，当前写出的项目省略此字段。最多 32 项，每项最多 64 字符，使用小写字母、数字和连字符，以字母开头，且每项唯一。项目级列表也覆盖没有时间线的项目，并随单文件、备份和命名版本保存。
+- 需要新增读取能力的写入方，应在同一事务中记录功能 ID 和相应数据。非 30 fps 的时间线必须声明 `timeline-fps-v1`。只要现有内容或可回放记录仍依赖一项能力，该项要求就要保留。当前版本仅接受 30 fps。
+- 支持格式 6 的客户端先检查功能列表，再读取时间线、验证完整表清单或准备本机记录。遇到未支持的 ID，显示「需要更新 Mioon」，并拒绝打开及写入。备份或版本是未来项目时，恢复也返回同一错误。
 - 格式 5→6 先核验格式 5 的完整结构，并沿用配对备份及升级确认。项目版本标记在迁移事务内更新。原生片段行、项目内容令牌、本机记录和其他数据库结构保留原值。
 - 时间映射存在 `timeline_clips.data` 的 `timing` 中。缺省时序表示 1× 正放、保持音调、关闭补帧。片段 `sourceInFrame` 与 `sourceSpanFrames` 是可见连续源范围的整帧投影，切分和修剪保留原映射相位。备份、命名版本、复制、恢复和受信模板使用已有原子协议。
 - `project.get` 的时间线在格式 6 显示 `capabilities.speed` 为 true。变速和定格各形成一个统一剪辑历史动作。对仅有采样指纹的素材，使用现有 `asset.media.prepare` 固定完整 SHA-256 后再请求定格。

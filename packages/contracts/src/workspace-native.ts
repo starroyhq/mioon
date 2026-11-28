@@ -1,6 +1,7 @@
 import {z} from 'zod';
 import {projectBackupSchemas, projectBackupRestoreResponseSchema} from './project-backups.ts';
 import {projectIdSchema} from './project-file.ts';
+import {PROJECT_READER_UPDATE_REQUIRED} from './project-reader-requirements.ts';
 export const WORKSPACE_NATIVE_CHANNEL='mioon:workspace-native';
 const identity=z.object({projectId:z.string().uuid(),exportId:z.string().uuid()}).strict();
 export const backupRestoreSelectionSchema=z.object({projectId:projectIdSchema,backupId:z.string().uuid(),requestId:z.string().uuid()}).strict();
@@ -28,7 +29,7 @@ export interface ProjectPackagesNativeBridge {
 export const PROJECT_BACKUP_NATIVE_ERROR_CODES = [
  'PROJECT_ACCESS_DENIED','PROJECT_BACKUP_CHANGED','PROJECT_BACKUP_RESTORE_CHANGED',
  'PROJECT_BACKUP_NOT_FOUND','PROJECT_BACKUP_INDEX_INVALID','PROJECT_BACKUP_RESTORE_BUSY',
- 'PROJECT_LOCATION_REJECTED','PROJECT_LOCATION_INVALID','WORKSPACE_NATIVE_UNAVAILABLE',
+ 'PROJECT_LOCATION_REJECTED','PROJECT_LOCATION_INVALID','WORKSPACE_NATIVE_UNAVAILABLE',PROJECT_READER_UPDATE_REQUIRED,
 ] as const;
 export type ProjectBackupNativeErrorCode=typeof PROJECT_BACKUP_NATIVE_ERROR_CODES[number];
 export type ProjectBackupNativeResult<T>={ok:true;value:T}|{ok:false;code:ProjectBackupNativeErrorCode};

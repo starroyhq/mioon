@@ -31,7 +31,7 @@ export type ProjectCloseReason = typeof PROJECT_CLOSE_REASONS[number];
  * the PROJECT_INVALID reason an open would report (`read-only` and so on).
  * A hint only: opening the project decides. */
 export type ProjectAvailability =
-  | {readonly state: 'open' | 'busy' | 'available' | 'locked' | 'missing' | 'access-denied' | 'upgrade-required'}
+  | {readonly state: 'open' | 'busy' | 'available' | 'locked' | 'missing' | 'access-denied' | 'upgrade-required' | 'update-required'}
   | {readonly state: 'invalid'; readonly reason: string};
 
 /** Idle grace after the last request ends: CLI, MCP and agents send requests

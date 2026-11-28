@@ -6,9 +6,11 @@ import {backup, DatabaseSync} from 'node:sqlite';
 import {createPrivateTemporaryDirectory, ensurePrivateDirectory, validateManagedFile} from '@mioon/contracts/private-storage';
 import {AppError} from '../../../contracts/src/app-error.ts';
 import {isProjectId, PROJECT_DATABASE_NAMES} from '../../../contracts/src/project-file.ts';
+import {PROJECT_READER_UPDATE_REQUIRED} from '../../../contracts/src/project-reader-requirements.ts';
 import {isProjectFileHeld} from './held-files.ts';
 import {isAppLibraryHeld} from '../app-db/connection.ts';
 import {projectFileError} from './errors.ts';
+import {assertProjectReaderRequirements} from './reader-requirements.ts';
 import {FORMAT4_PROJECT_SCHEMA_VERSION, isSequenceProjectFormat, PROJECT_FILE_APPLICATION_ID, PROJECT_FILE_SCHEMA_VERSION, SCHEMA_VERSION_TABLE_SQL} from './schema/databases.ts';
 import type {ProjectFileFormat} from './schema/databases.ts';
 import {projectManifestForVersion} from './schema/format-manifests.ts';
@@ -88,6 +90,11 @@ export function readCopiedProjectIdentity(db: DatabaseSync, applicationId: numbe
   if (!expected || db.prepare(`SELECT sql FROM ${schema}.sqlite_schema WHERE type='table' AND name='schema_version'`).get()?.sql !== SCHEMA_VERSION_TABLE_SQL) throw invalid('format');
   const versions = db.prepare(`SELECT version FROM ${schema}.schema_version`).all();
   if (versions.length !== 1 || versions[0].version !== formatVersion) throw invalid('format');
+  try {assertProjectReaderRequirements(db, schema, formatVersion);}
+  catch (error) {
+    if (error instanceof AppError && error.code === PROJECT_READER_UPDATE_REQUIRED) throw error;
+    throw invalid('content', error);
+  }
   const diff = compareManifest(readSchemaManifest(db, schema), expected.entries);
   if (diff.changed.length || diff.missing.length || diff.unexpected.length) throw invalid('schema');
   const rows = db.prepare(`SELECT singleton,projectId,contentSequence,contentToken FROM ${schema}.project_file`).all(), row = rows[0];
@@ -274,6 +281,8 @@ export function publishProjectCopyFile(temporary:string,destination:string,optio
 export async function createProjectBackup(store: ProjectStore, destination: string): Promise<ProjectBackupIdentity> {
   if (!isProjectStore(store)) throw new TypeError('Backup requires the exact live project store');
   if (store.db.isTransaction) throw new TypeError('Backup cannot start inside a transaction');
+  const formatVersion = pragma(store.db, 'project.user_version');
+  if (typeof formatVersion === 'number') assertProjectReaderRequirements(store.db, 'project', formatVersion);
   const target = path.resolve(destination), parent = path.dirname(target);
   ensurePrivateDirectory(parent);
   if (lstatSync(target, {throwIfNoEntry: false})) throw projectFileError('PROJECT_FILE_EXISTS', {database: 'project', reason: 'exists'});

@@ -1,4 +1,5 @@
 import type {ProjectFeatureAdmission} from '../project-feature-admission.ts';
+import {PROJECT_READER_UPDATE_REQUIRED} from '../../../../packages/contracts/src/project-reader-requirements.ts';
 import React, {useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {Dialog} from '@mioon/ui/components/dialog';
 import {Input} from '@mioon/ui/components/input';
@@ -21,7 +22,9 @@ export interface ProjectHistoryDialogProps {
   readonly onClose: () => void; readonly onRestored: (projectId: string) => void; readonly onOpenProject: (projectId: string) => void;
 }
 function ReadFailure({code, retry}: {code: string; retry: () => void}) {
-  const {t} = useI18n(); return <WorkbenchAlert tone="danger" actions={<WorkbenchButton onClick={retry}>{t('projectFile.common.retry')}</WorkbenchButton>}>{t('projectHistory.error.read')} <code>{code}</code></WorkbenchAlert>;
+  const {t} = useI18n();
+  if (code === PROJECT_READER_UPDATE_REQUIRED) return <WorkbenchAlert tone="warning">{t('projectFile.open.readerUpdate.body')}</WorkbenchAlert>;
+  return <WorkbenchAlert tone="danger" actions={<WorkbenchButton onClick={retry}>{t('projectFile.common.retry')}</WorkbenchButton>}>{t('projectHistory.error.read')} <code>{code}</code></WorkbenchAlert>;
 }
 export function NativeBackupFailure({code,action='choose'}: {code: string | null; action?:'choose'|'reveal'}) {
   const {t} = useI18n();

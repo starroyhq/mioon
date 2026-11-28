@@ -15,6 +15,7 @@ import * as mixLoudnessRpc from '../apps/web/src/timeline-mix-loudness-rpc.ts';
 import * as mixLoudnessContracts from '@mioon/contracts/timeline-mix-loudness';
 import * as projectFile from '../packages/contracts/src/project-file.ts';
 import * as projectAddressing from '../packages/contracts/src/project-addressing.ts';
+import { PROJECT_READER_UPDATE_REQUIRED } from '../packages/contracts/src/project-reader-requirements.ts';
 import * as outputLocale from '../packages/contracts/src/output-locale.ts';
 import * as projectOpening from '../apps/web/src/project-open-state.ts';
 import { rpc as realRpc } from '../apps/web/src/api.ts';
@@ -88,6 +89,7 @@ function harness({ fetchImpl, readerImpl, refreshImpl, rpcImpl, actualRefresh = 
     notify: (message?: (string&{ detail?: unknown; })|(i18nCore.DisplayMessage&{ detail?: unknown; })|null|undefined, type: string = 'success') => notifications.push({ message: feedback.renderImportFeedback('zh-Hans', message), descriptor: message, type }),
     fileInput: { current: input }, FileReader, rpc: (operation: string, input: ImportInput, options: Parameters<typeof realRpc>[2]) => { requests.push({ operation, input }); return (rpcImpl || api.rpc)(operation, input, options); },
     useCallback: <T>(fn: T) => fn, reconcilePending() {}, readGenerationProviderDirectory, emptyData: {}, setData: (value: unknown) => stateWrites.push(['data', value]),
+    PROJECT_READER_UPDATE_REQUIRED,
     providersRef: { current: [] }, setProviders: (value: unknown) => stateWrites.push(['providers', value]),
     mioFollowCandidate: { current: null }, setMioFollow() {},
     // This fixture owns no editing claims; match the empty-owner refresh wait.

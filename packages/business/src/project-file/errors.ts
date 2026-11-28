@@ -1,4 +1,5 @@
 import {AppError} from '../../../contracts/src/app-error.ts';
+import type {PROJECT_READER_UPDATE_REQUIRED} from '../../../contracts/src/project-reader-requirements.ts';
 import {PROJECT_FILE_MOVED} from '../../../contracts/src/project-file.ts';
 import type {PROJECT_FILE_EXISTS, ProjectInvalidReason, ProjectOpenErrorCode} from '../../../contracts/src/project-file.ts';
 import type {DatabaseKind} from './schema/databases.ts';
@@ -28,7 +29,9 @@ export interface ProjectFileErrorDetails {
   readonly supportedFormatVersion?: number;
 }
 
-const ERRORS: Readonly<Record<ProjectFileKernelErrorCode, {readonly status: number; readonly message: string}>> = {
+type StandardProjectFileErrorCode = Exclude<ProjectFileKernelErrorCode, typeof PROJECT_READER_UPDATE_REQUIRED>;
+
+const ERRORS: Readonly<Record<StandardProjectFileErrorCode, {readonly status: number; readonly message: string}>> = {
   PROJECT_MISSING: {status: 404, message: '找不到项目文件'},
   PROJECT_LOCKED: {status: 409, message: '项目已在另一个 Mioon 中打开'},
   PROJECT_ACCESS_DENIED: {status: 403, message: '系统没有允许 Mioon 访问项目所在的位置'},
@@ -40,7 +43,7 @@ const ERRORS: Readonly<Record<ProjectFileKernelErrorCode, {readonly status: numb
 };
 export const MAX_REPORTED_DIFFERENCES = 20;
 
-export function projectFileError(code: Exclude<ProjectFileKernelErrorCode, typeof PROJECT_FILE_MOVED>, details: ProjectFileErrorDetails): AppError {
+export function projectFileError(code: Exclude<StandardProjectFileErrorCode, typeof PROJECT_FILE_MOVED>, details: ProjectFileErrorDetails): AppError {
   const {status, message} = ERRORS[code];
   const reported = details.differences && details.differences.length > MAX_REPORTED_DIFFERENCES
     ? {...details, differences: details.differences.slice(0, MAX_REPORTED_DIFFERENCES)}

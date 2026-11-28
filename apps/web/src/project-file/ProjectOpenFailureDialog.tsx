@@ -1,6 +1,7 @@
 import React, {useRef} from 'react';
 import type { ReactElement, ReactNode } from 'react';
 import { Dialog } from '@mioon/ui/components/dialog';
+import {PROJECT_READER_UPDATE_REQUIRED} from '../../../../packages/contracts/src/project-reader-requirements.ts';
 import { WorkbenchAlert, WorkbenchButton, WorkbenchDialogContent } from '@mioon/ui/components/workbench-controls';
 import { Info, WorkbenchIcon } from '@mioon/ui/components/workbench-icons';
 import { WorkbenchTooltip } from '@mioon/ui/components/workbench-tooltip';
@@ -83,6 +84,11 @@ export function ProjectOpenFailureDialog(props: ProjectOpenFailureDialogProps): 
     case 'PROJECT_LOCKED':
       title = t('projectFile.open.locked.title', { name });
       buttons = close(t('projectFile.open.locked.ok'), true);
+      break;
+    case PROJECT_READER_UPDATE_REQUIRED:
+      title = t('projectFile.open.readerUpdate.title');
+      body = t('projectFile.open.readerUpdate.body');
+      buttons = <>{close(t('native.acknowledge'), !props.onCheckUpdate)}{run('update', t('projectFile.open.newer.checkUpdate'), props.onCheckUpdate, true)}</>;
       break;
     case 'PROJECT_FORMAT_NEWER': {
       // Only the project file's own format is "this file"; history and cache are this computer's records.

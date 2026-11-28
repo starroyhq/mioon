@@ -1,6 +1,7 @@
 /** Errors of project-addressed requests and of the project host. Imports only
  * contracts without Node, so the web app can use the codes and statuses. */
 import {AppError} from '../../../../packages/contracts/src/app-error.ts';
+import {PROJECT_READER_UPDATE_REQUIRED} from '../../../../packages/contracts/src/project-reader-requirements.ts';
 import {PROJECT_FILE_EXISTS, PROJECT_FILE_MOVED, PROJECT_INVALID_REASONS, PROJECT_OPEN_ERROR_CODES} from '../../../../packages/contracts/src/project-file.ts';
 import type {ProjectAddressErrorCode, ProjectInvalidReason, ProjectOpenErrorCode} from '../../../../packages/contracts/src/project-file.ts';
 
@@ -61,9 +62,9 @@ export function projectUnavailable(projectId: string, reason: ProjectOpenErrorCo
 const isOpenFailure = (error: unknown): error is AppError & {readonly code: ProjectOpenErrorCode} =>
   error instanceof AppError && (PROJECT_OPEN_ERROR_CODES as readonly string[]).includes(error.code);
 
-/** Kernel open failures become PROJECT_UNAVAILABLE; any other value is returned unchanged. */
+/** The update instruction keeps its dedicated code across project addressing. */
 export function asProjectUnavailable(projectId: string, error: unknown): unknown {
-  return isOpenFailure(error) ? projectUnavailable(projectId, error.code, error) : error;
+  return isOpenFailure(error) && error.code !== PROJECT_READER_UPDATE_REQUIRED ? projectUnavailable(projectId, error.code, error) : error;
 }
 
 /** SQLite's extended code for a write to a database file that was moved or

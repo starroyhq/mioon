@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import {PROJECT_READER_UPDATE_REQUIRED} from './project-reader-requirements.ts';
 import {PROJECT_INVALID_REASONS} from './project-file.ts';
 
 const version = z.number().int().min(1).max(1_000_000);
@@ -10,6 +11,7 @@ export const projectEntryOpenFailureSchema = z.discriminatedUnion('code', [
   z.object({code: z.literal('PROJECT_ACCESS_DENIED')}).strict(),
   z.object({code: z.literal('PROJECT_INVALID'), reason: z.enum(PROJECT_INVALID_REASONS)}).strict(),
   z.object({code: z.literal('PROJECT_HISTORY_DIVERGED')}).strict(),
+  z.object({code: z.literal(PROJECT_READER_UPDATE_REQUIRED)}).strict(),
   z.object({
     code: z.literal('PROJECT_FORMAT_NEWER'), database: z.enum(['project', 'history', 'cache']),
     formatVersion: version, supportedFormatVersion: version,

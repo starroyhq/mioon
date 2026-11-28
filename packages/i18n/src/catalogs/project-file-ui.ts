@@ -232,6 +232,8 @@ export const projectFileUiMessages = {
   'projectFile.open.newer.body': { 'zh-Hans': "项目格式 {format} · 当前支持至 {supported}", 'zh-Hant': "專案格式 {format} · 目前支援至 {supported}", en: "Project format {format} · Supported up to {supported}", ja: "プロジェクト形式 {format} · 対応上限 {supported}" },
   'projectFile.open.newerRecords.title': { 'zh-Hans': '本机记录来自更新版本的 Mioon', 'zh-Hant': '本機記錄來自較新版本的 Mioon', en: 'This computer’s records are from a newer Mioon', ja: 'このコンピューターの記録は新しいバージョンの Mioon で作られています' },
   'projectFile.open.newerRecords.body': { 'zh-Hans': "本机记录格式 {format} · 当前支持至 {supported}", 'zh-Hant': "本機記錄格式 {format} · 目前支援至 {supported}", en: "Local records format {format} · Supported up to {supported}", ja: "ローカル記録の形式 {format} · 対応上限 {supported}" },
+  'projectFile.open.readerUpdate.title': { 'zh-Hans': '需要更新 Mioon', 'zh-Hant': '需要更新 Mioon', en: 'Update Mioon to open this project', ja: 'Mioon のアップデートが必要です' },
+  'projectFile.open.readerUpdate.body': { 'zh-Hans': '此项目使用了当前版本不支持的功能。请更新 Mioon 后再试。', 'zh-Hant': '此專案使用了目前版本不支援的功能。請更新 Mioon 後再試。', en: 'This project uses features that this version does not support. Update Mioon and try again.', ja: 'このプロジェクトには現在のバージョンで未対応の機能が含まれています。Mioon を更新してから再度お試しください。' },
   'projectFile.open.newer.checkUpdate': { 'zh-Hans': '检查更新', 'zh-Hant': '檢查更新', en: 'Check for updates', ja: 'アップデートを確認' },
   'projectFile.open.invalid.title': { 'zh-Hans': '无法打开「{file}」', 'zh-Hant': '無法開啟「{file}」', en: 'Cannot open {file}', ja: '「{file}」を開けません' },
   'projectFile.open.invalid.body': { 'zh-Hans': "文件已损坏或不是 Mioon 项目。", 'zh-Hant': "檔案已損毀或不是 Mioon 專案。", en: "The file is damaged or is not a Mioon project.", ja: "ファイルが破損しているか、Mioon プロジェクトではありません。" },

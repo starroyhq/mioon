@@ -11,7 +11,7 @@ import {copyProjectToNewFile} from '../../../../packages/business/src/project-fi
 import {FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT6_PROJECT_SCHEMA_VERSION, isSequenceProjectFormat} from '../../../../packages/business/src/project-file/schema/databases.ts';
 import type {ProjectFileFormat, SequenceProjectFormat} from '../../../../packages/business/src/project-file/schema/databases.ts';
 import {captureClosedProjectSnapshot} from '../../../../packages/business/src/project-file/closed-copy.ts';
-import {inspectProjectFormatHeader, projectReadFormatOptions} from '../../../../packages/business/src/project-file/connection.ts';
+import {assertProjectReaderRequirementsReadOnly, projectReadFormatOptions} from '../../../../packages/business/src/project-file/connection.ts';
 import {withLockedProjectCopy} from '../../../../packages/business/src/project-file/adopt-copy.ts';
 import {createProjectCopyStagingDirectory, validateProjectCopyStagingDirectory, inspectCopiedProjectFile, openProjectBackup,
   publishProjectCopyDirectory, publishProjectCopyFile, syncCopiedFile, syncCopiedDirectory} from '../../../../packages/business/src/project-file/backup.ts';
@@ -144,13 +144,13 @@ export function createProjectCopyActions({manager, library, directories, assertP
     if (!published) validateProjectCopyStagingDirectory(intent.stageDirectory);
     if (!published) {
       if (!matches(stageFile(intent), intent.stageIdentity)) throw copyFailure('PROJECT_COPY_TARGET_CHANGED', '准备好的项目文件已被替换。');
-      inspectProjectFormatHeader(stageFile(intent), readFormat);
+      assertProjectReaderRequirementsReadOnly(stageFile(intent), readFormat);
       const prepared = inspectCopiedProjectFile(stageFile(intent));
       if (prepared.projectId !== intent.projectId || prepared.contentSequence !== response.contentSequence || prepared.contentToken !== response.contentToken) {
         throw copyFailure('PROJECT_COPY_TARGET_CHANGED', '准备好的项目内容已改变，未发布。');
       }
       if (intent.operation === 'project.template.instantiate') catalog.verifyPreparedAssets(intent.input.templateId, intent.input.templateVersion, intent.stageDirectory!);
-    } else if (!manager.status(intent.projectId)) inspectProjectFormatHeader(target, readFormat);
+    } else if (!manager.status(intent.projectId)) assertProjectReaderRequirementsReadOnly(target, readFormat);
     if (intent.operation === 'project.adopt-copy' && !published && !replace) {
       checkAdopt(intent);
       const recheck = path.join(ensureWork(intent), 'recheck');
@@ -320,6 +320,7 @@ export function createProjectCopyActions({manager, library, directories, assertP
     if (operation === 'project.adopt-copy' && library.registry.copyOf({projectId: sourceProjectId, projectFile: sourceFile}) === null) {
       throw copyFailure('PROJECT_COPY_SOURCE_CHANGED', '所选文件不再是仍有登记原件的副本。');
     }
+    if (!template && readFormat?.allowFormat6) assertProjectReaderRequirementsReadOnly(sourceFile, readFormat);
     library.registry.assertCanRegister?.(); assertAllowed();
     let intent = save({version: 1, operation, input, digest: digestFor(operation, input), projectId: randomUUID(), contentToken: randomBytes(16).toString('hex'),
       sourceFile, sourceProjectId, sourceIdentity, sourceStamp: template?.sourceStamp ?? (input as ProjectAdoptCopyInput).sourceStamp,

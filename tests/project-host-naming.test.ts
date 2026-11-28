@@ -107,7 +107,11 @@ test('types, naming and errors import no Node module, so the web app can use the
   assert.deepEqual(importedModules(read(path.join(HOST, 'types.ts'))), []);
   assert.deepEqual(importedModules(read(path.join(HOST, 'naming.ts'))), []);
   const contracts = [...new Set(importedModules(read(path.join(HOST, 'errors.ts'))))].sort();
-  assert.deepEqual(contracts, ['../../../../packages/contracts/src/app-error.ts', '../../../../packages/contracts/src/project-file.ts']);
+  assert.deepEqual(contracts, [
+    '../../../../packages/contracts/src/app-error.ts',
+    '../../../../packages/contracts/src/project-file.ts',
+    '../../../../packages/contracts/src/project-reader-requirements.ts',
+  ]);
   for (const contract of contracts) {
     const modules = importedModules(read(path.resolve(HOST, contract)));
     assert.deepEqual(modules.filter(module => module.startsWith('node:')), [], contract);

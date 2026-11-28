@@ -5,9 +5,15 @@ import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 import type {NewProjectFileDialogProps} from '../apps/web/src/project-file/NewProjectFileDialog.tsx';
 import type {ProjectOpenFailureDialogProps} from '../apps/web/src/project-file/ProjectOpenFailureDialog.tsx';
+import {createDesktopUpdateBridge} from '../apps/desktop/src/desktop-update-preload.ts';
 import {createProjectEntriesDesktopBridge} from '../apps/desktop/src/project-entry-desktop-preload.ts';
 import {readProjectEntryDesktopClient} from '../apps/web/src/project-entry-desktop-client.ts';
 import {createNativeProjectDesktopController} from '../apps/web/src/native-project-desktop-state.ts';
+import type {NativeProjectDesktopController} from '../apps/web/src/native-project-desktop-state.ts';
+import {createProjectEntryController} from '../apps/web/src/project-entry-state.ts';
+import type {ProjectWindowBridge, ProjectWindowContext} from '../apps/web/src/desktop-window-client.ts';
+import {DESKTOP_UPDATE_CHANNEL} from '../packages/contracts/src/desktop-update.ts';
+import {PROJECT_READER_UPDATE_REQUIRED} from '../packages/contracts/src/project-reader-requirements.ts';
 import {projectEntryFixture, projectEntryOwnerFixture} from './helpers/project-entry-fixture.ts';
 import {createI18nTestContext} from './helpers/i18n.ts';
 import type {Locale} from '../packages/i18n/src/index.ts';
@@ -15,18 +21,24 @@ interface Element {type: unknown; props: Record<string, unknown> & {children?: u
 interface Components {
   NewProjectFileDialog(props: NewProjectFileDialogProps): Element;
   ProjectOpenFailureDialog(props: ProjectOpenFailureDialogProps): Element;
+  DesktopUpdateRoot(props: {blocked: boolean; children: unknown}): Element;
+  NativeProjectEntryDialogs(props: {desktop: NativeProjectDesktopController}): Element | null;
   React: {__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE: {H: unknown}};
   setLocale(locale: Locale): void;
-  html(which: 'create' | 'failure' | 'native', props: unknown): string;
+  html(which: 'create' | 'failure' | 'native' | 'native-with-update', props: unknown): string;
 }
 const root = fileURLToPath(new URL('../', import.meta.url));
 const bundle = await build({stdin: {contents: `import React from 'react'; import {renderToStaticMarkup} from 'react-dom/server';
  import {NewProjectFileDialog} from './src/project-file/NewProjectFileDialog.tsx';
  import {ProjectOpenFailureDialog} from './src/project-file/ProjectOpenFailureDialog.tsx';
  import {NativeProjectEntryDialogs} from './src/NativeProjectEntryDialogs.tsx';
+ import {DesktopUpdateRoot} from './src/DesktopUpdate.tsx';
  export {setLocale} from '../../tests/fixtures/project-file-ui/ssr-i18n.tsx';
- export {React,NewProjectFileDialog,ProjectOpenFailureDialog};
- export const html=(which,props)=>renderToStaticMarkup(React.createElement(which==='create'?NewProjectFileDialog:which==='native'?NativeProjectEntryDialogs:ProjectOpenFailureDialog,props));`, resolveDir: root + 'apps/web', loader: 'tsx'},
+ export {React,NewProjectFileDialog,ProjectOpenFailureDialog,DesktopUpdateRoot,NativeProjectEntryDialogs};
+ export function html(which,props) {
+   const dialog=React.createElement(which==='create'?NewProjectFileDialog:which.startsWith('native')?NativeProjectEntryDialogs:ProjectOpenFailureDialog,props);
+   return renderToStaticMarkup(which==='native-with-update'?React.createElement(DesktopUpdateRoot,{blocked:false},dialog):dialog);
+ }`, resolveDir: root + 'apps/web', loader: 'tsx'},
   bundle: true, platform: 'node', format: 'cjs', write: false, jsx: 'automatic', loader: {'.css': 'empty'}, nodePaths: [root + 'apps/web/node_modules'],
   define: {'process.env.NODE_ENV': '"production"'}, plugins: [{name: 'ssr-overlays', setup(builder) {
     builder.onResolve({filter: /^@mioon\/ui\/components\/dialog$/}, () => ({path: root + 'tests/fixtures/project-file-ui/ssr-overlays.tsx'}));
@@ -41,11 +53,13 @@ function nodes(value: unknown): Element[] {
   const element = value as Element;
   return [element, ...nodes(element.props.children), ...nodes(element.props.footer)];
 }
-function harness<T>(component: (props: T) => Element) {
+function harness<T, R extends Element | null>(component: (props: T) => R, context?: unknown) {
   const slots: {current: unknown}[] = [];
   return (props: T) => {
     let cursor = 0; const internals = ui.React.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE, saved = internals.H;
-    internals.H = {useId: () => 'native-form', useRef: (value: unknown) => slots[cursor++] ?? (slots[cursor - 1] = {current: value})};
+    internals.H = {useId: () => 'native-form', useRef: (value: unknown) => slots[cursor++] ?? (slots[cursor - 1] = {current: value}),
+      useContext: () => context, useState: (initial: unknown) => [typeof initial === 'function' ? initial() : initial, () => {}],
+      useEffect() {}, useCallback: (value: unknown) => value};
     try {return component(props);} finally {internals.H = saved;}
   };
 }
@@ -149,4 +163,79 @@ test('the native launcher renders the existing 12-25 recovery dialog for a diver
   const html = ui.html('native', {desktop: controller});
   assert.match(html, /data-testid="pf-history-recovery"/);
   assert.doesNotMatch(html, /data-testid="pf-open-dialog"/);
+});
+
+test('registered projects and selected files offer the same update action and dispatch only the trusted check', async t => {
+  const requests: unknown[] = [];
+  const mioonDesktopUpdate = createDesktopUpdateBridge({
+    async invoke(channel, request) {
+      requests.push([channel, request]);
+      return {ok: true, data: {revision: 1, currentVersion: '0.5.0', state: {kind: 'idle'}, notice: null,
+        activity: {exports: false, generations: false}}};
+    },
+    on() {},
+    removeListener() {},
+  });
+  const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  Object.defineProperty(globalThis, 'window', {configurable: true, value: {mioonDesktopUpdate}});
+  t.after(() => {if (originalWindow) Object.defineProperty(globalThis, 'window', originalWindow); else Reflect.deleteProperty(globalThis, 'window');});
+  const id = (n: number) => `74000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+  const project = {id: id(1), name: 'Future clip'};
+  for (const source of ['recent-card', 'editor-project-menu', 'file-picker'] as const) await t.test(source, async t => {
+    requests.length = 0;
+    const rows = projectEntryFixture([project]), identity = projectEntryOwnerFixture(() => rows);
+    const preload = createProjectEntriesDesktopBridge(async (_channel, value) => {
+      const action = (value as {action: string}).action;
+      switch (action) {
+        case 'capabilities': return {ok: true, data: {ready: true, create: false, open: true, saveAs: false, duplicate: false, copyTo: false, adoptCopy: false}};
+        case 'takePendingOpen': return {ok: true, data: null};
+        case 'openRecent': return {ok: true, data: {status: 'failed', reason: 'unavailable', failure: {code: PROJECT_READER_UPDATE_REQUIRED}}};
+        case 'openSelectedFile': return {ok: false, error: {code: PROJECT_READER_UPDATE_REQUIRED, status: 409, details: {}}};
+        default: assert.fail(`Unexpected project entry action ${action}`);
+      }
+    });
+    const desktopClient = readProjectEntryDesktopClient({__mioonProjectEntries: preload});
+    assert.ok(desktopClient);
+    const desktop = createNativeProjectDesktopController({client: desktopClient, identity, beforeAction: async () => true,
+      openCreated: async () => assert.fail('Update-required projects must not open'), message: () => ''});
+    desktop.activate();
+    t.after(() => {desktop.dispose(); identity.dispose();});
+    const editor = source === 'editor-project-menu';
+    await desktop.initialize(editor);
+    if (source === 'file-picker') {
+      assert.equal(await desktop.openFile(), false);
+    } else {
+      const context: ProjectWindowContext = {version: 2, role: editor ? 'editor' : 'launcher', windowId: id(2), contextId: id(3),
+        backendId: id(4), initialProjectId: editor ? id(5) : null, autoOpen: false, editorProjectId: editor ? id(5) : null,
+        editorPhase: editor ? 'ready' : 'none', editorCount: editor ? 1 : 0, entryMode: null, entryVersion: 0, entryReceipt: null,
+        settingsSlot: null, settingsVersion: 0, selectionProjectId: null, selectionVersion: 0, locatorStatus: null, locatorIntent: null, quitting: false};
+      const unused = async () => assert.fail('The native recent open must use the project entry bridge');
+      const bridge: ProjectWindowBridge = {context: async () => context, openProject: unused, publishLocatorStatus: unused,
+        requestLocatorAction: unused, requestProjectEntry: unused, showProjects: unused, showSettings: unused, closeSettings: unused,
+        editorStatus: unused, subscribe: () => () => {}};
+      const entry = createProjectEntryController({client: {list: async () => [{...project, updatedAt: ''}], create: unused},
+        bridge, context, identity, manageIdentityLifecycle: false, desktopClient,
+        onNativeOpenError: (error, projectId) => desktop.observeError(error, 'open', projectId)});
+      entry.activate();
+      t.after(entry.dispose);
+      assert.equal(await entry.open(project.id), false);
+    }
+    assert.equal(desktop.getState().failure?.issue.code, PROJECT_READER_UPDATE_REQUIRED);
+    const html = ui.html('native-with-update', {desktop});
+    assert.match(html, /需要更新 Mioon/);
+    assert.match(html, /当前版本不支持/u);
+    assert.match(html, /data-testid="pf-open-update"[^>]*>检查更新<\/button>/);
+    assert.match(html, /data-testid="pf-open-close"[^>]*>知道了<\/button>/);
+    assert.doesNotMatch(html, /data-testid="pf-open-(?:restore|retry)"/);
+
+    const provider = harness(ui.DesktopUpdateRoot)({blocked: false, children: null});
+    const tree = harness(ui.NativeProjectEntryDialogs, provider.props.value)({desktop});
+    const dialog = nodes(tree).find(element => element.type === ui.ProjectOpenFailureDialog);
+    assert.ok(dialog);
+    const click = button(harness(ui.ProjectOpenFailureDialog)(dialog.props as unknown as ProjectOpenFailureDialogProps), 'pf-open-update');
+    assert.equal(click.props.disabled, false);
+    (click.props.onClick as () => void)();
+    assert.deepEqual(requests, [[DESKTOP_UPDATE_CHANNEL, {kind: 'check'}]]);
+    assert.equal(desktop.getState().failure, null);
+  });
 });
