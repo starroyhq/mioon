@@ -24,7 +24,7 @@
 .pf-card-cover { position: relative; display: block; aspect-ratio: 16 / 9; overflow: hidden; border: 1px solid transparent; border-radius: var(--wb-radius-card); background: var(--wb-bg); }
 .pf-card-open:hover .pf-card-cover { border-color: var(--wb-line-strong); }
 .pf-card-cover > img { display: block; width: 100%; height: 100%; object-fit: contain; }
-.pf-card-placeholder { display: grid; place-items: center; width: 100%; height: 100%; color: var(--wb-muted); background: var(--wb-panel); }
+.pf-card-placeholder { display: grid; place-items: center; width: 100%; height: 100%; color: var(--wb-muted); background: var(--wb-card); }
 .pf-card-open.wb-button .pf-card-placeholder svg { width: 28px; height: 28px; }
 .pf-card[data-layout="list"] .pf-card-placeholder svg { width: 16px; height: 16px; }
 .pf-card-tag { position: absolute; top: 10px; left: 10px; display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 999px; background: var(--wb-media-overlay); color: var(--wb-media-text); font-size: var(--wb-text-caption); font-weight: 500; line-height: 1.4; }
@@ -85,7 +85,7 @@
 .pf-home[data-native-layout] .pf-home-grid[data-layout="list"] .pf-card-skeleton .pf-card-cover { grid-row: span 2; }
 .pf-home[data-native-layout] .pf-home-grid[data-layout="list"] .pf-card-skeleton .pf-skeleton-line { align-self: end; margin: 0; }
 .pf-home[data-native-layout] .pf-home-grid[data-layout="list"] .pf-card-skeleton .pf-skeleton-line:last-child { align-self: start; }
-.pf-home[data-native-layout] .pf-card-cover { border-color: var(--wb-line-subtle); background: var(--wb-media-matte); }
+.pf-home[data-native-layout] .pf-card-cover { border-color: var(--wb-line-subtle); background: var(--wb-card); }
 .pf-home[data-native-layout] .pf-card-open:is(:hover, :focus-visible) .pf-card-cover { border-color: var(--wb-line-strong); }
 .pf-home[data-native-layout] .pf-card-body { gap: 2px; }
 .pf-home[data-native-layout] .pf-card-meta { color: var(--wb-muted); font-weight: 400; }

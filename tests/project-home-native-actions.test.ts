@@ -270,7 +270,7 @@ test('native catalog revalidation preserves the verified project format while bl
   preferences:{preferences:{homeView:'grid',homeSort:'last-opened'}},useEffect:()=>{},reportCreate:()=>{},t:(key:string)=>key,
  };
  const render=lenientFunction('env',`with(env){${source.slice(start,source.lastIndexOf('}'))}}`) as (env:unknown)=>{props:{children:[{props:{
-  newProjectFormatVersion?:number;canMutateEntry:()=>boolean;onStartExample?:()=>void;createDisabledReason:string;
+  newProjectFormatVersion?:number;canMutateEntry:()=>boolean;onStartExample?:()=>void;createDisabledReason:string;createUnavailable?:boolean;
   renderCatalog:()=>{props:{state:{kind:string}}};
  }}]}};
  const home=()=>render(env).props.children[0].props;
@@ -283,7 +283,8 @@ test('native catalog revalidation preserves the verified project format while bl
  assert.equal(loading.canMutateEntry(),false);
  assert.equal(loading.renderCatalog().props.state.kind,'loading');
  assert.equal(loading.onStartExample,undefined);
- assert.equal(loading.createDisabledReason,'projects.listUnavailable');
+ assert.equal(loading.createDisabledReason,'');
+ assert.equal(loading.createUnavailable,true);
 });
 
 test('actual Screen keeps in-flight identity through parent and own directory refresh while forbidding new actions',async()=>{

@@ -120,6 +120,17 @@
 .wb-dialog-heading [data-slot="dialog-description"] { margin-top: var(--wb-space-2); color: var(--wb-soft); font-size: var(--wb-text-body); line-height: 1.5; }
 .wb-dialog-content { flex: 1; min-height: 0; overflow: auto; padding: 0 var(--wb-space-5) var(--wb-space-5); }
 .wb-dialog-footer { padding-inline: var(--wb-space-5); }
+/* Minimum 24px pointer hit targets on shared dialog close, menu items, disclosures and checkbox labels. */
+[data-slot="dialog-content"] [data-slot="dialog-close"] { min-width: var(--wb-control-compact); min-height: var(--wb-control-compact); }
+[data-slot="dialog-content"] > [data-slot="dialog-close"]::after { content: ""; position: absolute; inset: -2px; }
+[data-slot="dropdown-menu-item"],
+[data-slot="dropdown-menu-sub-trigger"],
+[data-slot="dropdown-menu-checkbox-item"],
+[data-slot="dropdown-menu-radio-item"],
+[data-slot="collapsible-trigger"],
+button[aria-expanded],
+label:has(> input[type="checkbox"]) { min-height: var(--wb-control-compact); }
+label:not([class]):has(> input[type="checkbox"]) { display: inline-flex; align-items: center; }
 .wb-toasts { position: fixed; z-index: 110; top: calc(var(--wb-topbar) + var(--wb-space-2)); right: var(--wb-space-3); display: flex; flex-direction: column; gap: var(--wb-space-2); width: min(360px, calc(100vw - 24px)); max-height: calc(100dvh - var(--wb-topbar) - 24px); margin: 0; padding: 0; overflow: auto; list-style: none; pointer-events: none; }
 .wb-toast { display: flex; align-items: center; gap: var(--wb-space-2); padding: var(--wb-space-3); background: var(--wb-raised); color: var(--wb-text); border: 1px solid var(--wb-line); border-radius: var(--wb-radius-card); box-shadow: var(--wb-shadow); font-size: var(--wb-text-label); pointer-events: auto; }
 .wb-toast[data-tone="danger"] { border-color: var(--wb-danger); }

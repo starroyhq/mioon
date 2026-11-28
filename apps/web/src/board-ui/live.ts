@@ -31,6 +31,8 @@ export interface BoardLiveInput {
   readonly frameAspect?: string | null;
   /** Readable media thumbnail for one asset, or null when the media is absent. */
   readonly thumbnailFor?: (assetId: string) => string | null;
+  /** Localized fallback name for unnamed board nodes. */
+  readonly unnamedLabel?: string;
 }
 export interface BoardLive {
   readonly nodes: readonly BoardUiNode[];
@@ -111,8 +113,9 @@ export function projectLiveBoard(input: BoardLiveInput): BoardLive {
     if (!id || !kind || seen.has(id)) continue;
     seen.add(id);
     const subject = kind === 'subject' && text(node.subjectId) ? subjectRows.get(String(node.subjectId)) : undefined;
+    const unnamed = input.unnamedLabel ?? 'Untitled';
     const name = subject?.name ?? (kind === 'text' ? text(node.text) : null) ?? text(node.name) ?? text(node.label) ?? text(node.text)
-      ?? (kind === 'subject' ? text(node.subjectId) ?? 'Subject' : id);
+      ?? unnamed;
     nodes.push({id, kind, name,
       ...(kind === 'film' ? {aspectRatio: input.frameAspect ?? null} : {}),
       ...(kind === 'shot' ? {} : {durationFrames: clipDuration(id)}),

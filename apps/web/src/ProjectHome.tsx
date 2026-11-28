@@ -84,6 +84,7 @@ export interface ProjectHomeProps {
   status?: ReactNode;
   help?: ReactNode;
   createDisabledReason?: string;
+  createUnavailable?: boolean;
   onCreateStateChange?: (state: ProjectHomeCreateState) => void;
   canMutateEntry?: () => boolean;
   createIntentVersion?: number;
@@ -121,7 +122,7 @@ function ProjectTime({ value }: { value: string }) {
 /** Presentation only. The parent owns project reads, creation, navigation scope,
  * and whether a successful creation may still be accepted by this page. */
 export default function ProjectHome({ projects, phase, openingName, deferOpeningFeedback, pendingOpen, error, notice, busy, listBusy, listError,
-  page, onPage, onOpen, onRetry, onRefresh, onCreate, newProjectFormatVersion, onRequestCreate, onOpenFile, onStartExample, onStartExampleBlocked, settings, status, help, active = true, createDisabledReason = '', onCreateStateChange, canMutateEntry, createIntentVersion = 0, onImport, justImported = [], query = '', onQuery, toolbar, renderCatalog, launcher, projectMenu, totalProjects = projects.length, onRegisterMenuHelp, onMenuHelpStateChange }: ProjectHomeProps) {
+  page, onPage, onOpen, onRetry, onRefresh, onCreate, newProjectFormatVersion, onRequestCreate, onOpenFile, onStartExample, onStartExampleBlocked, settings, status, help, active = true, createDisabledReason = '', createUnavailable = false, onCreateStateChange, canMutateEntry, createIntentVersion = 0, onImport, justImported = [], query = '', onQuery, toolbar, renderCatalog, launcher, projectMenu, totalProjects = projects.length, onRegisterMenuHelp, onMenuHelpStateChange }: ProjectHomeProps) {
   const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const prefix = useId();
   const searchInput=useRef<HTMLInputElement>(null);
@@ -138,8 +139,9 @@ export default function ProjectHome({ projects, phase, openingName, deferOpening
   const [submitting, setSubmitting] = useState(false);
   const submissionPending = useRef(false);
   const showProjectOptions = (newProjectFormatVersion ?? 3) < 4;
-  const current = useRef({ active, page, phase, busy, listBusy, createOpen, helpOpen, launcherPage, createDisabledReason, showProjectOptions, canMutateEntry, onRequestCreate, onOpenFile, onStartExample, onStartExampleBlocked, onRefresh });
-  current.current = { active, page, phase, busy, listBusy, createOpen, helpOpen, launcherPage, createDisabledReason, showProjectOptions, canMutateEntry, onRequestCreate, onOpenFile, onStartExample, onStartExampleBlocked, onRefresh };
+  const createBlocked = Boolean(createDisabledReason) || createUnavailable;
+  const current = useRef({ active, page, phase, busy, listBusy, createOpen, helpOpen, launcherPage, createBlocked, showProjectOptions, canMutateEntry, onRequestCreate, onOpenFile, onStartExample, onStartExampleBlocked, onRefresh });
+  current.current = { active, page, phase, busy, listBusy, createOpen, helpOpen, launcherPage, createBlocked, showProjectOptions, canMutateEntry, onRequestCreate, onOpenFile, onStartExample, onStartExampleBlocked, onRefresh };
   const createMetadata = useRef({ name: '', description: '', preset: 'portrait_1080', busy: false, version: 0, callback: onCreateStateChange, showProjectOptions });
   const publishCreate = (patch: Partial<{ name: string; description: string; preset: string; busy: boolean }> = {}) => {
     Object.assign(createMetadata.current, patch);
@@ -173,7 +175,7 @@ export default function ProjectHome({ projects, phase, openingName, deferOpening
   useEffect(() => { if (!active || page !== 'projects') changeHelp(false); }, [active, page]);
 
   function requestCreate(toggle = false): void {
-    if (!canAct() || !current.current.active || current.current.createDisabledReason) return;
+    if (!canAct() || !current.current.active || current.current.createBlocked) return;
     if (current.current.onRequestCreate) {current.current.onRequestCreate(); return;}
     publishCreate(); setCreateOpen(value => toggle ? !value : true);
   }
@@ -207,7 +209,7 @@ export default function ProjectHome({ projects, phase, openingName, deferOpening
 
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!canAct() || !current.current.createOpen || current.current.createDisabledReason) return;
+    if (!canAct() || !current.current.createOpen || current.current.createBlocked) return;
     const optionsVisible = current.current.showProjectOptions;
     const trimmedName = name.trim(), trimmedDescription = optionsVisible ? description.trim() : '';
     if (!trimmedName) { setFormError(msg('projects.nameRequired')); return; }
@@ -255,7 +257,7 @@ export default function ProjectHome({ projects, phase, openingName, deferOpening
     <h1>{t('launcher.empty.title')}</h1>
     <WorkbenchButton type="button" variant="primary" className="launcher-home-create-tile" data-testid="project-home-create-toggle"
       aria-label={t('projects.createNew')}
-      disabled={launcherNavigationLocked || Boolean(createDisabledReason)} onClick={createLauncherProject}>
+      disabled={launcherNavigationLocked || createBlocked} onClick={createLauncherProject}>
       <span className="launcher-home-create-title"><span><WorkbenchIcon name="plus" size={23} /></span>{t('projects.createNew')}</span>
     </WorkbenchButton>
     {(onStartExample || onOpenFile) && <div className="launcher-home-empty-actions">
@@ -277,6 +279,9 @@ export default function ProjectHome({ projects, phase, openingName, deferOpening
   </div> : undefined;
   const catalogVisible = page === 'projects' && (!launcher || launcherPage === 'projects');
   const catalogContent = renderCatalog?.(launcherEmpty, catalogVisible ? pendingOpen : undefined);
+  const noticeText = notice ? renderMessage(notice) : '';
+  const errorText = error ? renderMessage(error) : '';
+  const showNotice = Boolean(noticeText) && !(phase === 'error' && noticeText === errorText);
   const launcherLinks = launcher ? [
     {id: 'projects', label: t('launcher.projects'), icon: FolderOpen},
     {id: 'examples', label: t('launcher.examples'), icon: Clapperboard},
@@ -322,7 +327,7 @@ export default function ProjectHome({ projects, phase, openingName, deferOpening
       <Button type="button" variant="ghost" data-testid="project-home-page-settings" className="project-home-settings-button" aria-label={t('settings.title')} title={t('settings.title')} disabled={locked} onClick={event => { if (current.current.phase !== 'opening' && !current.current.busy) onPage('settings', event?.nativeEvent); }}><WorkbenchIcon name="settings" /></Button>
       {totalProjects > 0 && onImport && <WorkbenchButton type="button" data-testid="project-home-import" disabled={locked} onClick={() => { if (canAct()) onImport(); }}><WorkbenchIcon name="upload" />{t('projectPackage.menu.import')}</WorkbenchButton>}
       {totalProjects > 0 && onStartExample && <WorkbenchButton type="button" data-testid="project-home-example" disabled={locked || !active} onClick={startExample}>{t('projectHomeNative.example')}</WorkbenchButton>}
-      {totalProjects > 0 && <WorkbenchButton type="button" variant="primary" data-testid="project-home-create-toggle" disabled={locked || Boolean(createDisabledReason)} aria-expanded={createOpen} aria-controls={`${prefix}-create`} onClick={() => requestCreate(true)}><WorkbenchIcon name="plus" />{t('projects.createNew')}</WorkbenchButton>}
+      {totalProjects > 0 && <WorkbenchButton type="button" variant="primary" data-testid="project-home-create-toggle" disabled={locked || createBlocked} aria-expanded={createOpen} aria-controls={`${prefix}-create`} onClick={() => requestCreate(true)}><WorkbenchIcon name="plus" />{t('projects.createNew')}</WorkbenchButton>}
     </header>}
     {helpOpen && active && page === 'projects' && <Dialog open onOpenChange={changeHelp}><WorkbenchDialogContent title={t('redesign.shell.help')} className="project-home-help-dialog">
       {renderHelp('dialog')}
@@ -334,11 +339,11 @@ export default function ProjectHome({ projects, phase, openingName, deferOpening
           onClick={() => startLauncherExample('projects')}><Clapperboard size={15} aria-hidden="true" />{t('projectHomeNative.example')}</WorkbenchButton>}
         {onOpenFile && <WorkbenchButton type="button" data-testid="project-home-open-file" disabled={launcherNavigationLocked}
           onClick={openLauncherFile}><FolderOpen size={15} aria-hidden="true" />{t('launcher.open')}</WorkbenchButton>}
-        <WorkbenchButton type="button" variant="primary" data-testid="project-home-create-toggle" disabled={launcherNavigationLocked || Boolean(createDisabledReason)}
+        <WorkbenchButton type="button" variant="primary" data-testid="project-home-create-toggle" disabled={launcherNavigationLocked || createBlocked}
           onClick={createLauncherProject}><WorkbenchIcon name="plus" />{t('projects.createNew')}</WorkbenchButton>
       </header>}
       <main className="project-home-main" aria-labelledby={launcher && launcherPage !== 'projects' || !catalogContent ? `${prefix}-heading` : undefined}>
-        {notice && <div className="project-home-notice" role="status">{renderMessage(notice)}</div>}
+        {showNotice && <div className="project-home-notice" role="status">{noticeText}</div>}
         {status && <div className="project-home-notice">{status}</div>}
         {phase === 'opening' && !deferOpeningFeedback && <section className="project-home-feedback" data-phase="opening" role="status" aria-live="polite" aria-busy="true">
           <strong>{openingName ? t('projects.openingNamed', { name: openingName }) : t('projects.opening')}</strong>
@@ -346,7 +351,7 @@ export default function ProjectHome({ projects, phase, openingName, deferOpening
         {pendingOpen && (!catalogVisible || !catalogContent) &&
           <PendingProjectOpenStatus pending={pendingOpen} name={projects.find(project => project.id === pendingOpen.projectId)?.name} />}
         {phase === 'error' && <section className="project-home-feedback" data-phase="error" role="alert">
-          <div><strong>{openingName ? t('projects.failedNamed', { name: openingName }) : t('projects.openFailed')}</strong>{error && <p>{renderMessage(error)}</p>}</div>
+          <div><strong>{openingName ? t('projects.failedNamed', { name: openingName }) : t('projects.openFailed')}</strong>{errorText && <p>{errorText}</p>}</div>
           {page === 'projects' && <Button type="button" variant="outline" data-testid="project-home-retry" disabled={busy || submitting}
             onClick={() => { if (canAct() && current.current.phase === 'error') onRetry(); }}>{t('projects.retryOpen')}</Button>}
         </section>}
@@ -356,24 +361,23 @@ export default function ProjectHome({ projects, phase, openingName, deferOpening
         </section> : <>
           {!catalogContent && <header className="project-home-heading"><div><h1 id={`${prefix}-heading`}>{t('redesign.projects.all')} {totalProjects > 0 && <span className="project-home-total">{totalProjects}</span>}</h1></div>{totalProjects > 0 && <div className="project-home-toolbar">{toolbar}</div>}</header>}
           {createDisabledReason && <p className="project-home-notice" role="status" data-testid="project-home-create-disabled">{createDisabledReason}</p>}
-          {createOpen && <Dialog open onOpenChange={open => { if (!open && canAct()) setCreateOpen(false); }}><WorkbenchDialogContent title={t('projects.createNew')} size="standard" className="project-home-create-dialog"><form id={`${prefix}-create`} className="project-home-create" data-testid="project-home-create-form" onSubmit={create} aria-labelledby={`${prefix}-create-heading`} aria-busy={busy || submitting}>
+          {createOpen && <Dialog open onOpenChange={open => { if (!open && canAct()) setCreateOpen(false); }}><WorkbenchDialogContent title={t('projects.createNew')} size="standard" className="project-home-create-dialog" footer={<>
+            <WorkbenchButton type="button" size="large" data-testid="project-home-create-cancel" disabled={locked} onClick={() => { if (canAct()) setCreateOpen(false); }}>{t('shell.cancel')}</WorkbenchButton>
+            <WorkbenchButton type="submit" form={`${prefix}-create`} variant="primary" size="large" data-testid="project-home-create-submit" disabled={locked || createBlocked || !name.trim()}>{busy || submitting ? t('projects.creating') : t('projects.create')}</WorkbenchButton>
+          </>}><form id={`${prefix}-create`} className="project-home-create" data-testid="project-home-create-form" onSubmit={create} aria-labelledby={`${prefix}-create-heading`} aria-busy={busy || submitting}>
             <h2 className="sr-only" id={`${prefix}-create-heading`}>{t('projects.createNew')}</h2>
             <div className="project-home-field"><Label htmlFor={`${prefix}-name`}>{t('projects.name')}</Label>
-              <Input id={`${prefix}-name`} data-testid="project-home-name" value={name} maxLength={150} required autoFocus disabled={locked || Boolean(createDisabledReason)}
+              <Input id={`${prefix}-name`} data-testid="project-home-name" value={name} maxLength={150} required autoFocus disabled={locked || createBlocked}
                 placeholder={t('projects.namePlaceholder')} aria-invalid={Boolean(formError) && !name.trim()} aria-describedby={formError ? `${prefix}-form-error` : undefined}
-                onChange={event => { if (canAct() && !current.current.createDisabledReason) { publishCreate({ name: event.target.value }); setName(event.target.value); setFormError(''); } }} />
+                onChange={event => { if (canAct() && !current.current.createBlocked) { publishCreate({ name: event.target.value }); setName(event.target.value); setFormError(''); } }} />
             </div>
             {showProjectOptions && <><div className="project-home-field"><Label htmlFor={`${prefix}-description`}>{t('projects.direction')}<span>{t('shell.optional')}</span></Label>
-              <div className="project-home-direction"><Textarea id={`${prefix}-description`} data-testid="project-home-description" value={description} rows={2} maxLength={500} disabled={locked || Boolean(createDisabledReason)}
-                placeholder={t('projects.directionPlaceholder')} onChange={event => { if (canAct() && current.current.showProjectOptions && !current.current.createDisabledReason) { publishCreate({ description: event.target.value }); setDescription(event.target.value); setFormError(''); } }} /><span className="project-home-direction-count" aria-hidden="true">{description.length} / 500</span></div>
+              <div className="project-home-direction"><Textarea id={`${prefix}-description`} data-testid="project-home-description" value={description} rows={2} maxLength={500} disabled={locked || createBlocked}
+                placeholder={t('projects.directionPlaceholder')} onChange={event => { if (canAct() && current.current.showProjectOptions && !current.current.createBlocked) { publishCreate({ description: event.target.value }); setDescription(event.target.value); setFormError(''); } }} /><span className="project-home-direction-count" aria-hidden="true">{description.length} / 500</span></div>
             </div>
-            <fieldset className="project-home-presets"><legend>{t('redesign.projects.format')}</legend>{([['portrait_1080', 'portrait', '9:16', '1080×1920'], ['landscape_1080', 'landscape', '16:9', '1920×1080'], ['square_1080', 'square', '1:1', '1080×1080']] as const).map(([value, label, ratio, dimensions]) => <label key={value} data-selected={timelinePresetId === value}><input type="radio" name={`${prefix}-preset`} value={value} checked={timelinePresetId === value} disabled={locked || Boolean(createDisabledReason)} onChange={() => { if (canAct() && current.current.showProjectOptions && !current.current.createDisabledReason) { publishCreate({ preset: value }); setTimelinePresetId(value); } }} /><FormatSymbol format={value} /><span>{t(`redesign.projects.${label}`)}</span><small>{ratio} · {dimensions}</small></label>)}</fieldset>
+            <fieldset className="project-home-presets"><legend>{t('redesign.projects.format')}</legend>{([['portrait_1080', 'portrait', '9:16', '1080×1920'], ['landscape_1080', 'landscape', '16:9', '1920×1080'], ['square_1080', 'square', '1:1', '1080×1080']] as const).map(([value, label, ratio, dimensions]) => <label key={value} data-selected={timelinePresetId === value}><input type="radio" name={`${prefix}-preset`} value={value} checked={timelinePresetId === value} disabled={locked || createBlocked} onChange={() => { if (canAct() && current.current.showProjectOptions && !current.current.createBlocked) { publishCreate({ preset: value }); setTimelinePresetId(value); } }} /><FormatSymbol format={value} /><span>{t(`redesign.projects.${label}`)}</span><small>{ratio} · {dimensions}</small></label>)}</fieldset>
             </>}
             {formError && <p id={`${prefix}-form-error`} className="project-home-form-error" role="alert">{renderMessage(formError)}</p>}
-            <div className="project-home-form-actions">
-              <WorkbenchButton type="button" size="large" data-testid="project-home-create-cancel" disabled={locked} onClick={() => { if (canAct()) setCreateOpen(false); }}>{t('shell.cancel')}</WorkbenchButton>
-              <WorkbenchButton type="submit" variant="primary" size="large" data-testid="project-home-create-submit" disabled={locked || Boolean(createDisabledReason) || !name.trim()}>{busy || submitting ? t('projects.creating') : t('projects.create')}</WorkbenchButton>
-            </div>
           </form></WorkbenchDialogContent></Dialog>}
           {launcher && <div className="launcher-home-projects" hidden={launcherPage !== 'projects'} inert={launcherPage !== 'projects'}>{catalogContent}</div>}
           {launcher && launcherPage === 'examples' && <section className="launcher-home-page" data-testid="launcher-examples">
@@ -397,7 +401,7 @@ export default function ProjectHome({ projects, phase, openingName, deferOpening
             {listError && <p className="project-home-list-error" role="alert">{renderMessage(listError)}</p>}
             {listBusy && !projects.length && <p className="project-home-list-loading" role="status">{t('projects.loadingList')}</p>}
             {empty && <div className="project-home-empty" data-testid="project-home-empty">
-              <span className="project-home-empty-symbol"><ProjectSymbol size={28} /></span><h2>{t('projects.emptyTitle')}</h2><WorkbenchButton type="button" variant="primary" size="large" data-testid="project-home-create-toggle" disabled={locked || Boolean(createDisabledReason)} aria-expanded={createOpen} aria-controls={`${prefix}-create`} onClick={() => requestCreate()}><WorkbenchIcon name="plus" />{t('projects.createNew')}</WorkbenchButton>
+              <span className="project-home-empty-symbol"><ProjectSymbol size={28} /></span><h2>{t('projects.emptyTitle')}</h2><WorkbenchButton type="button" variant="primary" size="large" data-testid="project-home-create-toggle" disabled={locked || createBlocked} aria-expanded={createOpen} aria-controls={`${prefix}-create`} onClick={() => requestCreate()}><WorkbenchIcon name="plus" />{t('projects.createNew')}</WorkbenchButton>
               {onImport && <WorkbenchButton type="button" variant="ghost" className="project-home-import-link" data-testid="project-home-import-empty" disabled={locked} onClick={() => { if (canAct()) onImport(); }}>{t('projectPackage.home.importLink')}</WorkbenchButton>}
             </div>}
             {projects.length > 0 && <ul className="project-home-list" data-testid="project-home-list">

@@ -182,9 +182,14 @@ test('native home moves verified directory summaries into Help and retains every
     const tree = render({projects}); assert.equal(tree.props.status, undefined); assert.ok(tree.props.help);
     assert.deepEqual(tree.props.launcher, {service: 'connecting'});
   }
-  const retained = [
+  const deduplicated = [
     render({catalogReady: false}), render({listBusy: true}), render({listError: 'Read failed'}), render({phase: 'error'}),
-    ...['idle', 'loading', 'error', 'blocked'].map(phase => render({}, {phase})), render({}, {identityBlocked: true}),
+    render({catalogReady: false, listError: 'Read failed'}, {phase: 'error'}),
+    ...['idle', 'loading'].map(phase => render({}, {phase})),
+  ];
+  for (const tree of deduplicated) {assert.equal(tree.props.status, undefined); assert.ok(tree.props.help);}
+  const retained = [
+    render({}, {phase: 'error'}), render({}, {phase: 'blocked'}), render({}, {identityBlocked: true}),
   ];
   for (const tree of retained) {assert.ok(tree.props.status); assert.equal(tree.props.status, tree.props.help);}
 });

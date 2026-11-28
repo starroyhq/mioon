@@ -9,8 +9,8 @@
 
 .desktop-update-badge.wb-button[data-size="compact"] {
   gap: 4px;
-  height: 20px;
-  min-height: 20px;
+  height: 24px;
+  min-height: 24px;
   padding: 1px 6px;
   border-radius: 999px;
   font-size: var(--wb-text-min);
@@ -64,8 +64,8 @@
 .desktop-update-details > strong { display: block; color: var(--wb-text); }
 .desktop-update-details > ul { padding-inline-start: 1.2em; margin: 6px 0 8px; list-style: disc; }
 .desktop-update-details > ul > li + li { margin-top: 5px; }
-.desktop-update-details > a { display: inline-flex; align-items: center; gap: 3px; color: var(--wb-text); }
-.desktop-update-details > a:hover { text-decoration: underline; }
+.desktop-update-details > a { display: inline-flex; align-items: center; gap: 3px; color: var(--wb-text); text-decoration: underline; text-underline-offset: 3px; }
+.desktop-update-details > a:hover { opacity: .85; }
 
 .desktop-update-dialog .wb-progress { height: 4px; margin-block: 1px 6px; }
 .desktop-update-progress-details { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 10px; color: var(--wb-muted); }
@@ -82,6 +82,7 @@
   .launcher-home-brand .launcher-home-brand-copy:has(.desktop-update-badge) { display: flex; }
   .launcher-home-brand-copy:has(.desktop-update-badge) > strong { display: none; }
   .launcher-home-version-row:has(.desktop-update-badge) { flex-direction: column; gap: 4px; }
+  .launcher-home-version-row:has(.desktop-update-badge) .launcher-home-version { display: none; }
   .desktop-update-badge.wb-button > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 }
 

@@ -107,8 +107,8 @@
 
 .edit-ui-shot-reveal {
   flex: none;
-  height: 22px !important;
-  min-height: 22px !important;
+  height: 24px !important;
+  min-height: 24px !important;
   padding: 2px 7px !important;
   border-color: var(--wb-line) !important;
   color: var(--wb-soft) !important;

@@ -74,8 +74,8 @@ export default function LauncherRoot({ context, bridge, rpc, contractChecks, Ver
   useEffect(() => {refreshMenu();});
   const entryState = controller.getState(), identityState = identity.getState();
   const identityStatus = <ProjectEntryIdentityStatus state={identityState} owner={identity} />;
-  const quietDirectory = entryState.catalogReady && !entryState.listBusy && !entryState.listError && entryState.phase === 'home'
-    && identityState.phase === 'ready' && !identityState.identityBlocked;
+  const showIdentityStatus = identityState.identityBlocked || identityState.phase === 'blocked'
+    || (identityState.phase === 'error' && entryState.catalogReady && !entryState.listError);
   return <ProjectEntry controller={controller} onSettings={slot => { void bridge.showSettings(slot); }} onRegisterMenuHelp={registerMenuHelp} onMenuHelpStateChange={refreshMenu}
-    launcher={VersionDisplay ? {...service, VersionDisplay} : service} status={quietDirectory ? undefined : identityStatus} help={identityStatus} />;
+    launcher={VersionDisplay ? {...service, VersionDisplay} : service} status={showIdentityStatus ? identityStatus : undefined} help={identityStatus} />;
 }

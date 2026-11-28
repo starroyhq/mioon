@@ -83,7 +83,8 @@ test('failed and pending outcomes keep the exact errors, badge and non-download 
   assert.match(rendered.statuses, /排队中/); assert.match(rendered.statuses, /提交状态待确认/);
   assert.equal((rendered.statuses.match(/导出失败/g) || []).length, 2); assert.doesNotMatch(rendered.statuses, /字符串失败|对象失败|unsafe|&amp; detail/);
   assert.equal((rendered.statuses.match(/class="spinner"/g) || []).length, 3);
-  assert.match(rendered.statuses, /small-badge warn/); assert.doesNotMatch(rendered.statuses, /download-export/);
+  assert.equal((rendered.statuses.match(/wb-badge[^>]*data-tone="danger"/g) || []).length, 1);
+  assert.doesNotMatch(rendered.statuses, /small-badge warn/); assert.doesNotMatch(rendered.statuses, /download-export/);
   assert.deepEqual((actions.statuses as unknown), [], 'Failed, pending and output-less rows cannot request a file action');
 });
 test('ready rows pass their project media address and identity to the async file check without claiming a download', () => {

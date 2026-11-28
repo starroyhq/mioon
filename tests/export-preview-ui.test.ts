@@ -102,7 +102,7 @@ test('custom player controls play and seek only their exact visible media owner'
  h.render({visible:false});play!.props.onClick();seek!.props.onChange({currentTarget:{value:'9'}});assert.equal(element!.playCount,1);assert.equal(element!.currentTime,3.2);h.unmount();
 });
 
-test('all three review steps expose a real empty-player action and one compact range row', async () => {
+test('all three review steps expose one empty-player action when empty and one range action when sample exists', async () => {
   for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja']) {
     for (const step of [1, 2, 3]) {
       const h = harness(locale), calls: ("generate")[] = [];
@@ -111,11 +111,12 @@ test('all three review steps expose a real empty-player action and one compact r
       assert.deepEqual((calls as unknown), [], `${locale}/${step}: mounting is passive`);
       const empty = h.find((node: PreviewNode) => node.props?.['data-testid'] === 'export-preview-empty-generate');
       const range = h.find((node: PreviewNode) => node.props?.['data-testid'] === 'export-preview-range-controls');
-      const generate = h.find((node: PreviewNode) => node.props?.['data-testid'] === 'export-preview-generate');
-      assert.ok(empty); assert.equal(empty.props.disabled, false); assert.ok(range); assert.ok(generate);
+      assert.ok(empty); assert.equal(empty.props.disabled, false); assert.ok(range);
+      assert.equal(h.find((node: PreviewNode) => node.props?.['data-testid'] === 'export-preview-generate'), null);
       await empty.props.onClick();
       assert.deepEqual(calls, ['generate']);
-      h.render();
+      h.render({ result: { phase: 'succeeded', record: { id: 'sample-1', assetId: 'asset-1' }, stale: false, url: '/api/media/sample-1' } });
+      assert.equal(h.find((node: PreviewNode) => node.props?.['data-testid'] === 'export-preview-empty-generate'), null);
       await h.find((node: PreviewNode) => node.props?.['data-testid'] === 'export-preview-generate')!.props.onClick();
       assert.deepEqual(calls, ['generate', 'generate']);
       h.unmount();
@@ -128,9 +129,8 @@ test('sample generation is single-flight and old actions lose authority after vi
   const pending = new Promise(done => { resolve = done; });
   h.render({ result: { phase: 'idle', record: null, stale: false, url: null }, onGenerate: () => { calls.push('generate'); return pending; } });
   const empty = h.find((node: PreviewNode) => node.props?.['data-testid'] === 'export-preview-empty-generate');
-  const range = h.find((node: PreviewNode) => node.props?.['data-testid'] === 'export-preview-generate');
-  const first = empty!.props.onClick(); await range!.props.onClick();
-  assert.deepEqual(calls, ['generate'], 'two controls share one admission flight');
+  const first = empty!.props.onClick(); await empty!.props.onClick();
+  assert.deepEqual(calls, ['generate'], 'repeated clicks share one admission flight');
   h.render({ visible: false }); await empty!.props.onClick(); assert.equal(calls.length, 1);
   resolve!(); await first;
   h.render({ visible: true });
@@ -152,7 +152,7 @@ test('checking, a running sample, unknown outcome and disabled admission cannot 
   ]) {
     const h = harness(); let calls = 0;
     h.render({ result: { phase: 'idle', record: null, stale: false, url: null }, onGenerate: () => { calls++; }, ...patch });
-    const generate = h.find((node: PreviewNode) => node.props?.['data-testid'] === 'export-preview-generate');
+    const generate = h.find((node: PreviewNode) => node.props?.['data-testid'] === 'export-preview-empty-generate');
     assert.equal(generate!.props.disabled, true);
     await generate!.props.onClick(); assert.equal(calls, 0); h.unmount();
   }

@@ -40,6 +40,7 @@ function fixture() {
   Function('require', 'module', 'exports', transformSync(source, {loader: 'tsx', format: 'cjs', jsx: 'transform'}).code)((name: string) => {
     if (name === 'react') return {...react, __esModule: true, default: react};
     if (name === '@mioon/ui/components/button') return {Button: 'Button'};
+    if (name === '@mioon/ui/components/workbench-controls') return {WorkbenchButton: 'WorkbenchButton'};
     if (name === './workspace-visibility.tsx') return {WorkspaceVisibilityProvider: 'WorkspaceVisibilityProvider'};
     if (name.endsWith('.css')) return {};
     assert.fail('Unexpected shell dependency: ' + name);

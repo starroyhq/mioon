@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useId, useLayoutEffect, useRef } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
 import { Button } from '@mioon/ui/components/button';
+import { WorkbenchButton } from '@mioon/ui/components/workbench-controls';
 import { WorkspaceVisibilityProvider } from './workspace-visibility.tsx';
 import './SettingsServicesLayout.css';
 
@@ -142,10 +143,10 @@ export default function SettingsServicesLayout(props: SettingsServicesLayoutProp
     <footer className="settings-services-footer" data-state={props.footer.state}>
       <div className="settings-services-footer-status" role="status" aria-live="polite">{props.footer.status}</div>
       <div className="settings-services-footer-actions">
-        {props.footer.discard && <Button type="button" variant="ghost" disabled={!props.pageVisible || props.footer.discard.disabled || props.footer.discard.busy}
-          aria-busy={props.footer.discard.busy || undefined} title={props.footer.discard.title} data-testid={props.footer.discard.testId} onClick={() => footerAction('discard')}>{props.footer.discard.label}</Button>}
-        <Button type="button" disabled={!props.pageVisible || props.footer.save.disabled || props.footer.save.busy} aria-busy={props.footer.save.busy || undefined}
-          title={props.footer.save.title} data-testid={props.footer.save.testId} onClick={() => footerAction('save')}>{props.footer.save.label}</Button>
+        {props.footer.discard && <WorkbenchButton type="button" variant="ghost" disabled={!props.pageVisible || props.footer.discard.disabled || props.footer.discard.busy}
+          aria-busy={props.footer.discard.busy || undefined} title={props.footer.discard.title} data-testid={props.footer.discard.testId} onClick={() => footerAction('discard')}>{props.footer.discard.label}</WorkbenchButton>}
+        <WorkbenchButton type="button" variant="primary" loading={props.footer.save.busy} disabled={!props.pageVisible || props.footer.save.disabled || props.footer.save.busy}
+          title={props.footer.save.title} data-testid={props.footer.save.testId} onClick={() => footerAction('save')}>{props.footer.save.label}</WorkbenchButton>
       </div>
     </footer>
   </section>;
