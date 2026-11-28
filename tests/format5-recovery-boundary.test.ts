@@ -26,7 +26,7 @@ import {createFormat5SequenceEditService} from '../packages/business/src/format5
 function testApplication(library:ReturnType<typeof openAppLibrary>):ServiceApplicationPorts{
  const configuration=createWorkspaceConfiguration({root:library.dataDir,documents:createAppCompanionDocuments(library)});
  const assertOwner=createProjectServiceApplication(library).assertMutationAllowed;
- return {configuration,outsidePaths:library.outsidePaths,assertMutationAllowed(){assertOwner();assert.equal(library.db.isOpen,true);}};
+ return {configuration,outsidePaths:library.outsidePaths,receipts:library.receipts,assertMutationAllowed(){assertOwner();assert.equal(library.db.isOpen,true);}};
 }
 interface Fixture {runtime:ProjectRuntime;library:ReturnType<typeof openAppLibrary>;shutdown:AbortController;close():Promise<void>}
 async function composeExisting(t:TestContext,store:ReturnType<typeof upgradeProjectFormatTo5>['store'],root:string):Promise<Fixture>{

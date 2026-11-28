@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import {assetRangeOnSourceGridSchema} from './source-range.ts';
 import {
   SEQUENCE_EDIT_SIDES, copyAsNewShotTrackEditSchema, isSequenceEditRequestId, sequenceEditAffectedCountsSchema, sequenceEditEnvelopeSchema,
   sequenceEditHistoryActionSchema, sequenceEditHistoryViewSchema, sequenceEditReceiptSchema,
@@ -106,7 +107,7 @@ const trackEditSchema = z.discriminatedUnion('kind', [
     nodeKind: z.enum(['shot', 'video', 'image']).optional(), nodeAssetId: operationUuid.optional(),
     nodeName: z.string().min(1).max(150).optional(), copyFromClipId: operationUuid.optional()}).strict(),
   z.object({kind: z.literal('insert-asset'), assetId: operationUuid, trackId: operationUuid.nullable(),
-    startFrame: operationFrame}).strict(),
+    startFrame: operationFrame, assetRange: assetRangeOnSourceGridSchema.optional()}).strict(),
   z.object({kind: z.literal('paste-clip'), clipId: operationUuid, startFrame: operationFrame}).strict(),
   copyAsNewShotTrackEditSchema,
   z.object({kind: z.literal('add-overlay'), clipId: operationUuid, trackId: operationUuid, startFrame: operationFrame,

@@ -367,8 +367,8 @@ export async function admitMedia(access: MediaAccess, reference: MediaReference,
 export interface MediaHashSource {readonly file: string; readonly stats: BigIntStats}
 
 export async function computeFullSha256(access: MediaAccess, reference: MediaReference,
-  {signal, onBytes, beforeEffect, maxBytes, expectedSource}: MediaReadOptions & {
-    onBytes?: (bytes: number) => void; maxBytes?: number; expectedSource?: MediaHashSource;
+  {signal, onBytes, beforeEffect, maxBytes, expectedSource, chunkBytes}: MediaReadOptions & {
+    onBytes?: (bytes: number) => void; maxBytes?: number; expectedSource?: MediaHashSource; chunkBytes?: number;
   } = {}): Promise<{sha256: string; reference: MediaReference}> {
   assertByteLimit(maxBytes);
   signal?.throwIfAborted(); beforeEffect?.();
@@ -385,7 +385,7 @@ export async function computeFullSha256(access: MediaAccess, reference: MediaRef
     const samples = await readSampledSha256(session, target, signal);
     if (samples === null) throw mediaReferenceError('MEDIA_NOT_MEDIA', {reason: 'content'});
     if (samples !== recorded.sampledSha256) throw mediaReferenceError('MEDIA_CHANGED', {reason: 'content'});
-    const whole = await hashWhole(session.handle, Number(target.stats.size), {signal, onBytes});
+    const whole = await hashWhole(session.handle, Number(target.stats.size), {signal, onBytes, chunkBytes});
     await session.verify();
     return whole;
   }, {signal, beforeEffect});

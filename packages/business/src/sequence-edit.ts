@@ -4,6 +4,7 @@ import {AppError} from '../../contracts/src/app-error.ts';
 import {readCanvasClipboardSnapshot} from './canvas-clipboard.ts';
 import {planChainSync} from '../../contracts/src/chain-sync-algorithm.ts';
 import type {ChainSyncClip, ChainSyncMedia, ChainSyncOperation, ChainSyncPlan, ChainSyncState, ChainSyncWarning} from '../../contracts/src/chain-sync-algorithm.ts';
+import type {ChainSyncSourceIsStill} from '../../contracts/src/chain-main-track.ts';
 import {deriveFilmChains} from '../../contracts/src/board-sequence.ts';
 import type {ChainBoard, ChainNode, SequenceEdge} from '../../contracts/src/board-sequence.ts';
 import type {ChainSyncBaseline, TrackAnchoredItem} from '../../contracts/src/chain-sync-analysis.ts';
@@ -29,6 +30,7 @@ import type {SequenceEditingOperation} from '../../contracts/src/sequence-editin
 import {
   applySequenceEditBaselineDelta, applySequenceEditTimelineDelta, applySubjectBindingWrite,
   createMainTrackProjectionPort, FORMAT5_BOARD_DUPLICATE_OFFSET, previewMainTrackProjection, readSequenceSyncContext,
+  sequencePlanSourceIsStill,
 } from './format5-sequence-sync.ts';
 import {copyFormat5ShotDialogue} from './format5-dialogue-projection.ts';
 import type {SequenceSyncContext} from './format5-sequence-sync.ts';
@@ -304,14 +306,14 @@ export type SequenceEditPlanResult =
   | {readonly ok: true; readonly plan: SuccessfulPlan; readonly state: ChainSyncState}
   | {readonly ok: false; readonly code: string; readonly ids: readonly string[]};
 export function planSequenceEditIntents(state: ChainSyncState, intents: readonly SequenceEditIntent[],
-  allocation: SequenceEditAllocation): SequenceEditPlanResult {
+  allocation: SequenceEditAllocation, isStill?: ChainSyncSourceIsStill): SequenceEditPlanResult {
   let current = state;
   let finalPlan: SuccessfulPlan | undefined;
   for (const intent of intents) {
     if (isBoardIntentOperation(intent.operation)) {
       return {ok: false, code: 'SEQUENCE_EDIT_CONTRACT_INVALID', ids: []};
     }
-    const plan = planChainSync(current, withAllocation(intent.operation, allocation));
+    const plan = planChainSync(current, withAllocation(intent.operation, allocation), isStill);
     if (!plan.ok) {
       const ids: string[] = [];
       const record = plan as unknown as Row;
@@ -515,7 +517,8 @@ function boardIntentPreparation(context: EditContext, store: ProjectStore, inten
           // 4.459 s supplies 133 frames, never 134. A restored shot's rounded
           // displayed duration (for example 4.46 s) must not invent one frame
           // beyond the source and fail the format-5 commit fence.
-          const sourceFrames = Number.isFinite(asset?.duration) ? Math.max(1, Math.floor(Number(asset!.duration) * 30)) : null;
+          const still = typeof asset?.mimeType === 'string' && asset.mimeType.startsWith('image/');
+          const sourceFrames = !still && Number.isFinite(asset?.duration) ? Math.max(1, Math.floor(Number(asset!.duration) * 30)) : null;
           const requestedFrames = Number.isFinite(archived.duration)
             ? Math.max(1, Math.round(Number(archived.duration) * 30)) : 120;
           createdMedia.push({nodeId: item.id, selectedVersion: version ? {id: String(version.id), sourceFrames} : null,
@@ -706,9 +709,10 @@ export function previewSequenceBoardAction(store: ProjectStore, intents: readonl
     clips: context.clips, anchored: context.anchored};
   let plan: SuccessfulPlan | undefined;
   const warnings: ChainSyncWarning[] = [];
+  const isStill = sequencePlanSourceIsStill(context.rows);
   for (const intent of preparation.planIntents) {
     if (isBoardIntentOperation(intent.operation)) return {ok: false, code: 'SEQUENCE_EDIT_CONTRACT_INVALID', ids: []};
-    const planned = planSequenceEditIntents(state, [intent], preparation.allocation);
+    const planned = planSequenceEditIntents(state, [intent], preparation.allocation, isStill);
     if (!planned.ok) return planned;
     state = planned.state;
     plan = planned.plan;
@@ -1225,8 +1229,9 @@ export function applySequenceEdit(store: ProjectStore, envelope: SequenceEditEnv
         clips: context.clips, anchored: context.anchored};
       stateBeforeFinal = state;
     }
+    const isStill = sequencePlanSourceIsStill(syncContext);
     for (const intent of planIntents) {
-      const planned = planSequenceEditIntents(state, [intent], planEnvelope.allocation);
+      const planned = planSequenceEditIntents(state, [intent], planEnvelope.allocation, isStill);
       if (!planned.ok) return {receipt: writeSequenceEditFailure(store, envelope, planned.code as never,
         sequenceEditFailureEvidence(planned.code, planned)), failure: planned};
       stateBeforeFinal = state;

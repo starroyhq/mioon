@@ -73,7 +73,7 @@ test('every shared operation has a complete explicit frozen effect descriptor; u
   assert.throws(() => effectAnnotations({readOnly:true}), /Explicit operation effects/);
   const readOnly = new Set([...inspections, 'export.activity.get', 'export.output.get', 'clip.audio.export.get', 'workspace.settings.get', 'workspace.backup.status', 'workspace.backup.list', 'task.disposition.list', 'project.summary.list', 'previs.thumbnail.get', 'agent.authorization.list', 'timeline.colour.source.inspect', 'timeline.colour.image.inspect', 'timeline.colour.jpeg.inspect', 'lut.list', 'lut.inspect', 'lut.look.inspect', 'timeline.audioPreview.continuousPlan', 'asset.annotation.list', 'workspace.backup.inspect', 'workspace.restore.inspect', 'frame.request.get', 'frame.task.get', 'frame.task.list', 'scene.request.get', 'scene.task.get', 'scene.task.list', 'scene.result.get', 'image.review.get', 'image.review.list', 'image.profile.list', 'image.request.get', 'image.task.remote.get', 'image.task.get', 'image.task.list', 'image.group.get', 'image.group.list', 'image.version.list', 'subject.list', 'subject.version.list', 'subject.binding.list', 'subject.variants.get', 'subject.variants.list', 'project.list', 'asset.list', 'asset.range.get', 'asset.disposition.list', 'asset.waveform.get', 'provider.list', 'video.connection.list', 'job.get', 'job.list', 'version.list', 'export.get', 'timeline.history.get', 'sequence.history.get', 'sequence.inspect', 'sequence.board.get', 'sequence.generation-inputs.get', 'timeline.export.preflight', 'timeline.export.capabilities', 'timeline.export.samplePeak', 'timeline.export.loudness', 'timeline.loudness.prepare', 'timeline.clip.loudness', 'timeline.audioPreview.plan', 'timeline.format.get']);
 
-  for (const operation of ['project.backup.list', 'project.backup.inspect', 'project.backup.status', 'project.version.list', 'project.version.preview']) readOnly.add(operation);
+  for (const operation of ['project.backup.list', 'project.backup.inspect', 'project.backup.status', 'project.version.list', 'project.version.preview', 'export.fcpxml.preview', 'export.fcpxml.get']) readOnly.add(operation);
   for (const [operation, effect] of Object.entries(operationEffects)) {
     assert.equal(Object.isFrozen(effect), true);
     assert.equal(effect.notes!.length > 20, true);
@@ -126,6 +126,11 @@ test('every shared operation has a complete explicit frozen effect descriptor; u
   }
   assert.equal(operationEffects['export.cancel'].fileWrite, true, 'cancellation cleans only its owned part and unpublished output');
   assert.equal(operationEffects['export.cancel'].localProcess, true, 'cancellation terminates only its owned media process');
+  for (const operation of ['export.fcpxml.start', 'export.fcpxml.cancel'] as const) {
+    const effect = operationEffects[operation];
+    assert.equal(effect.databaseWrite && effect.fileWrite && effect.idempotent, true, operation);
+    assert.equal(effect.localProcess || effect.externalIO || effect.paidGeneration, false, operation);
+  }
   for (const operation of ['timeline.track.add', 'timeline.clip.add', 'timeline.seed'])
     assert.equal(operationEffects[(operation as keyof typeof operationEffects)].destructive, true, 'new edits can discard redo history');
   for (const name of ['doctor', 'capabilities', 'schema']) {

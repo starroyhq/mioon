@@ -3,12 +3,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {linkSync,symlinkSync,mkdirSync,rmSync,lstatSync,renameSync} from 'node:fs';
+import {existsSync,linkSync,symlinkSync,mkdirSync,readFileSync,rmSync,lstatSync,renameSync,writeFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import {spawnSync} from 'node:child_process';
 import {DatabaseSync} from 'node:sqlite';
 import {initializeNodePrivateStorage} from '../packages/node-host/src/private-storage-bootstrap.ts';
-import {getStoragePrivacyCapability,createPrivateTemporaryDirectory,ensurePrivateDirectory,validatePrivateDirectory,validateManagedFile,readPrivateFile,writePrivateFileAtomic,removePrivateFile,privateStorageIdentity} from '../packages/contracts/src/private-storage.ts';
+import {getStoragePrivacyCapability,createPrivateTemporaryDirectory,ensurePrivateDirectory,validatePrivateDirectory,validateManagedFile,readPrivateFile,writePrivateFileAtomic,removePrivateFile,privateStorageIdentity,getWindowsManagedFileIO} from '../packages/contracts/src/private-storage.ts';
 
 const windows=process.platform==='win32';
 async function fixture(t: test.TestContext){await initializeNodePrivateStorage();const root=createPrivateTemporaryDirectory(tmpdir(),'mioon-native-private-');t.after(()=>rmSync(root,{recursive:true,force:true}));return root;}
@@ -34,6 +34,56 @@ test('native Windows rejects traversal aliases, streams, reparse points, hard li
 test('native Windows accepts closed inherited ACLs on SQLite database and WAL files',{skip:!windows},async t=>{
  const root=await fixture(t),file=path.join(root,'workbench.sqlite'),db=new DatabaseSync(file);
  try{db.exec('PRAGMA journal_mode=WAL; CREATE TABLE fixture(id INTEGER); INSERT INTO fixture VALUES(1)');assert.ok(validateManagedFile(file,{root}));assert.ok(validateManagedFile(file+'-wal',{root}));assert.ok(validateManagedFile(file+'-shm',{root}));}finally{db.close();}
+});
+test('native Windows installs a pinned export into an ordinary directory without replacing a name',{skip:!windows},async t=>{
+ const parent=await fixture(t),root=path.join(parent,'.mioon-export-staging'),output=path.join(parent,'导出');
+ const source=path.join(root,'candidate.mp4'),destination=path.join(output,'成片.mp4');
+ const rename=getWindowsManagedFileIO().renameProjectOutputNoReplace;
+ assert.ok(rename,'The current Windows helper must provide the export install operation');
+ assert.ok(ensurePrivateDirectory(root,{create:true}));
+ mkdirSync(output);
+ const grant=spawnSync('icacls.exe',[output,'/grant','*S-1-5-32-544:(OI)(CI)F'],{encoding:'utf8'});
+ assert.equal(grant.status,0,'The fixture must exercise ordinary ACL policy on the public parent');
+ assert.throws(()=>validatePrivateDirectory(output),{reason:'UNSAFE_ACL'});
+
+ writePrivateFileAtomic(source,'verified export candidate',{root,maxBytes:64});
+ const expected=validateManagedFile(source,{root,private:true})!;
+ const replaced=path.join(root,'different-identity.mp4');
+ writePrivateFileAtomic(replaced,'verified export candidate',{root,maxBytes:64});
+ assert.throws(()=>rename(replaced,destination,{root,expected}),{reason:'FILE_CHANGED'});
+ assert.equal(existsSync(destination),false);
+ assert.equal(readFileSync(replaced,'utf8'),'verified export candidate');
+ writeFileSync(source,'truncated');
+ assert.throws(()=>rename(source,destination,{root,expected}),{reason:'FILE_CHANGED'});
+ assert.equal(existsSync(destination),false);
+ writeFileSync(source,'verified export candidate');
+
+ writeFileSync(destination,'external bytes',{flag:'wx'});
+ const foreign=lstatSync(destination,{bigint:true});
+ assert.throws(()=>rename(source,destination,{root,expected}),{reason:'ALREADY_EXISTS'});
+ assert.equal(readFileSync(destination,'utf8'),'external bytes');
+ assert.equal(lstatSync(destination,{bigint:true}).ino,foreign.ino);
+ assert.equal(existsSync(source),true);
+ rmSync(destination);
+
+ const junction=path.join(parent,'redirect');
+ symlinkSync(output,junction,'junction');
+ assert.throws(()=>rename(source,path.join(junction,'alias.mp4'),{root,expected}),{reason:'REPARSE_POINT'});
+ assert.equal(existsSync(path.join(output,'alias.mp4')),false);
+ const unsafe=path.join(parent,'unsafe');
+ mkdirSync(unsafe);
+ const dangerous=spawnSync('icacls.exe',[unsafe,'/grant','*S-1-1-0:(OI)(CI)F'],{encoding:'utf8'});
+ assert.equal(dangerous.status,0,'The fixture must include a directory writable by other accounts');
+ assert.throws(()=>rename(source,path.join(unsafe,'unsafe.mp4'),{root,expected}),{reason:'UNSAFE_ACL'});
+ assert.equal(existsSync(path.join(unsafe,'unsafe.mp4')),false);
+ assert.equal(privateStorageIdentity(validateManagedFile(source,{root,private:true})!),privateStorageIdentity(expected));
+
+ rename(source,destination,{root,expected});
+ assert.equal(existsSync(source),false);
+ assert.equal(readFileSync(destination,'utf8'),'verified export candidate');
+ assert.deepEqual(lstatSync(destination,{bigint:true}).size,BigInt(expected.size));
+ assert.equal(lstatSync(destination).ino,expected.ino);
+ assert.equal(lstatSync(destination).nlink,1);
 });
 test('native Windows case-sensitive root prefixes cannot escape the declared full identity',{skip:!windows},async t=>{
  const parent=await fixture(t);
