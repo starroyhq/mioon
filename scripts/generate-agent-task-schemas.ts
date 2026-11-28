@@ -9,6 +9,7 @@ import {mioCanvasCopySchemas} from '../packages/contracts/src/mio-canvas-copy.ts
 import {mioSequenceEditSchemas} from '../packages/contracts/src/mio-sequence.ts';
 import {publicOperationSchemas} from '../packages/contracts/src/public-operations.ts';
 import {projectAgentTaskToolSchema} from '../packages/business/src/agent/task-tool-model-schema.ts';
+import {mioFcpExportStartSchema} from '../packages/business/src/agent/task-fcpxml-export-v2.ts';
 
 const record=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 // Reuse the client's installed converter only at generation time. Public
@@ -65,11 +66,13 @@ const legacyExports=Object.fromEntries(['timeline.render','timeline.export.prefl
  }
  return [operation,projected];
 }));
+const fcpExportStart=projectAgentTaskToolSchema(zodToJsonSchema(mioFcpExportStartSchema,{$refStrategy:'none',strictUnions:true,pipeStrategy:'input'}));
 const generated=
  '// Generated with node scripts/generate-agent-task-schemas.ts.\n'+
  '// Shared runtime schemas remain authoritative; host supplies project identity and replay keys.\n'+
  `export const AGENT_TASK_TOOL_SCHEMA_HASH=${JSON.stringify(hash)};\n`+
  'export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>='+JSON.stringify(entries,null,1)+';\n'+
+ 'export const AGENT_TASK_FCP_EXPORT_START_PARAMETERS:unknown='+JSON.stringify(fcpExportStart,null,1)+';\n'+
  'export const AGENT_TASK_THUMBNAIL_READ_PARAMETERS:unknown='+JSON.stringify(thumbnailRead,null,1)+';\n'+
  'export const AGENT_TASK_FORMAT4_THUMBNAIL_SCHEMAS:Readonly<Record<string,unknown>>='+JSON.stringify(framedThumbnails,null,1)+';\n'+
  'export const AGENT_TASK_LEGACY_EXPORT_SCHEMAS:Readonly<Record<string,unknown>>='+JSON.stringify(legacyExports,null,1)+';\n';

@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://mioon.app">官网</a> ·
-  <a href="https://github.com/starroyhq/mioon/releases/tag/v0.4.0">下载 v0.4.0</a> ·
+  <a href="https://github.com/starroyhq/mioon/releases/tag/v0.5.0">下载 v0.5.0</a> ·
   <a href="#mioon-能帮你做什么">功能介绍</a> ·
   <a href="#开始使用">开始使用</a> ·
   <a href="docs/USER-GUIDE.zh-CN.md">使用指南</a> ·
@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  <img alt="v0.4.0 桌面版" src="https://img.shields.io/badge/%E7%89%88%E6%9C%AC-v0.4.0%20%E6%A1%8C%E9%9D%A2%E7%89%88-475569" />
+  <img alt="v0.5.0 桌面版" src="https://img.shields.io/badge/%E7%89%88%E6%9C%AC-v0.5.0%20%E6%A1%8C%E9%9D%A2%E7%89%88-475569" />
   <img alt="本地保存" src="https://img.shields.io/badge/%E6%95%B0%E6%8D%AE-%E6%9C%AC%E5%9C%B0%E4%BF%9D%E5%AD%98-16a34a" />
   <a href="LICENSE"><img alt="Apache-2.0" src="https://img.shields.io/badge/License-Apache--2.0-blue" /></a>
 </p>
@@ -77,9 +77,9 @@ Mio 是工作台里的创作 Agent，不只回答问题，会直接动手：
 
 ## 开始使用
 
-从 [v0.4.0 发布页](https://github.com/starroyhq/mioon/releases/tag/v0.4.0)下载通用 macOS 安装包，再按[安装与首次运行指南](docs/INSTALL.zh-CN.md)安装。Apple 芯片和 Intel Mac 使用同一个 DMG，正式安装包须通过 Developer ID 签名和 Apple 公证。
+从 [v0.5.0 发布页](https://github.com/starroyhq/mioon/releases/tag/v0.5.0)下载通用 macOS 安装包，再按[安装与首次运行指南](docs/INSTALL.zh-CN.md)安装。Apple 芯片和 Intel Mac 使用同一个 DMG，正式安装包须通过 Developer ID 签名和 Apple 公证。
 
-桌面版无需 Node.js 或 pnpm。首次启动按提示配置 FFmpeg 和 ffprobe，可以下载 Mioon 提供的 7.1.5，也可以选择自己安装的工具。使用 0.2.0 或更新版本时，可以按应用内提示更新到 0.4.0，也可以从发布页下载 DMG 手动安装。0.1.x 及更早版本需要手动下载安装。第一次用 0.4.0 打开旧格式项目时会提示升级，应用会先自动备份原格式。升级是单向的，重要项目请先自行备份。具体步骤见[安装指南](docs/INSTALL.zh-CN.md)。
+桌面版无需 Node.js 或 pnpm。首次启动按提示配置 FFmpeg 和 ffprobe，可以下载 Mioon 提供的 7.1.5，也可以选择自己安装的工具。使用 0.2.0 或更新版本时，可以按应用内提示更新到 0.5.0，也可以从发布页下载 DMG 手动安装。0.1.x 及更早版本需要手动下载安装。第一次用 0.5.0 打开旧格式项目时会提示升级，应用会先自动备份原格式。升级是单向的，重要项目请先自行备份。具体步骤见[安装指南](docs/INSTALL.zh-CN.md)。
 
 希望从源码运行时，继续按[源码试用指南](docs/CORE-TRIAL.zh-CN.md)操作；Mac 用户另见 [Mac 源码启动说明](docs/MAC-SOURCE-TRIAL.zh-CN.md)
 
@@ -97,7 +97,7 @@ Mio 是工作台里的创作 Agent，不只回答问题，会直接动手：
 - **导入不自动上传**：桌面导入引用原文件，不会替你复制媒体。使用外部 AI 功能时，相关提示词或素材会发送给你配置的服务，并可能产生费用
 - **记得保管项目和素材**：当前没有自动云同步；分享或移动时需带上 `.mioon` 和引用的媒体。本机[项目备份](docs/PROJECT-BACKUPS.md)只保存项目内容，不含媒体、Mio 对话或版本历史；需要的本机记录也应另行保管
 - **先从短片开始**：当前适合轻量剪辑，复杂转场、变速和多人协作等功能尚未提供
-- 本版更新见 [v0.4.0 发布说明](docs/releases/v0.4.0.zh-CN.md)。平台、基础功能和已知限制见 [v0.1.0 发布说明](docs/releases/v0.1.0.zh-CN.md)。
+- 本版更新见 [v0.5.0 发布说明](docs/releases/v0.5.0.zh-CN.md)。平台、基础功能和已知限制见 [v0.1.0 发布说明](docs/releases/v0.1.0.zh-CN.md)。
 
 ## 更多说明
 

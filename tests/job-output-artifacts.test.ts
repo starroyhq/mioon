@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {chmodSync,closeSync,fstatSync,ftruncateSync,openSync,readFileSync,readdirSync,statSync,writeSync} from 'node:fs';
+import {chmodSync,closeSync,existsSync,fstatSync,ftruncateSync,openSync,readFileSync,readdirSync,statSync,writeSync} from 'node:fs';
 import {mkdtemp,copyFile,readFile,readdir,rename,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -44,11 +44,16 @@ function padOutput(file: string): void {
 
 function changeCtimeBeforeRegistration(store: ReturnType<typeof openStore>, targetKind: 'exports' | 'generated') {
   let changed: ProjectOutputPublicationProof | undefined;
-  const clear = setProjectOutputPublicationTestHooks(store, {fault(point, proof) {
+  const clear = setProjectOutputPublicationTestHooks(store, {fault(point, proof, workingFile) {
     if (point !== 'after_final' || proof.targetKind !== targetKind || changed) return;
     assert.equal(store.db.isTransaction, false);
     assert.equal(store.get('assets', proof.assetId), null);
-    const file = path.join(store.projectDir, proof.relativePath);
+    const final = path.join(store.projectDir, proof.relativePath);
+    if (targetKind === 'exports') {
+      assert.ok(workingFile);
+      assert.equal(existsSync(final), false);
+    }
+    const file = workingFile ?? final;
     const before = statSync(file, {bigint: true});
     const bytes = readFileSync(file);
     const mode = Number(before.mode & 0o777n);
@@ -277,12 +282,14 @@ for(const float of [false,true])test(`completed ${float?'float-checked export ar
  if(!float){if(paddingError)throw paddingError;assert.ok(padded);}
  const interrupted=row(store.get('exports',exportId));
  assert.equal(interrupted.status,'queued',JSON.stringify(interrupted.error));
- const artifact=outputArtifactSchema.parse(JSON.parse(await readFile(path.join(store.tempDir,'export-staging',exportId,'complete.json'),'utf8'))),files=await readdir(path.join(root,'导出'));assert.equal(files.length,1);
+ const artifact=outputArtifactSchema.parse(JSON.parse(await readFile(path.join(store.tempDir,'export-staging',exportId,'complete.json'),'utf8')));
+ assert.deepEqual(await readdir(path.join(root,'导出')),[]);
+ assert.deepEqual(await readdir(path.join(root,'.mioon-export-staging')),[]);
  if(!float)assert.equal(artifact.info.sizeBytes,largeOutputBytes);
  await services.drain();store.close();store=openStore(root);services=createServices(store,new Map(),{exportOptions:{inspect:async()=>{assert.fail('completed artifact does not re-run export capability/render admission');}}});
  let children=0;const stopObserving=onMediaProcess(event=>{if(event.type==='started')children++;});
  worker=startWorker(store,services,new Map());await worker.tick();await worker.stop();worker=undefined;stopObserving();
- const completed=row(store.get('exports',exportId));assert.equal(completed.status,'succeeded',JSON.stringify(completed.error));assert.equal(completed.assetId,artifact.assetId);assert.equal(children,0);assert.deepEqual(await readdir(path.join(root,'导出')),files);assert.deepEqual(store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(input.requestId),originalReceipt);
+ const completed=row(store.get('exports',exportId));assert.equal(completed.status,'succeeded',JSON.stringify(completed.error));assert.equal(completed.assetId,artifact.assetId);assert.equal(children,0);assert.deepEqual(await readdir(path.join(root,'导出')),['Export artifact.mp4']);assert.deepEqual(store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(input.requestId),originalReceipt);
  if(float)assert.ok(isTimelineExportAudioOutcome(completed,{assetSha256:artifact.info.sha256}));
  const output=row(await services.call('export.output.get',{projectId,exportId}));assert.equal(output.assetId,artifact.assetId);
  const firstFile=path.join(root,'导出','Export artifact.mp4');

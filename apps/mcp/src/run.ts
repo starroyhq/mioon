@@ -44,7 +44,7 @@ export async function runMcp(transport?: StdioServerTransport): Promise<Server |
     process.exitCode = 2;
     return;
   }
-  const client = createClient();
+  const client = createClient({reportSubmissionRejections: true});
   const tools = new Map<string, McpTool>(Object.keys(schemas).filter(isMcpOperationAllowed).map(operation => {
     const definition = operationDefinition(operation);
     return [definition.toolName, {

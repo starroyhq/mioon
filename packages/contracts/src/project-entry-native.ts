@@ -10,6 +10,8 @@ import type {ProjectCopyInput, ProjectCopyResponse, ProjectCopyToInput, ProjectT
 import type {ProjectDeleteInput, ProjectDeleteResponse} from './project-lifecycle.ts';
 import type {z as Zod} from 'zod';
 import type {NativeAssetMediaPort} from './asset-media-native.ts';
+import type {NativeFcpExportControlPort} from './project-entry-control.ts';
+export type {NativeFcpExportControlPort} from './project-entry-control.ts';
 import {projectFormatReadOnlyViewSchema, projectFormatUpgradePreviewSchema} from './project-format-upgrade.ts';
 import type {ProjectFormatReadOnlyView} from './project-format-upgrade.ts';
 
@@ -63,6 +65,7 @@ export type ProjectEntryAdoptCopyInput = z.infer<typeof projectEntryAdoptCopyInp
 export interface ProjectEntryControlPort {
   readonly templates?: readonly import('./project-entry-desktop.ts').ProjectDesktopTemplate[];
   readonly nativeRelink?: NativeAssetMediaPort;
+  readonly nativeFcpExport?: NativeFcpExportControlPort;
   listRecent(): Promise<ProjectEntriesResponse>;
   /** Main-to-utility read of app-wide durable task activity. */
   updateActivity?(): import('./desktop-update.ts').DesktopUpdateActivity;

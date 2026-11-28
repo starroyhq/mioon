@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="c987cbb438ceea7a79f155e95f816871e7428c298c4c317c22cb488fc20b3326";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="ca63a973861140e9c35c56e81cca32497a0ce6c5575df8508f4bb9b47c52e587";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "sequence.preview": {
   "type": "object",
@@ -960,6 +960,27 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
                "type": "integer",
                "minimum": 0,
                "maximum": 9007199254740991
+              },
+              "assetRange": {
+               "type": "object",
+               "properties": {
+                "inFrame": {
+                 "type": "integer",
+                 "minimum": 0,
+                 "maximum": 9007199254740991
+                },
+                "outFrame": {
+                 "type": "integer",
+                 "minimum": 0,
+                 "maximum": 9007199254740991
+                }
+               },
+               "required": [
+                "inFrame",
+                "outFrame"
+               ],
+               "additionalProperties": false,
+               "description": "Optional half-open range on the standalone 30 fps asset grid for placing video or audio in a format 5 sequence."
               }
              },
              "required": [
@@ -7410,6 +7431,27 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
       "type": "integer",
       "minimum": 0,
       "maximum": 9007199254740991
+     },
+     "assetRange": {
+      "type": "object",
+      "properties": {
+       "inFrame": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991
+       },
+       "outFrame": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991
+       }
+      },
+      "required": [
+       "inFrame",
+       "outFrame"
+      ],
+      "additionalProperties": false,
+      "description": "Optional half-open range on the standalone 30 fps asset grid for placing video or audio in a format 5 sequence."
      }
     },
     "required": [
@@ -9920,6 +9962,101 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
    "exportId": {
     "type": "string",
     "format": "uuid"
+   }
+  },
+  "required": [
+   "exportId"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "export.fcpxml.preview": {
+  "type": "object",
+  "properties": {
+   "copyMedia": {
+    "type": "boolean"
+   }
+  },
+  "required": [
+   "copyMedia"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "export.fcpxml.start": {
+  "type": "object",
+  "properties": {
+   "name": {
+    "type": "string",
+    "minLength": 1
+   },
+   "copyMedia": {
+    "type": "boolean"
+   },
+   "destination": {
+    "anyOf": [
+     {
+      "type": "object",
+      "properties": {
+       "kind": {
+        "type": "string",
+        "const": "project"
+       }
+      },
+      "required": [
+       "kind"
+      ],
+      "additionalProperties": false
+     },
+     {
+      "type": "object",
+      "properties": {
+       "kind": {
+        "type": "string",
+        "const": "chosen"
+       },
+       "token": {
+        "type": "string",
+        "minLength": 1
+       }
+      },
+      "required": [
+       "kind",
+       "token"
+      ],
+      "additionalProperties": false
+     }
+    ]
+   }
+  },
+  "required": [
+   "name",
+   "copyMedia",
+   "destination"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "export.fcpxml.get": {
+  "type": "object",
+  "properties": {
+   "exportId": {
+    "type": "string",
+    "minLength": 1
+   }
+  },
+  "required": [
+   "exportId"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "export.fcpxml.cancel": {
+  "type": "object",
+  "properties": {
+   "exportId": {
+    "type": "string",
+    "minLength": 1
    }
   },
   "required": [
@@ -18798,6 +18935,27 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
       "type": "integer",
       "minimum": 0,
       "maximum": 9007199254740991
+     },
+     "assetRange": {
+      "type": "object",
+      "properties": {
+       "inFrame": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991
+       },
+       "outFrame": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991
+       }
+      },
+      "required": [
+       "inFrame",
+       "outFrame"
+      ],
+      "additionalProperties": false,
+      "description": "Optional half-open range on the standalone 30 fps asset grid for placing video or audio in a format 5 sequence."
      }
     },
     "required": [
@@ -19118,6 +19276,38 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   ],
   "additionalProperties": false
  }
+};
+export const AGENT_TASK_FCP_EXPORT_START_PARAMETERS:unknown={
+ "type": "object",
+ "properties": {
+  "name": {
+   "type": "string",
+   "minLength": 1
+  },
+  "copyMedia": {
+   "type": "boolean"
+  },
+  "destination": {
+   "type": "object",
+   "properties": {
+    "kind": {
+     "type": "string",
+     "const": "project"
+    }
+   },
+   "required": [
+    "kind"
+   ],
+   "additionalProperties": false
+  }
+ },
+ "required": [
+  "name",
+  "copyMedia",
+  "destination"
+ ],
+ "additionalProperties": false,
+ "$schema": "http://json-schema.org/draft-07/schema#"
 };
 export const AGENT_TASK_THUMBNAIL_READ_PARAMETERS:unknown={
  "type": "object",
