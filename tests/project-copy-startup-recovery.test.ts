@@ -11,7 +11,6 @@ import {copyIdentity} from '../apps/server/src/project-host/copy-records.ts';
 import {inspectCopiedProjectFile} from '../packages/business/src/project-file/backup.ts';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import {isProjectFileHeld} from '../packages/business/src/project-file/index.ts';
-import {FORMAT5_PROJECT_SCHEMA_VERSION} from '../packages/business/src/project-file/schema/databases.ts';
 import {mountProjectVolumeFixture} from './helpers/project-volume-fixture.ts';
 import {testEnv} from './helpers/test-env.ts';
 
@@ -111,8 +110,8 @@ for (const format of ['exFAT', 'FAT32'] as const) {
     const {root, mount} = volume;
     const projectsDir = path.join(mount, 'projects'), targets = path.join(mount, 'copies');
     fs.mkdirSync(projectsDir); fs.mkdirSync(targets);
-    const options = {dataDir: path.join(root, 'app'), projectsDir, port: 0, token,
-      localDraftChannel: 'development' as const, projectFormatForTest: FORMAT5_PROJECT_SCHEMA_VERSION};
+    const options: ServerOptions = {dataDir: path.join(root, 'app'), projectsDir, port: 0, token,
+      localDraftChannel: 'development', projectFormatForTest: 5};
     let server: Awaited<ReturnType<typeof startServer>> | undefined, stopBeforePublish = true;
     let stopAtCapture = false;
     const close = async () => {await server?.close(); server = undefined;};
@@ -158,6 +157,7 @@ for (const format of ['exFAT', 'FAT32'] as const) {
       assert.deepEqual(await native.duplicate!(input), resumed);
       assert.equal(fs.existsSync(intent.stageDirectory), false);
 
+      assert.ok(native.observeSource);
       const {source: observedSource} = await native.observeSource({projectFile: source.projectFile});
       assert.ok(observedSource);
       const copyTo = {...observedSource, requestId: randomUUID(), projectFile: path.join(targets, 'Selected.mioon')};
