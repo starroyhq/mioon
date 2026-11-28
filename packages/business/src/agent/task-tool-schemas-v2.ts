@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="e7b72ca805f31f9b531ad40f8f2353916297c94791774ac6b654ae8258c8bb13";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="fdbefeb69c752c5b053318dd95c50c06122d1a7419b494d6a582f979fe548c48";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "sequence.preview": {
   "type": "object",
@@ -960,6 +960,27 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
                "type": "integer",
                "minimum": 0,
                "maximum": 9007199254740991
+              },
+              "assetRange": {
+               "type": "object",
+               "properties": {
+                "inFrame": {
+                 "type": "integer",
+                 "minimum": 0,
+                 "maximum": 9007199254740991
+                },
+                "outFrame": {
+                 "type": "integer",
+                 "minimum": 0,
+                 "maximum": 9007199254740991
+                }
+               },
+               "required": [
+                "inFrame",
+                "outFrame"
+               ],
+               "additionalProperties": false,
+               "description": "Optional half-open range on the standalone 30 fps asset grid for placing video or audio in a format 5 sequence."
               }
              },
              "required": [
@@ -7410,6 +7431,27 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
       "type": "integer",
       "minimum": 0,
       "maximum": 9007199254740991
+     },
+     "assetRange": {
+      "type": "object",
+      "properties": {
+       "inFrame": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991
+       },
+       "outFrame": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991
+       }
+      },
+      "required": [
+       "inFrame",
+       "outFrame"
+      ],
+      "additionalProperties": false,
+      "description": "Optional half-open range on the standalone 30 fps asset grid for placing video or audio in a format 5 sequence."
      }
     },
     "required": [
@@ -18697,6 +18739,27 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
       "type": "integer",
       "minimum": 0,
       "maximum": 9007199254740991
+     },
+     "assetRange": {
+      "type": "object",
+      "properties": {
+       "inFrame": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991
+       },
+       "outFrame": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991
+       }
+      },
+      "required": [
+       "inFrame",
+       "outFrame"
+      ],
+      "additionalProperties": false,
+      "description": "Optional half-open range on the standalone 30 fps asset grid for placing video or audio in a format 5 sequence."
      }
     },
     "required": [

@@ -4107,7 +4107,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
    * image dropped on the main track becomes a new board media node plus a main
    * clip; the same asset on V2/audio becomes an anchored overlay clip. The
    * server expands ids and media, then the normal notice/undo path applies. */
-  async function format5AddTimelineAsset(assetId: string, trackId?: string | null, startFrame?: number, dropSnapshot?: AssetDropSnapshot): Promise<void> {
+  async function format5AddTimelineAsset(assetId: string, trackId?: string | null, startFrame?: number, dropSnapshot?: AssetDropSnapshot,
+    assetRange?: Pick<SourceRangeSnapshot, 'inFrame' | 'outFrame'>): Promise<void> {
     if (!format5 || format5SessionBusy) return;
     if (dropSnapshot && dropSnapshot.projectId !== currentProject.current) return;
     if (!await guardNavigation(msg('shell.confirm.addTimeline'))) return;
@@ -4128,8 +4129,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     const before = new Set(timelineNow.clips.map(clip => clip.id));
     setFormat5SessionBusy(true);
     try {
-      const result = await format5Session().run(format5InsertAssetCommand(assetId as string,
-        target.id === mainTrackId ? null : target.id, Math.max(0, Math.round(start))) as never);
+      const command = format5InsertAssetCommand(assetId as string, target.id === mainTrackId ? null : target.id, Math.max(0, Math.round(start)));
+      const result = await format5Session().run({...command, ...(assetRange ? {assetRange} : {})} as never);
       if (!result.ok) {notifyFormat5CommandFailure(result); return;}
       clearFormat5ConflictToast();
       setFormat5Notice({id: `format5-${Date.now()}`, message: t('editUi.notice.added', {name: asset.name})});
@@ -4520,9 +4521,14 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     const state = dataRef.current;
     const plan = sourceRangeAddPlan({ snapshot, asset: state.assets.find(asset => asset.id === snapshot.assetId), timeline: state.timeline,
       blocked: isBusy('timeline:mutation') || isBusy('canvas:mutation') || pendingForProject(captured.projectId, {  }).some(entry => isMutationOperation(entry.operation) || entry.operation.startsWith('timeline.')) });
-    if (!plan.valid) { notify(plan.reasonMessage as AppMessage, 'warning'); return; }
+    if (!plan.valid || !plan.input) { notify(plan.reasonMessage as AppMessage, 'warning'); return; }
     // Capture exact primitives before dispatch. Saving a different source range
     // later cannot change this request, its retry receipt, or existing clips.
+    if (state.projectFormatVersion === 5) {
+      await format5AddTimelineAsset(plan.input.assetId, plan.input.trackId, plan.input.startFrame, undefined,
+        {inFrame: snapshot.inFrame, outFrame: snapshot.outFrame});
+      return;
+    }
     const result = await mutateTimeline('timeline.clip.add', { ...plan.input }, plan.expectedRevision);
     if (!result || !isCurrent(captured)) return;
     if (panelIntent.current === panelChoice) setPanelOpen('timeline', true, 'editing');
