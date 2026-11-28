@@ -2,7 +2,7 @@ import {randomUUID,createHash} from 'node:crypto';
 import {PROJECT_ENTRY_LIMITS} from '../../../packages/contracts/src/project-entry.ts';
 import {PROJECT_ENTRY_CONTROL_LIMITS,projectEntryControlRequestSchema,projectEntryControlCancelSchema,projectEntryControlReleaseSchema,projectEntryControlResponseSchema,projectEntryControlRevokedSchema,projectEntryControlCommandSchema,parseProjectEntryControlResult,projectEntryControlErrorSchema} from '../../../packages/contracts/src/project-entry-control.ts';
 import type {ProjectEntryControlCommand,ProjectEntryControlResults} from '../../../packages/contracts/src/project-entry-control.ts';
-import type {NativeFcpExportControlPort,ProjectEntryControlPort,ProjectEntryWindowRevoked} from '../../../packages/contracts/src/project-entry-native.ts';
+import type {NativeFcpExportControlPort,ProjectEntryControlPort,ProjectEntryReleaseInput,ProjectEntryWindowRevoked} from '../../../packages/contracts/src/project-entry-native.ts';
 import {NATIVE_ASSET_MEDIA_LIMITS} from '../../../packages/contracts/src/asset-media-native.ts';
 import type {NativeAssetMediaPort} from '../../../packages/contracts/src/asset-media-native.ts';
 import {PROJECT_FORMAT_READ_ONLY_LIMITS, projectFormatUpgradeFromError} from '../../../packages/contracts/src/project-format-upgrade.ts';
@@ -118,14 +118,17 @@ export type DesktopProjectEntryControl=ReturnType<typeof createProjectEntryContr
 export function createProjectEntryControlBroker({backendId,control,send,isCurrent=()=>true}:{backendId:string;control:ProjectEntryControlPort;send:(message:unknown)=>void;isCurrent?:()=>boolean}){
  const pending=new Map<string,{command:ProjectEntryControlCommand;cancelled:boolean;abort:AbortController;timer:ReturnType<typeof setTimeout>}>(),completed=new Map<string,{command:ProjectEntryControlCommand;fingerprint:string;response:unknown;retired:boolean}>();let closed=false;
  const releasedWindows=new Set<string>();
- const releaseWindow=(id:string)=>{if(releasedWindows.has(id))return;releasedWindows.add(id);control.release({windowId:id});};
+ const releaseWindow=(input:ProjectEntryReleaseInput)=>{
+  if(releasedWindows.has(input.windowId)&&!input.closed)return;
+  releasedWindows.add(input.windowId);control.release(input);
+ };
  const unlisten=control.onWindowRevoked(event=>{releasedWindows.add(event.windowId);if(!closed&&isCurrent())send({type:'project-entry-control-revoked',version:1,backendId,event});});
  const release=(command:ProjectEntryControlCommand)=>{
   // FCP requests borrow an already opened lease. Only the commands that
   // acquire a window lease may release it when their result is abandoned.
   switch(command.operation){
    case 'openPath':case 'acquire':case 'saveAs':case 'adoptCopy':
-    releaseWindow(command.input.windowId);break;
+    releaseWindow({windowId:command.input.windowId});break;
   }
  };
  const cleanNative=(command:ProjectEntryControlCommand,data:unknown)=>{
@@ -156,7 +159,7 @@ export function createProjectEntryControlBroker({backendId,control,send,isCurren
   case 'capabilities':return {ready:true,create:typeof control.create==='function',open:['openPath','prepareAcquire','acquire','release'].every(key=>typeof control[key as keyof ProjectEntryControlPort]==='function'),saveAs:typeof control.saveAs==='function',duplicate:typeof control.duplicate==='function',copyTo:typeof control.copyTo==='function',adoptCopy:typeof control.adoptCopy==='function'&&typeof control.inspectSelectedCopy==='function',openOriginal:typeof control.observeSource==='function',copySource:typeof control.observeSource==='function'&&typeof control.copyTo==='function',...(typeof control.instantiateTemplate==='function'&&control.templates?.length?{templates:control.templates}:{})};
   case 'prepareAcquire':if(!control.prepareAcquire)throw failure();return control.prepareAcquire(command.input);
   case 'markOpened':if(!control.markOpened)throw failure();return control.markOpened(command.input);
-  case 'listRecent':return control.listRecent();case 'create':return control.create(command.input);case 'openPath':return control.openPath(command.input);case 'acquire':return control.acquire(command.input);case 'release':releaseWindow(command.input.windowId);return true;
+  case 'listRecent':return control.listRecent();case 'create':return control.create(command.input);case 'openPath':return control.openPath(command.input);case 'acquire':return control.acquire(command.input);case 'release':releaseWindow(command.input);return true;
   case 'updateActivity':if(!control.updateActivity)throw failure();return control.updateActivity();
   case 'inspectCopy':if(!control.inspectSelectedCopy)throw failure();return control.inspectSelectedCopy(command.input);
   case 'observeSource':if(!control.observeSource)throw failure();return control.observeSource(command.input);
@@ -175,7 +178,8 @@ export function createProjectEntryControlBroker({backendId,control,send,isCurren
    const parsed=projectEntryControlReleaseSchema.safeParse(raw);if(!parsed.success)return true;
    for(const slot of pending.values())if(windowId(slot.command)===parsed.data.windowId){slot.cancelled=true;slot.abort.abort();}
    for(const [id,entry]of completed)if(windowId(entry.command)===parsed.data.windowId)retire(id,entry,false);
-   releaseWindow(parsed.data.windowId);return true;
+   const {windowId:id,closed:confirmedClosed}=parsed.data;
+   releaseWindow({windowId:id,...(confirmedClosed?{closed:true}: {})});return true;
   }
   if(raw.type==='project-entry-control-cancel'){
    const parsed=projectEntryControlCancelSchema.safeParse(raw);if(parsed.success){const slot=pending.get(parsed.data.requestId);if(slot){slot.cancelled=true;slot.abort.abort();release(slot.command);}const prior=completed.get(parsed.data.requestId);if(prior)retire(parsed.data.requestId,prior);}return true;

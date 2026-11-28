@@ -19,6 +19,7 @@ import {collectTaskProjectOverview} from '../packages/business/src/agent/task-co
 import type {TaskProjectOverview} from '../packages/business/src/agent/task-context-observations-v2.ts';
 import type {AgentTaskToolCall} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {sequenceInspectionSchemas} from '../packages/contracts/src/sequence-inspection.ts';
+import {isSourceRangeResponse} from '../packages/contracts/src/source-range.ts';
 import {schemas} from '../packages/contracts/src/index.ts';
 import {operationEffects} from '../packages/contracts/src/operation-effects.ts';
 import {TIMELINE_RELATIVE_SUBTITLE_PROFILE_ID, TIMELINE_SUBTITLE_PROFILE_ID} from '../packages/contracts/src/timeline-subtitle-profile.ts';
@@ -326,6 +327,49 @@ test('Mio puts one library asset into the main track with server-expanded ids an
   assert.equal(applyMioSequenceUndo(store, undo).status, 'applied');
   assert.equal(store.db.prepare('SELECT count(*) AS n FROM project.timeline_clips').get()!.n as number, clipsBefore);
   assert.equal(store.db.prepare('SELECT count(*) AS n FROM project.nodes WHERE projectId=? AND archivedAt IS NULL').get(projectId)!.n as number, nodesBefore);
+});
+
+test('Mio inserts a saved source range through the approval-gated timeline tool in one undo step', async t => {
+  const store = fixture(t, {withMioRuntime: true});
+  const services = createServices(store, new Map());
+  const tools = createAgentTaskTools({store, services});
+  t.after(async () => {tools.dispose(); await services.drain();});
+  const timelineTool = tools.list().find(tool => tool.name === 'mioon_sequence_timeline_edit');
+  assert.ok(timelineTool);
+  assert.match(JSON.stringify(timelineTool.parameters), /"assetRange":/);
+  const saved = await services.call('asset.range.set', {projectId, assetId: assetA, requestId: req(22),
+    expectedRevision: 0, inFrame: 12, outFrame: 37});
+  assert.ok(isSourceRangeResponse(saved) && saved.range);
+  const input = {kind: 'insert-asset', assetId: assetA, trackId: video, startFrame: 90, assetRange: saved.range};
+  assert.equal(mioSequenceEditSchemas['sequence.tool.timeline'].safeParse({...input,
+    assetRange: {inFrame: 12, outFrame: 12}}).success, false);
+
+  const before = readFormat5TimelineRecord(store.db, 'project')!;
+  const prepared = tools.prepare({projectId, operation: 'sequence.tool.timeline', input});
+  assert.equal(prepared.forceApproval, true);
+  assert.equal(prepared.risk, 'local_reversible');
+  assert.deepEqual(readFormat5TimelineRecord(store.db, 'project'), before);
+  assert.ok(prepared.sequence);
+  const plan = prepared.sequence.plan as MioSequencePlan;
+  const receipt = commitMioSequenceAction(store, plan);
+  assert.equal(receipt.status, 'applied');
+  const after = readFormat5TimelineRecord(store.db, 'project')!;
+  assert.equal(after.clips.length, before.clips.length + 1);
+  const clip = after.clips.find(item => !before.clips.some(prior => prior.id === item.id));
+  assert.ok(clip);
+  assert.equal(clip.sourceInFrame, 12);
+  assert.equal(clip.sourceInFrame + clip.durationFrames, 37);
+  assert.equal(clip.startFrame, 90);
+  assert.equal(clip.trackId, video);
+  assert.equal(clip.sequenceSource?.kind, 'media');
+  assert.deepEqual(commitMioSequenceAction(store, plan), receipt);
+  assert.deepEqual(readFormat5TimelineRecord(store.db, 'project'), after);
+
+  assert.equal(readSequenceEditHistory(store, 'mio').undo?.actionId, receipt.actionId);
+  assert.equal(applyMioSequenceUndo(store, prepareMioSequenceUndo(store, projectId, req(23), receipt.actionId)).status, 'applied');
+  assert.deepEqual(readFormat5TimelineRecord(store.db, 'project')!.clips, before.clips);
+  assert.equal(readSequenceEditHistory(store, 'mio').undo, null);
+  assert.deepEqual(await services.call('asset.range.get', {projectId, assetId: assetA}), saved);
 });
 
 test('Mio undo refuses a user-origin action and a stale cursor', t => {

@@ -162,6 +162,7 @@ function harness({ projectId = null, mode = 'canvas', loading = false, ready = B
     mioFollowCandidate: { current: null }, setMioFollow() {},
     // No editing owner is mounted on the project home; preserve its refresh wait.
     refreshAgentEditingTargets: async () => { await Promise.allSettled([]); },
+    settleDiscardedAgentEditingDrafts() {},
     confirm: async () => true, readableError: (e: Error) => e.message, pendingForProject: () => [], URL, URLSearchParams,
     window: { location: { href: 'http://127.0.0.1:4318/', search: '' }, history: { pushState() {}, replaceState() {} } },
     tasksRef: { current: { getState: () => ({ phase: 'idle' }), load: async () => {} } }, autoReread: async (projectId: unknown) => calls.push(['autoReread', projectId]), format5LostRef: {current: {clear: () => {calls.push(['format5LostClear']);}}},

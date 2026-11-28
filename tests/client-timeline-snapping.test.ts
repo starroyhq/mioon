@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { transformSync } from 'esbuild';
 import {
   SNAP_THRESHOLD_PX,
   MAX_TIMELINE_FRAME,
@@ -373,18 +374,90 @@ test('Timeline integration uses lane-relative fractional coordinates, live Alt s
   assert.match(timelineSource, /window\.addEventListener\('keydown', modifier\); window\.addEventListener\('keyup', modifier\)/);
 });
 
-test('Timeline commits the displayed frame once, with unchanged, invalid, payload and stale-gesture gates', () => {
-  const drop = timelineSource.slice(timelineSource.indexOf('async function drop('), timelineSource.indexOf('const stepSeconds'));
-  assert.match(drop, /const value = previewRef\.current, session = gesture\.current, drag = activeDrag/);
-  assert.match(drop, /value\?\.valid && value\.trackId === track\.id/);
-  assert.match(drop, /session\?\.drag === drag && session\.projectId === timeline!\.projectId && session\.revision === timeline!\.revision/);
-  assert.match(drop, /if \(!allowed \|\| !payloadMatches \|\| value!\.unchanged\) return/);
-  assert.match(drop, /expectedRevision: session!\.revision, durationFrames: value!\.durationFrames/);
-  assert.match(drop, /onMoveClip\(drag!\.id, track\.id, value!\.startFrame, snapshot\)/);
-  assert.match(drop, /onAddAsset\(drag!\.id, track\.id, value!\.startFrame, snapshot\)/);
-  assert.doesNotMatch(drop, /timelineDropPreview\(|snapTimelinePosition\(|frameAt\(/);
+const controllerDropSource = timelineSource.slice(timelineSource.indexOf('async function drop('), timelineSource.indexOf('// Shift+F10 / the keyboard menu key'));
+const controllerClearDragSource = timelineSource.slice(timelineSource.indexOf('function clearDrag('), timelineSource.indexOf('// Cancel and navigation never submit.'));
+type DropEvent = { preventDefault(): void; dataTransfer: { getData(format: string): string } };
+const makeDropController = Function('context', transformSync(`
+  const { bodyCurrent, busy, lockedTrackIds, timeline, previewRef, gesture, lastDrag, dragConflictController, showPreview,
+    onMoveClip, onAddAsset, CLIP_DRAG, ASSET_DRAG } = context;
+  let { activeDrag } = context;
+  ${controllerClearDragSource}
+  ${controllerDropSource}
+  return { drop, clearDrag };
+`, { loader: 'ts' }).code) as (context: Record<string, unknown>) => {
+  drop(event: DropEvent, track: typeof videoTrack): Promise<void>;
+  clearDrag(): void;
+};
+
+function dropFixture({ type = 'clip', settle = true, ...patch }: {
+  type?: 'clip' | 'asset'; settle?: boolean | Promise<boolean>; valid?: boolean; unchanged?: boolean;
+  trackId?: string; payload?: string; stale?: 'drag' | 'project' | 'revision'; busy?: boolean; locked?: boolean;
+} = {}) {
+  const moves: unknown[][] = [], additions: unknown[][] = [], releases: boolean[] = [];
+  const activeDrag = { type, id: 'dragged', release: (settled = true) => releases.push(settled) };
+  const saved = timeline();
+  assert.ok(typeof saved.revision === 'number');
+  const gesture = { current: { drag: patch.stale === 'drag' ? { ...activeDrag } : activeDrag,
+    projectId: patch.stale === 'project' ? 'different-project' : saved.projectId,
+    revision: patch.stale === 'revision' ? saved.revision - 1 : saved.revision } };
+  const previewRef: {current: unknown} = {current: {valid: patch.valid ?? true, unchanged: patch.unchanged ?? false,
+    trackId: patch.trackId ?? videoTrack.id, startFrame: 431, durationFrames: 29}};
+  const controller = makeDropController({ activeDrag, timeline: saved, gesture, previewRef,
+    bodyCurrent: () => true, busy: patch.busy ?? false, lockedTrackIds: new Set(patch.locked ? [videoTrack.id] : []),
+    lastDrag: {current: null}, dragConflictController: {current: null},
+    showPreview(value: unknown) { previewRef.current = value; },
+    onMoveClip(...args: unknown[]) { moves.push(args); return settle; },
+    onAddAsset(...args: unknown[]) { additions.push(args); },
+    CLIP_DRAG: 'clip', ASSET_DRAG: 'asset',
+  });
+  return { moves, additions, releases, cancel: controller.clearDrag,
+    drop: () => controller.drop({ preventDefault() {}, dataTransfer: {
+      getData: format => patch.payload ?? (format === 'clip' ? JSON.stringify({id: activeDrag.id}) : activeDrag.id),
+    } }, videoTrack) };
+}
+
+test('Timeline commits the displayed frame once, with unchanged, invalid, payload and stale-gesture gates', async () => {
+  for (const type of ['clip', 'asset'] as const) {
+    const f = dropFixture({type});
+    await f.drop();
+    await f.drop();
+    const expected = [['dragged', videoTrack.id, 431, {projectId: 'project', expectedRevision: 7, durationFrames: 29}]];
+    assert.deepEqual(f.moves, type === 'clip' ? expected : []);
+    assert.deepEqual(f.additions, type === 'asset' ? expected : []);
+  }
+  const invalidDrops: Parameters<typeof dropFixture>[0][] = [
+    {unchanged: true}, {valid: false}, {trackId: audioTrack.id}, {payload: 'bad JSON'}, {payload: '{"id":"other"}'},
+    {stale: 'drag'}, {stale: 'project'}, {stale: 'revision'}, {busy: true}, {locked: true},
+  ];
+  for (const patch of invalidDrops) {
+    const f = dropFixture(patch);
+    await f.drop();
+    assert.deepEqual(f.moves, [], JSON.stringify(patch));
+    assert.deepEqual(f.additions, [], JSON.stringify(patch));
+    assert.deepEqual(f.releases, [true], 'a rejected drop settles the gesture without writing');
+  }
+  assert.doesNotMatch(controllerDropSource, /timelineDropPreview\(|snapTimelinePosition\(|frameAt\(/);
   assert.match(timelineSource, /data-start-frame=\{preview\.startFrame\}/);
   assert.match(timelineSource, /data-snap-frame=\{preview\.snap\.frame\}/);
+});
+
+test('Timeline ends the drag hold on cancel and waits for a submitted move to settle', async () => {
+  const canceled = dropFixture();
+  canceled.cancel();
+  await canceled.drop();
+  assert.deepEqual(canceled.moves, []);
+  assert.deepEqual(canceled.releases, [true]);
+  for (const settled of [true, false]) {
+    const receipt = Promise.withResolvers<boolean>();
+    const f = dropFixture({settle: receipt.promise});
+    const dropped = f.drop();
+    f.cancel();
+    assert.equal(f.moves.length, 1);
+    assert.deepEqual(f.releases, [], 'drag end cannot release while the mutation result is pending');
+    receipt.resolve(settled);
+    await dropped;
+    assert.deepEqual(f.releases, [settled]);
+  }
 });
 
 test('App forwards exact displayed position, duration and revision through existing durable timeline mutations', () => {
@@ -392,6 +465,6 @@ test('App forwards exact displayed position, duration and revision through exist
   assert.match(appSource, /if \(!length\.known\)/);
   assert.match(appSource, /const durationFrames = dropSnapshot\?\.durationFrames \?\? length\.durationFrames/);
   assert.match(appSource, /mutateTimeline\('timeline\.clip\.add', \{ trackId: track\.id, assetId, name: asset\.name, startFrame: start, durationFrames, sourceInFrame: 0 \}, dropSnapshot\?\.expectedRevision\)/);
-  assert.match(appSource, /mutateTimeline\('timeline\.clip\.update', \{ clipId, patch: \{ trackId, startFrame \} \}, dropSnapshot\?\.expectedRevision\)/);
+  assert.match(appSource, /mutateTimeline\('timeline\.clip\.update', \{ clipId, patch: \{ trackId, startFrame \} \}, dropSnapshot\?\.expectedRevision, \{\s*onFailure:/);
   assert.doesNotMatch(appSource, /snapTimelinePosition\(/);
 });

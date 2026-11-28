@@ -69,7 +69,7 @@ function draftFixture(t: test.TestContext) {
 }
 
 function appHarness(controller: ClipDraftController, { confirm = async () => true, dirty = false }: {confirm?:(message?:unknown)=>Promise<unknown>;dirty?:boolean} = {}) {
-  const events: unknown[][] = [], resets: unknown[][] = [], owner = { projectId: key.projectId, epoch: 1 };
+  const events: unknown[][] = [], resets: unknown[][] = [], settledClaims: string[] = [], owner = { projectId: key.projectId, epoch: 1 };
   const clipDraftRef:{current:ClipDraftController|null}={current:controller}, dirtyRef = { current: dirty };
   const subtitleState = { text: 'Separate subtitle draft' };
   const scope = {
@@ -77,11 +77,12 @@ function appHarness(controller: ClipDraftController, { confirm = async () => tru
     shotTextRef: { current: null }, clipDraftRef, dirtyRef, context: () => ({ ...owner }),
     isCurrent: (captured: { projectId: string; epoch: number; }) => captured.projectId === owner.projectId && captured.epoch === owner.epoch,
     confirm: (message: unknown) => { events.push(['confirm', message]); return confirm(message); },
+    settleDiscardedAgentEditingDrafts: (projectId: string) => settledClaims.push(projectId),
     subtitlesRef: { current: { controller: { getState: () => subtitleState, hasUnsaved: () => false, discardDraft: () => resets.push(['subtitle']) } } },
     subjectsRef: { current: { state: { scope: 'subject-owner' }, controller: { discardDrafts: (captured: unknown) => resets.push(['subjects', captured]) } } },
     ...Object.fromEntries(['setShotDirty', 'setClipDirty', 'setSourceDirty', 'setSubjectDirty', 'setSubtitleDirty', 'setInspectorEpoch'].map(name => [name, (value: (arg0: number) => unknown) => resets.push([name, typeof value === 'function' ? value(4) : value])])),
   };
-  return { owner, scope, clipDraftRef, dirtyRef, events, resets, guard: compile(guardSource, 'guardNavigation', scope) };
+  return { owner, scope, clipDraftRef, dirtyRef, events, resets, settledClaims, guard: compile(guardSource, 'guardNavigation', scope) };
 }
 
 test('actual App Cancel sees a synchronous clip edit before React rerender and preserves every draft', async t => {
@@ -136,8 +137,10 @@ test('actual App waits for the exact local-draft CAS delete before resetting oth
   let settled = false; const leaving = h.guard().then((value: unknown) => { settled = true; return value; });
   await f.removeEntered;
   assert.equal(settled, false); assert.equal(f.controller.hasUnsaved(), true); assert.deepEqual((h.resets as unknown), []);
+  assert.deepEqual((h.settledClaims as unknown), []);
   assert.deepEqual(f.removals, [{ ...key, workspaceScope: saved.workspaceScope, instanceId: saved.instanceId, expectedRevision: saved.revision }]);
   remove.resolve!(); assert.equal(await leaving, true); assert.equal(f.controller.hasUnsaved(), false);
+  assert.deepEqual(h.settledClaims, [key.projectId]);
   assert.deepEqual(h.resets, [['subtitle'], ['subjects', 'subject-owner'], ['setShotDirty', false], ['setClipDirty', false], ['setSourceDirty', false], ['setSubjectDirty', false], ['setSubtitleDirty', false], ['setInspectorEpoch', 5]]);
 });
 
@@ -147,6 +150,7 @@ test('actual App failed asynchronous discard retains local input and never reset
   const leaving = h.guard(); await f.removeEntered; f.failRemove(); remove.resolve!();
   assert.equal(await leaving, false); assert.equal(f.state().raw.name, 'Unsent clip'); assert.equal(f.controller.hasUnsaved(), true);
   assert.deepEqual(f.stored(), persisted); assert.equal(h.dirtyRef.current, true); assert.deepEqual((h.resets as unknown), []);
+  assert.deepEqual(h.settledClaims, []);
 });
 
 test('actual App typing during CAS discard keeps navigation blocked and the newer input dirty', async t => {

@@ -81,7 +81,7 @@ export interface ProjectEntryControlResults{capabilities:ProjectDesktopCapabilit
 export const projectEntryControlRequestSchema=z.object({type:z.literal('project-entry-control-request'),version:z.literal(1),backendId:id,requestId:id,deadline:z.number().int().positive(),command:projectEntryControlCommandSchema}).strict();
 export const projectEntryControlCancelSchema=z.object({type:z.literal('project-entry-control-cancel'),version:z.literal(1),backendId:id,requestId:id}).strict();
 /** Main-to-utility cleanup only; never a renderer action or queued business request. */
-export const projectEntryControlReleaseSchema=z.object({type:z.literal('project-entry-control-release'),version:z.literal(1),backendId:id,windowId:id}).strict();
+export const projectEntryControlReleaseSchema=projectEntryReleaseInputSchema.extend({type:z.literal('project-entry-control-release'),version:z.literal(1),backendId:id});
 export const projectEntryControlResponseSchema=z.discriminatedUnion('ok',[
  z.object({type:z.literal('project-entry-control-response'),version:z.literal(1),backendId:id,requestId:id,ok:z.literal(true),data:z.unknown()}).strict(),
  z.object({type:z.literal('project-entry-control-response'),version:z.literal(1),backendId:id,requestId:id,ok:z.literal(false),error:projectEntryControlErrorSchema}).strict(),

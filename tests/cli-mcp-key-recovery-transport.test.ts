@@ -15,6 +15,7 @@ import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {startServer} from './helpers/test-server.ts';
 import {canonicalImageInput, IMAGE_FIXED_OPTIONS, IMAGE_MODELS, DEFAULT_IMAGE_CONFIGURATION} from '@mioon/contracts';
+import {SEQUENCE_EDIT_CONTRACT_VERSION, type SequenceEditEnvelope} from '../packages/contracts/src/sequence-edit.ts';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const hash = (value: unknown): string => createHash('sha256').update(canonicalImageInput(value)).digest('hex');
@@ -203,6 +204,41 @@ test('real CLI and MCP preserve proof-specific rejection and HTTP status semanti
       if (operation === 'image.task.observeRemote') assert.deepEqual(result.error?.details?.observation, observation);
       else assert.equal(result.error?.details?.mutationOutcome, 'not_applied');
     }
+  });
+});
+
+test('CLI and MCP distinguish a submission refusal from a missing acknowledgement', {timeout: 60000}, async (t: TestContext) => {
+  const f = await fixture(t, 'submission-refusal-vs-missing-acknowledgement');
+  const projectId = randomUUID(), requestId = randomUUID(), fromId = randomUUID(), toId = randomUUID();
+  const envelope: SequenceEditEnvelope = {
+    contractVersion: SEQUENCE_EDIT_CONTRACT_VERSION, projectId, requestId,
+    epoch: randomUUID(), actionId: randomUUID(), filmId: randomUUID(), originSide: 'board',
+    intents: [{side: 'board', operation: {kind: 'board', edit: {kind: 'connect', fromId, toId}}}],
+    baseline: {contentRevision: 1, timelineRevision: 1, syncRevision: 1, historyPosition: 0, historyRevision: 1, targets: []},
+    impact: {nodeIds: [fromId, toId], edgeIds: [], mainTrackClipIds: [], otherTrackItemIds: [], subtitleCueIds: []},
+    allocation: {clips: [], nodes: [], splitClips: [], edges: [{id: randomUUID(), fromId, toId}]},
+  };
+  const commit = {projectId, envelope, expectedPlanDigest: hash(envelope)};
+  const cases = [
+    {operation: 'timeline.render', input: {projectId, requestId, expectedRevision: 1, purpose: 'export', preflightSnapshotHash: '0'.repeat(64)}, code: 'PREFLIGHT_STALE', message: 'The preflight is stale.', details: {}},
+    {operation: 'sequence.commit', input: commit, code: 'SEQUENCE_EDIT_REVISION_CONFLICT', message: 'The sequence changed.', details: {ids: [fromId]}},
+    {operation: 'sequence.action.commit', input: commit, code: 'SEQUENCE_EDIT_REVISION_CONFLICT', message: 'The sequence changed.', details: {ids: [toId]}},
+    {operation: 'export.create', input: {projectId, requestId}, code: 'REVISION_CONFLICT', message: 'The export inputs changed.', details: {expectedRevision: 1, currentRevision: 2}},
+  ];
+  for (const {operation, input, code, message, details} of cases) for (const kind of ['CLI', 'MCP']) await t.test(`${kind}: ${operation}`, async () => {
+    f.set({status: 409, body: {ok: false, error: {code, message, details, retryable: false}}});
+    const refused = await f.call(kind, operation, input, 3);
+    assert.deepEqual(refused, f.wire.at(-1)?.body, 'an explicit rejection preserves the server envelope');
+
+    f.set({status: 500, body: {ok: false, error: {code: 'INTERNAL_ERROR', message: 'No acknowledgement available.', details: {}}}});
+    const failed = await f.call(kind, operation, input, 1);
+    assert.equal(failed.error?.code, 'INTERNAL_ERROR');
+    uncertain(failed, operation, requestId);
+
+    f.set({fault: 'drop', body: {ok: true, data: null}});
+    const disconnected = await f.call(kind, operation, input, 4);
+    assert.equal(disconnected.error?.code, 'BACKEND_UNAVAILABLE');
+    uncertain(disconnected, operation, requestId);
   });
 });
 

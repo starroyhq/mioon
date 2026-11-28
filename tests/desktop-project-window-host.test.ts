@@ -12,7 +12,7 @@ import { parseSettingsDiagnosticRequest, sanitizeSettingsDiagnosticRecord } from
 import type { SettingsDiagnosticRecord } from '../apps/desktop/src/settings-diagnostics-protocol.ts';
 
 import type {ProjectWindowContext, ProjectWindowOpenResult} from '../apps/desktop/src/project-window-protocol.ts';
-import type {ProjectEntryWindow} from '../packages/contracts/src/project-entry-native.ts';
+import type {ProjectEntryReleaseInput, ProjectEntryWindow} from '../packages/contracts/src/project-entry-native.ts';
 
 type Gate = Omit<PromiseWithResolvers<unknown>, 'resolve'> & {resolve(value?: unknown): void};
 const backendId = '11111111-1111-4111-8111-111111111111';
@@ -1895,13 +1895,18 @@ test('locator reload revokes old status/action/selection and stale frames cannot
 
 test('audio invalidation snapshots precede rotation and only real contents destruction proves owner loss', async t => {
   const invalidations: {owner: ProjectWindowDocumentOwner<NativeWindow>; wasCurrent: boolean}[] = [], destroyed: unknown[] = [];
-  const f = fixture(t, { invalidated: owner => invalidations.push({ owner, wasCurrent: owner.isCurrent() }), destroyed: id => destroyed.push(id) });
+  const leases = createProjectWindowLeaseFixture(), releases: ProjectEntryReleaseInput[] = [];
+  const f = fixture(t, { invalidated: owner => invalidations.push({ owner, wasCurrent: owner.isCurrent() }), destroyed: id => destroyed.push(id),
+    projectEntries: {...leases.port, release(input) {releases.push(input); leases.port.release(input);}} });
   await f.launcher(); const a = await f.editor(), before = f.host.contextFor(a);
   (a)!.navigate(editorUrl(projectA));
   const old = invalidations.find(value => value.owner.windowId === (before)!.windowId)!;
   assert.ok(old); assert.equal(old.wasCurrent, true); assert.equal(old.owner.contextId, (before)!.contextId); assert.equal(old.owner.isCurrent(), false);
-  assert.deepEqual((destroyed as unknown), []); f.host.closeStateChanged(a, 'closing'); (a)!.finishClose(); assert.deepEqual((destroyed as unknown), []);
+  assert.deepEqual((destroyed as unknown), []); assert.deepEqual(releases, []);
+  f.host.closeStateChanged(a, 'closing'); (a)!.finishClose(); assert.deepEqual((destroyed as unknown), []);
+  assert.deepEqual(releases, [{windowId: before!.windowId}]);
   (a)!.webContents.emit('destroyed'); (a)!.webContents.emit('destroyed'); assert.deepEqual(destroyed, [(before)!.windowId]);
+  assert.deepEqual(releases, [{windowId: before!.windowId}, {windowId: before!.windowId, closed:true}]);
 });
 
 test('a pre-consume Quit refusal has an exact negative receipt even when invoke ACK is lost', async t => {
