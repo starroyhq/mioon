@@ -7,6 +7,7 @@ import {AppError} from '../../../contracts/src/app-error.ts';
 import {isProjectId} from '../../../contracts/src/project-file.ts';
 import {AGENT_TASK_STATUSES} from '../../../contracts/src/agent-tasks-v2.ts';
 import {isAppLibraryHeld} from '../app-db/connection.ts';
+import {fileIdentityOfStats} from '../app-db/identity.ts';
 import {isProjectFileHeld} from './held-files.ts';
 import {readTimelineStorage} from './timeline-storage.ts';
 import {assertNoFormat4Restore,inspectProjectFileReadOnly,openClosedProjectSnapshotConnection} from './connection.ts';
@@ -132,7 +133,7 @@ export function hasBlockingMioRun(db:DatabaseSync,projectId:string,schema:'main'
 const trashGeneration=(info:BigIntStats):ProjectTrashFileGeneration=>{
  const size=Number(info.size);
  if(!Number.isSafeInteger(size)||size<0)throw invalid('project','metadata');
- return {dev:String(info.dev),ino:String(info.ino),size,mtimeNs:String(info.mtimeNs),ctimeNs:String(info.ctimeNs),birthtimeNs:String(info.birthtimeNs)};
+ return {...fileIdentityOfStats(info),size,mtimeNs:String(info.mtimeNs),ctimeNs:String(info.ctimeNs),birthtimeNs:String(info.birthtimeNs)};
 };
 const trashStamp=(info:BigIntStats):string=>[stamp(info),info.birthtimeNs].join(':');
 function checkTrashGeneration(file:string,before:BigIntStats,database:'project'|'history'):void {

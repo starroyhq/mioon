@@ -6,6 +6,7 @@ import {ensurePrivateDirectory, validatePrivateDirectory} from '../../../../pack
 import {projectCopyActionSchemas, projectCopyResponseSchema} from '../../../../packages/contracts/src/project-copies.ts';
 import type {ProjectCopyActionInput, ProjectCopyActionOperation, ProjectAdoptCopyInput, ProjectCopyToInput, ProjectTemplateInput, ProjectCopyResponse} from '../../../../packages/contracts/src/project-copies.ts';
 import type {AppLibrary} from '../../../../packages/business/src/app-db/index.ts';
+import {fileIdentityOfStats} from '../../../../packages/business/src/app-db/identity.ts';
 import {createProjectServiceApplication} from '../../../../packages/business/src/project-service-application.ts';
 import {copyProjectToNewFile} from '../../../../packages/business/src/project-file/copy.ts';
 import {FORMAT4_PROJECT_SCHEMA_VERSION, FORMAT5_PROJECT_SCHEMA_VERSION} from '../../../../packages/business/src/project-file/schema/databases.ts';
@@ -304,7 +305,7 @@ export function createProjectCopyActions({manager, library, directories, assertP
     const parent = intent.targetDirectory ? path.dirname(intent.targetDirectory) : path.dirname(intent.targetFile);
     const stageDirectory = createProjectCopyStagingDirectory(parent, '.project-copy-');
     const stageInfo = validateProjectCopyStagingDirectory(stageDirectory);
-    const stageDirectoryIdentity = {dev: String(stageInfo.dev), ino: String(stageInfo.ino)};
+    const stageDirectoryIdentity = fileIdentityOfStats(stageInfo);
     if (useFatStage) syncCopiedDirectory(parent);
     intent = save({...intent, stageDirectory, stageDirectoryIdentity,
       ...(intent.operation === 'project.template.instantiate'
@@ -313,7 +314,9 @@ export function createProjectCopyActions({manager, library, directories, assertP
     await boundary('staging', intent);
     const rememberEntries = (...entries: TemplateStageEntry[]): void => {
       if (intent.operation === 'project.template.instantiate' && intent.templateStage) {
-        intent = save({...intent, templateStage: {...intent.templateStage, entries: [...intent.templateStage.entries, ...entries]}});
+        const entriesByPath = new Map(intent.templateStage.entries.map(entry => [entry.path, entry]));
+        for (const entry of entries) entriesByPath.set(entry.path, entry);
+        intent = save({...intent, templateStage: {...intent.templateStage, entries: [...entriesByPath.values()]}});
       }
     };
     if (intent.operation === 'project.template.instantiate' && !matches(stageDirectory, stageDirectoryIdentity)) {

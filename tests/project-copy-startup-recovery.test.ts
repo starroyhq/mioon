@@ -10,6 +10,7 @@ import {startServer, type ServerOptions} from './helpers/test-server.ts';
 import {copyIdentity} from '../apps/server/src/project-host/copy-records.ts';
 import {inspectCopiedProjectFile} from '../packages/business/src/project-file/backup.ts';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
+import {fileIdentityOfStats} from '../packages/business/src/app-db/identity.ts';
 import {isProjectFileHeld} from '../packages/business/src/project-file/index.ts';
 import {mountProjectVolumeFixture} from './helpers/project-volume-fixture.ts';
 import {testEnv} from './helpers/test-env.ts';
@@ -127,6 +128,10 @@ for (const format of ['exFAT', 'FAT32'] as const) {
     try {
       let native = await launch();
       const source = await native.create({projectFile: path.join(projectsDir, 'Source.mioon'), name: 'Portable source'});
+      const sourceStat = fs.lstatSync(source.projectFile, {bigint: true});
+      assert.ok(sourceStat.size > 0n);
+      assert.deepEqual(source.fileIdentity, fileIdentityOfStats(sourceStat));
+      t.diagnostic(`FAT project identity ${format} dev=${sourceStat.dev} ino=${sourceStat.ino} size=${sourceStat.size} registeredIno=${source.fileIdentity.ino}`);
       const input = {projectId: source.projectId, requestId: randomUUID(), projectFile: path.join(targets, 'Recovered.mioon')};
       await assert.rejects(native.duplicate!(input), /stop at legacy FAT intent boundary/u);
       const record = path.join(dataDir, 'project-copies', `project.duplicate-${input.requestId}.json`);

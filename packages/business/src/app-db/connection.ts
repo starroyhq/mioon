@@ -10,6 +10,7 @@ import {isProjectId} from '../../../contracts/src/project-file.ts';
 import {recentProjectSchema} from '../../../contracts/src/project-registry.ts';
 import type {ProjectFileIdentity} from '../../../contracts/src/project-registry.ts';
 import {appLibraryError, appLibraryInvalid, isSqliteBusy, isSqliteCorrupt, isSqliteReadOnly} from './errors.ts';
+import {fileIdentityKey} from './identity.ts';
 import {
   APP_LIBRARY_APPLICATION_ID, APP_LIBRARY_FILE, APP_LIBRARY_SCHEMA_VERSION, APP_SCHEMA_VERSION_TABLE_SQL, buildAppLibrary, compareAppSchema,
   readAppSchema, expectedAppSchema, upgradeAppLibraryV3,
@@ -24,14 +25,14 @@ const COMPANIONS = ['', '-journal', '-wal', '-shm'] as const;
 /** App library files this process has open, by file identity. A second open
  * fails before SQLite touches the file. */
 const heldLibraries = new Map<string, DatabaseSync>();
-const identityKey = (info: BigIntStats, file: string): string => info.ino ? `${info.dev}:${info.ino}` : `path:${file}`;
+const identityKey = (info: BigIntStats, file: string): string => info.ino ? fileIdentityKey(info) : `path:${file}`;
 
 /** Read the actual live-library registry without touching a file descriptor.
  * The lstat identity also matches a renamed file or hard link; file ID 0
  * cannot identify a file and never matches the path-based opening fallback.
  * An optional connection binds ownership to that exact acquired handle. */
 export function isAppLibraryHeld(identity: ProjectFileIdentity, db?: DatabaseSync): boolean {
-  const owner = identity.ino === '0' ? undefined : heldLibraries.get(`${identity.dev}:${identity.ino}`);
+  const owner = identity.ino === '0' ? undefined : heldLibraries.get(fileIdentityKey(identity));
   return owner?.isOpen === true && (db === undefined || owner === db);
 }
 

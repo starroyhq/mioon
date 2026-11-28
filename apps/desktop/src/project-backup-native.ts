@@ -6,6 +6,7 @@ import type {ProjectEntryResponse} from '../../../packages/contracts/src/project
 import {inspectCopiedProjectFile} from '../../../packages/business/src/project-file/backup.ts';
 import {isProjectFileHeld} from '../../../packages/business/src/project-file/held-files.ts';
 import {isAppLibraryHeld} from '../../../packages/business/src/app-db/connection.ts';
+import {fileIdentityOfStats} from '../../../packages/business/src/app-db/identity.ts';
 import {backupNativeError,backupNativeFailureCode} from './project-backup-native-result.ts';
 
 const unavailable = () => Object.assign(new Error('Native backup action is unavailable.'), {code: 'WORKSPACE_NATIVE_UNAVAILABLE'});
@@ -41,9 +42,13 @@ export function verifyRestoredBackupFile(result: ProjectBackupRestoreResponse, e
     if(['open','busy','locked'].includes(entry.entry.availability.state))throw backupNativeError('PROJECT_BACKUP_RESTORE_BUSY');
     if(entry.entry.availability.state!=='available')throw backupNativeError('PROJECT_BACKUP_RESTORE_CHANGED');
     const before = lstatSync(file, {bigint: true}), parent = lstatSync(directory, {bigint: true});
-    const held = (info: BigIntStats): boolean => isProjectFileHeld({dev: String(info.dev), ino: String(info.ino)}) || isAppLibraryHeld({dev: String(info.dev), ino: String(info.ino)});
+    const identity = fileIdentityOfStats(before);
+    const held = (info: BigIntStats): boolean => {
+      const id = fileIdentityOfStats(info);
+      return isProjectFileHeld(id) || isAppLibraryHeld(id);
+    };
     if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1n || !parent.isDirectory() || parent.isSymbolicLink() ||
-        String(before.dev) !== wanted.fileIdentity.dev || String(before.ino) !== wanted.fileIdentity.ino) throw backupNativeError('PROJECT_BACKUP_RESTORE_CHANGED');
+        identity.dev !== wanted.fileIdentity.dev || identity.ino !== wanted.fileIdentity.ino) throw backupNativeError('PROJECT_BACKUP_RESTORE_CHANGED');
     if(held(before))throw backupNativeError('PROJECT_BACKUP_RESTORE_BUSY');
     if (inspectCopiedProjectFile(file).projectId !== wanted.projectId) throw backupNativeError('PROJECT_BACKUP_RESTORE_CHANGED');
     const current = (): void => {

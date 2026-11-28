@@ -206,6 +206,45 @@ test('owner abort during template copy removes only this preparation and leaves 
   assert.deepEqual(readFileSync(f.media), f.bytes);
 });
 
+test('template intent refreshes an exFAT inode allocated by the first physical write', t => {
+  const f = fixture(t), directory = f.stage(), target = path.join(directory, 'media', 'scene.png');
+  const lstat = fs.lstatSync, fstat = fs.fstatSync, write = fs.writeSync;
+  let openedInode: bigint | undefined, wroteFirstByte = false;
+  const savedInodes: string[] = [];
+  t.mock.method(fs, 'lstatSync', (...args: Parameters<typeof fs.lstatSync>) => {
+    const stats = lstat(...args);
+    if (args[0] === target && stats && typeof stats.ino === 'bigint') {
+      openedInode = stats.ino;
+      if (!wroteFirstByte) stats.ino = -1n;
+    }
+    return stats;
+  });
+  t.mock.method(fs, 'fstatSync', (...args: Parameters<typeof fs.fstatSync>) => {
+    const stats = fstat(...args);
+    if (typeof stats.ino === 'bigint' && stats.ino === lstat(target, {bigint: true, throwIfNoEntry: false})?.ino && !wroteFirstByte) stats.ino = -1n;
+    return stats;
+  });
+  t.mock.method(fs, 'writeSync', (fd: number, ...args: unknown[]) => {
+    const stats = fstat(fd, {bigint: true});
+    if (stats.ino === openedInode) {
+      if (!wroteFirstByte) {
+        assert.equal(args[2], 1, 'the first write must allocate exactly one physical byte');
+        assert.equal(args[3], 0);
+      } else assert.ok(savedInodes.length >= 2, 'the stable inode must be durable before streaming');
+      wroteFirstByte = true;
+    }
+    return Reflect.apply(write, fs, [fd, ...args]);
+  });
+  syncBuiltinESMExports();
+  try {
+    f.catalog().prepareAssets('starter', 1, {directory, targetDirectory: path.join(f.root, 'final'),
+      rememberEntry: entry => {if (entry.kind === 'file') savedInodes.push(entry.identity.ino);}});
+    assert.equal(wroteFirstByte, true);
+    assert.deepEqual(savedInodes, [(2n ** 64n - 1n).toString(), String(openedInode)]);
+  } finally {t.mock.restoreAll(); syncBuiltinESMExports();}
+  assert.deepEqual(readFileSync(target), f.bytes);
+});
+
 test('template rollback preserves a different file that occupies the same staging name', {
   skip: process.platform === 'win32' && 'Requires renaming an open writable file',
 }, t => {

@@ -9,6 +9,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {startServer, type InspectApplication, type InspectProject, type ServerOptions} from './helpers/test-server.ts';
 import {serverAppDirectories, projectLocation} from '../apps/server/src/project-host/directories.ts';
 import {ensureProjectRow} from '../apps/server/src/project-host/project-initialization.ts';
+import {fileIdentityOfStats} from '../packages/business/src/app-db/identity.ts';
 import type {ProjectTemplateCatalogEntry} from '../apps/server/src/project-host/templates.ts';
 import {createProjectFile} from '../packages/business/src/project-file/connection.ts';
 import {openProjectStore} from '../packages/business/src/project-file/store.ts';
@@ -216,7 +217,7 @@ for (const format of ['exFAT', 'FAT32'] as const) {
     const stagedFile = path.join(crashed.stageDirectory, 'media', 'scene.png'), staged = lstatSync(stagedFile, {bigint: true});
     assert.equal(staged.size, 65_536n);
     assert.deepEqual(crashed.templateStage?.entries.find(entry => entry.path === 'media/scene.png')?.identity,
-      {dev: String(staged.dev), ino: String(staged.ino), birthtimeNs: String(staged.birthtimeNs)});
+      {...fileIdentityOfStats(staged), birthtimeNs: String(staged.birthtimeNs)});
     const foreign = path.join(crashed.stageDirectory, 'foreign.txt'); writeFileSync(foreign, 'foreign');
     await f.restart();
     assert.equal(existsSync(stagedFile), false);

@@ -8,17 +8,19 @@ import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
+import fs from 'node:fs';
 import {copyFileSync, existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync} from 'node:fs';
+import {syncBuiltinESMExports} from 'node:module';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {AppError} from '../packages/contracts/src/app-error.ts';
 import {PROJECT_FILE_COPY, projectCacheDirSegments, projectLocalDirSegments} from '../packages/contracts/src/project-file.ts';
 import type {ProjectFileIdentity, RecentProject} from '../packages/contracts/src/project-registry.ts';
-import {createProjectFile, openProjectConnection} from '../packages/business/src/project-file/index.ts';
+import {createProjectFile, isProjectFileHeld, openProjectConnection, projectFileRecoveryForHeld} from '../packages/business/src/project-file/index.ts';
 import type {ProjectLocation} from '../packages/business/src/project-file/index.ts';
 import {
-  findMovedProjectFile, findMovedSearchRoots, identityOfStats, MAX_RECENT_PROJECTS, NODE_FIND_MOVED_FILE_SYSTEM, openAppLibrary,
+  findMovedProjectFile, findMovedSearchRoots, identityOfStats, isAppLibraryHeld, MAX_RECENT_PROJECTS, NODE_FIND_MOVED_FILE_SYSTEM, openAppLibrary,
   sameProjectFileIdentity,
 } from '../packages/business/src/app-db/index.ts';
 import type {AppLibrary, AppLibraryOptions, DirectoryEntry, FindMovedFileSystem} from '../packages/business/src/app-db/index.ts';
@@ -100,7 +102,9 @@ test('identities keep 64-bit file IDs exactly, and a file ID of 0 never matches'
   const stats = (dev: bigint, ino: bigint, file = true) => ({dev, ino, isFile: () => file});
   // Windows: a 32-bit volume serial number and a 64-bit file index.
   assert.deepEqual(identityOfStats(stats(0xffff_ffffn, 0xffff_ffff_ffff_ffffn)), {dev: '4294967295', ino: '18446744073709551615'});
+  assert.deepEqual(identityOfStats(stats(0xffff_ffffn, -1n)), {dev: '4294967295', ino: '18446744073709551615'});
   assert.deepEqual(identityOfStats(stats(1n, 2n ** 53n + 1n)), {dev: '1', ino: '9007199254740993'});
+  assert.deepEqual(identityOfStats(stats(1n, 2n ** 127n)), {dev: '1', ino: (2n ** 127n).toString()});
   assert.equal(identityOfStats(stats(1n, 2n, false)), null);
   assert.equal(identityOfStats(undefined), null);
   const a = {dev: '4294967295', ino: '18446744073709551615'};
@@ -110,6 +114,55 @@ test('identities keep 64-bit file IDs exactly, and a file ID of 0 never matches'
   assert.equal(sameProjectFileIdentity({dev: '7', ino: '0'}, {dev: '7', ino: '0'}), false);
   assert.equal(sameProjectFileIdentity(a, null), false);
   assert.equal(sameProjectFileIdentity(undefined, a), false);
+});
+
+test('high-bit native file IDs survive registry reload and find the held databases', t => {
+  const {dataDir, projects, library, locate} = setup(t);
+  const projectFile = path.join(projects, 'High-bit file ID.mioon');
+  library.close();
+  const projectId = createProjectFile(projectFile);
+  const observed = [projectFile, library.databaseFile].map((file, index) => ({
+    original: lstatSync(file, {bigint: true}), signed: -(2n ** 63n) + BigInt(index),
+  }));
+  const replaceInode = <T extends ReturnType<typeof lstatSync>>(info: T): T => {
+    const match = typeof info?.ino === 'bigint' && observed.find(({original}) => info.ino === original.ino && info.dev === original.dev);
+    if (match) info.ino = match.signed;
+    return info;
+  };
+  const originalLstat = fs.lstatSync, originalFstat = fs.fstatSync;
+  t.mock.method(fs, 'lstatSync', ((...args: Parameters<typeof originalLstat>) =>
+    replaceInode(originalLstat(...args))) as typeof originalLstat);
+  t.mock.method(fs, 'fstatSync', ((...args: Parameters<typeof originalFstat>) =>
+    replaceInode(originalFstat(...args))) as typeof originalFstat);
+  syncBuiltinESMExports();
+  try {
+    const first = openAppLibrary({dataDir});
+    let entry: RecentProject;
+    try {
+      const fileIdentity = first.projectFileIdentity(projectFile)!;
+      assert.deepEqual(fileIdentity, {dev: String(observed[0]!.original.dev), ino: '9223372036854775808'});
+      entry = {projectId, projectFile, fileIdentity, name: 'Film', lastOpenedAt: null, summary: null};
+      first.registry.upsert(entry);
+    } finally {first.close();}
+    const reopened = openAppLibrary({dataDir});
+    try {
+      assert.deepEqual(reopened.registry.get(projectId), entry);
+      const appIdentity = reopened.projectFileIdentity(reopened.databaseFile)!;
+      assert.equal(appIdentity.ino, '9223372036854775809');
+      assert.equal(isAppLibraryHeld(appIdentity, reopened.db), true);
+      assert.equal(isAppLibraryHeld({...appIdentity, ino: observed[1]!.signed.toString()}, reopened.db), true);
+      const connection = openProjectConnection({projectFile, locate, checkCopy: reopened.registry.checkCopy});
+      try {
+        const signedIdentity = {...entry.fileIdentity, ino: observed[0]!.signed.toString()};
+        assert.equal(isProjectFileHeld(entry.fileIdentity), true);
+        assert.equal(isProjectFileHeld(signedIdentity), true);
+        assert.equal(isProjectFileHeld({...entry.fileIdentity, ino: appIdentity.ino}), false);
+        assert.deepEqual(projectFileRecoveryForHeld(entry.fileIdentity), {state: 'open-here'});
+        assert.equal(appError(() => openProjectConnection({projectFile, locate})).code, 'PROJECT_LOCKED');
+      } finally {connection.close();}
+      assert.equal(isProjectFileHeld(entry.fileIdentity), false);
+    } finally {reopened.close();}
+  } finally {t.mock.restoreAll(); syncBuiltinESMExports();}
 });
 
 // ---------------------------------------------------------------------------

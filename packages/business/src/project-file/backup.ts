@@ -1,5 +1,5 @@
 import {createHash, randomUUID} from 'node:crypto';
-import {chmodSync, closeSync, constants, fstatSync, fsyncSync, ftruncateSync, linkSync, lstatSync, mkdtempSync, openSync, readdirSync, readSync, renameSync, rmSync, rmdirSync, unlinkSync, writeSync} from 'node:fs';
+import {chmodSync, closeSync, constants, fstatSync, fsyncSync, linkSync, lstatSync, mkdtempSync, openSync, readdirSync, readSync, renameSync, rmSync, rmdirSync, unlinkSync, writeSync} from 'node:fs';
 import type {BigIntStats} from 'node:fs';
 import path from 'node:path';
 import {backup, DatabaseSync} from 'node:sqlite';
@@ -7,6 +7,7 @@ import {createPrivateTemporaryDirectory, ensurePrivateDirectory, validateManaged
 import {AppError} from '../../../contracts/src/app-error.ts';
 import {isProjectId, PROJECT_DATABASE_NAMES} from '../../../contracts/src/project-file.ts';
 import type {FatProjectCopyStage, FatProjectCopyStageIdentity} from '../../../contracts/src/project-copy-records.ts';
+import {fileIdentityOfStats} from '../app-db/identity.ts';
 import {isProjectFileHeld} from './held-files.ts';
 import {isAppLibraryHeld} from '../app-db/connection.ts';
 import {projectFileError} from './errors.ts';
@@ -52,7 +53,7 @@ const invalid = (reason: string, cause?: unknown): AppError => {
 function checkHeader(file: string, applicationId: number) {
   const info = lstatSync(file, {bigint: true});
   if (!info.isFile() || info.nlink !== 1n) throw invalid('not-a-regular-single-link-file');
-  const identity = {dev: String(info.dev), ino: String(info.ino)};
+  const identity = fileIdentityOfStats(info);
   if (isProjectFileHeld(identity) || isAppLibraryHeld(identity)) throw invalid('held-database');
   // A read-only connection must not reinterpret uncertain journal pages or
   // create sidecars. Unknown formats are rejected before SQLite sees the file.
@@ -226,11 +227,12 @@ export function createProjectCopyStagingDirectory(parent:string,prefix='project-
 }
 
 export function fatProjectCopyStageIdentity(info: BigIntStats): FatProjectCopyStageIdentity {
-  return {dev: String(info.dev), ino: String(info.ino), birthtimeNs: String(info.birthtimeNs)};
+  return {...fileIdentityOfStats(info), birthtimeNs: String(info.birthtimeNs)};
 }
 
 function matchesFatStageIdentity(info: BigIntStats, expected: FatProjectCopyStageIdentity): boolean {
-  return String(info.dev) === expected.dev && String(info.ino) === expected.ino && String(info.birthtimeNs) === expected.birthtimeNs;
+  const identity = fileIdentityOfStats(info);
+  return identity.dev === expected.dev && identity.ino === expected.ino && String(info.birthtimeNs) === expected.birthtimeNs;
 }
 
 function verifyFatCopyDirectory(directory: string, expected: FatProjectCopyStageIdentity): void {
@@ -258,8 +260,8 @@ export function clearFatProjectCopyStage(directory: string, stage: FatProjectCop
 }
 
 /** Materialize a closed APFS builder without SQLite journals on the target
- * volume. The first real data write always follows the durable ownership
- * callback, so recovery can identify and clear an interrupted FAT file. */
+ * volume. The first physical byte allocates the inode; persist its updated
+ * identity before writing the rest of the database. */
 export async function materializeFatProjectCopy(source: string, directory: string, stage: FatProjectCopyStageIdentity, options: {
   readonly assertAllowed: () => void;
   readonly onAllocated: (identity: FatProjectCopyStageIdentity) => void;
@@ -287,9 +289,11 @@ export async function materializeFatProjectCopy(source: string, directory: strin
       }
     };
     verifySource(fstatSync(input, {bigint: true})); verify();
+    const prefix = Buffer.alloc(1);
+    if (readSync(input, prefix, 0, 1, 0) !== 1) throw changed();
     output = openSync(file, constants.O_RDWR | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
     owned = fatProjectCopyStageIdentity(fstatSync(output, {bigint: true})); verify();
-    try { ftruncateSync(output, 1); }
+    try { if (writeSync(output, prefix, 0, 1, 0) !== 1) throw changed(); }
     finally { owned = fatProjectCopyStageIdentity(fstatSync(output, {bigint: true})); }
     verify(); fsyncSync(output); syncCopiedDirectory(directory); options.onAllocated(owned);
     const buffer = Buffer.alloc(64 * 1024), sourceHash = createHash('sha256');
@@ -393,11 +397,12 @@ export function publishProjectCopyFile(temporary:string,destination:string,optio
     if(['ENOTSUP','EOPNOTSUPP','ENOSYS'].includes(String(why)))throw new AppError('PROJECT_COPY_UNSUPPORTED_FILESYSTEM','目标卷不能安全发布项目文件。',409);
     throw failure;
    }
-   try{const info=fstatSync(fd,{bigint:true});placeholder={dev:String(info.dev),ino:String(info.ino)};fsyncSync(fd);}finally{closeSync(fd);}
+   try{placeholder=fileIdentityOfStats(fstatSync(fd,{bigint:true}));fsyncSync(fd);}finally{closeSync(fd);}
    options.onPlaceholder?.(placeholder);
    syncCopiedDirectory(path.dirname(destination));
    const current=lstatSync(destination,{bigint:true,throwIfNoEntry:false});
-   if(!current?.isFile()||current.isSymbolicLink()||String(current.dev)!==placeholder.dev||String(current.ino)!==placeholder.ino)
+   const found=current&&fileIdentityOfStats(current);
+   if(!current?.isFile()||current.isSymbolicLink()||found?.dev!==placeholder.dev||found.ino!==placeholder.ino)
     throw projectFileError('PROJECT_FILE_EXISTS',{database:'project',reason:'exists'});
    renameSync(temporary,destination);published=true;
   }
@@ -405,7 +410,8 @@ export function publishProjectCopyFile(temporary:string,destination:string,optio
  }catch(error){
   if(placeholder&&!published){
    const current=lstatSync(destination,{bigint:true,throwIfNoEntry:false});
-   if(current?.isFile()&&String(current.dev)===placeholder.dev&&String(current.ino)===placeholder.ino){rmSync(destination);syncCopiedDirectory(path.dirname(destination));}
+   const found=current&&fileIdentityOfStats(current);
+   if(current?.isFile()&&found?.dev===placeholder.dev&&found.ino===placeholder.ino){rmSync(destination);syncCopiedDirectory(path.dirname(destination));}
   }
   throw error;
  }

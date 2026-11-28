@@ -1,5 +1,5 @@
 import {createHash} from 'node:crypto';
-import {closeSync, constants, fstatSync, ftruncateSync, lstatSync, mkdirSync, openSync, readSync, rmdirSync, unlinkSync, writeSync} from 'node:fs';
+import {closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readSync, rmdirSync, unlinkSync, writeSync} from 'node:fs';
 import type {BigIntStats} from 'node:fs';
 import path from 'node:path';
 import {AppError} from '../../../../packages/contracts/src/app-error.ts';
@@ -11,6 +11,7 @@ import type {Locale} from '../../../../packages/i18n/src/types.ts';
 import {projectHomeNativeMessages} from '../../../../packages/i18n/src/catalogs/project-home-native.ts';
 import type {CopyProjectOptions} from '../../../../packages/business/src/project-file/copy.ts';
 import {isAppLibraryHeld} from '../../../../packages/business/src/app-db/connection.ts';
+import {fileIdentityOfStats} from '../../../../packages/business/src/app-db/identity.ts';
 import {isProjectFileHeld} from '../../../../packages/business/src/project-file/held-files.ts';
 import {inspectCopiedProjectFile, syncCopiedDirectory, syncCopiedFile, validateProjectCopyStagingDirectory} from '../../../../packages/business/src/project-file/backup.ts';
 import {detectMediaType, MEDIA_HEADER_BYTES, mediaTypeOfName} from '../../../../packages/business/src/media-reference/media-type.ts';
@@ -40,9 +41,11 @@ export interface ProjectTemplateCatalog {
 }
 const invalid = (reason: string, relativePath?: string): AppError => new AppError('PROJECT_TEMPLATE_INVALID', '模板不完整或不安全，未创建项目。', 422, {reason, ...(relativePath === undefined ? {} : {path: relativePath})});
 const generation = (info: BigIntStats): string => [info.dev, info.ino, info.size, info.mtimeNs, info.ctimeNs].join(':');
-const identity = (info: BigIntStats) => ({dev: String(info.dev), ino: String(info.ino)});
-export const templateStageIdentity = (info: BigIntStats): TemplateStageIdentity => ({...identity(info), birthtimeNs: String(info.birthtimeNs)});
-const sameIdentity = (a: BigIntStats, b: TemplateStageIdentity): boolean => String(a.dev) === b.dev && String(a.ino) === b.ino && String(a.birthtimeNs) === b.birthtimeNs;
+export const templateStageIdentity = (info: BigIntStats): TemplateStageIdentity => ({...fileIdentityOfStats(info), birthtimeNs: String(info.birthtimeNs)});
+const sameIdentity = (info: BigIntStats, expected: TemplateStageIdentity): boolean => {
+  const actual = templateStageIdentity(info);
+  return actual.dev === expected.dev && actual.ino === expected.ino && actual.birthtimeNs === expected.birthtimeNs;
+};
 /** The ledger names exactly the entries the copier created. Child names and
  * parents are rechecked independently, and foreign siblings are never swept. */
 export function removeTemplateStageEntries(directory: string, root: TemplateStageIdentity, entries: readonly TemplateStageEntry[]): void {
@@ -66,7 +69,8 @@ function sourceFile(directory: string, item: ProjectTemplateManifest['projectFil
     validateProjectCopyStagingDirectory(path.dirname(resolved));
     const info = lstatSync(resolved, {bigint: true});
     if (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1n) throw invalid('not-a-single-link-file', item.path);
-    if (isProjectFileHeld(identity(info)) || isAppLibraryHeld(identity(info))) throw invalid('held-file', item.path);
+    const identity = fileIdentityOfStats(info);
+    if (isProjectFileHeld(identity) || isAppLibraryHeld(identity)) throw invalid('held-file', item.path);
     if (info.size !== BigInt(item.sizeBytes)) throw invalid('size', item.path);
     return {file: resolved, info};
   } catch (error) {if (error instanceof AppError && error.code === 'PROJECT_TEMPLATE_INVALID') throw error; throw invalid('unreadable-or-linked-path', item.path);}
@@ -170,17 +174,27 @@ export function createProjectTemplateCatalog(entries: readonly ProjectTemplateCa
         try {
           const empty = fstatSync(fd, {bigint: true});
           owned = claim(destination, 'file', empty);
-          // FAT assigns the durable inode at first cluster allocation. The
-          // stream overwrites this byte at offset zero under the same handle.
-          if (item.sizeBytes > 0 && (rememberEntry || empty.ino < 0n)) {
-            try {ftruncateSync(fd, 1);}
-            finally {owned.identity = templateStageIdentity(fstatSync(fd, {bigint: true}));}
-          }
-          const before = lstatSync(destination, {bigint: true});
-          if (!before.isFile() || before.nlink !== 1n || !sameIdentity(before, owned.identity)) throw invalid('target-changed', item.path);
-          rememberEntry?.(owned);
+          const checkTarget = () => {
+            const before = lstatSync(destination, {bigint: true});
+            if (!before.isFile() || before.nlink !== 1n || !sameIdentity(before, owned.identity)) throw invalid('target-changed', item.path);
+          };
+          checkTarget();
+          // FAT assigns the durable inode at first physical write. Merely
+          // growing the length can leave the empty-file identity in place.
+          let allocate = item.sizeBytes > 0 && (rememberEntry !== undefined || empty.ino < 0n);
+          rememberEntry?.({...owned});
           verified = readManifestFile(selected.directory, item, chunk => {
             assertMutationAllowed();
+            if (allocate) {
+              try {
+                // A positional write leaves the handle offset at zero so the
+                // normal streaming write below also hashes/copies this byte.
+                if (writeSync(fd, chunk, 0, 1, 0) !== 1) throw invalid('target-changed', item.path);
+              } finally {owned.identity = templateStageIdentity(fstatSync(fd, {bigint: true}));}
+              checkTarget();
+              rememberEntry?.({...owned});
+              allocate = false;
+            }
             for (let offset = 0; offset < chunk.length;) {
               const count = writeSync(fd, chunk, offset, chunk.length - offset);
               if (count === 0) throw invalid('target-changed', item.path);

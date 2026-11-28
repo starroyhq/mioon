@@ -1,14 +1,14 @@
 import test,{type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash,randomUUID} from 'node:crypto';
-import {appendFileSync,chmodSync,closeSync,createReadStream,existsSync,fstatSync,linkSync,mkdirSync,mkdtempSync,openSync,readFileSync,readdirSync,renameSync,rmSync,statSync,truncateSync,unlinkSync,utimesSync,writeFileSync,writeSync} from 'node:fs';
+import {appendFileSync,chmodSync,closeSync,createReadStream,existsSync,fstatSync,fsyncSync,linkSync,lstatSync,mkdirSync,mkdtempSync,openSync,readFileSync,readdirSync,renameSync,rmSync,statSync,truncateSync,unlinkSync,utimesSync,writeFileSync,writeSync,type BigIntStats} from 'node:fs';
 import {open,type FileHandle} from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {realpathSync} from 'node:fs';
 import {createProjectFile,openProjectStore} from '../packages/business/src/project-file/index.ts';
 import {registerProjectMediaStore,registeredProjectAssetReferences} from '../packages/business/src/project-media-storage.ts';
-import {outputFileIdentity,registerProjectOutputAdmission} from '../packages/business/src/project-output-owner.ts';
+import {outputFileIdentity,registerProjectOutputAdmission,sameOutputIdentity} from '../packages/business/src/project-output-owner.ts';
 import {createOutputArtifactStage,writeOutputArtifact} from '../packages/business/src/output-artifact-storage.ts';
 import {ensurePrivateDirectory} from '../packages/contracts/src/private-storage.ts';
 import {publishProjectOutput,inspectProjectOutput,readPublishedProjectOutput,markProjectOutputRegistered,assertPublishedProjectOutput,registerVerifiedProjectOutputs,isPublishedProjectOutput,restorePublishedProjectOutput,setProjectOutputPublicationTestHooks,discardUnregisteredFatOutput} from '../packages/business/src/project-output-publication.ts';
@@ -20,6 +20,9 @@ import {mountProjectVolumeFixture} from './helpers/project-volume-fixture.ts';
 
 const sha=(bytes:Buffer)=>createHash('sha256').update(bytes).digest('hex');
 const bytes=png({rgba:false,extra:[pngChunk('tEXt',Buffer.from('comment\0'+'x'.repeat(150000)))]});
+function describeOutputStat(info:BigIntStats){
+ return {...outputFileIdentity(info),size:String(info.size),nlink:String(info.nlink),mtimeNs:String(info.mtimeNs),ctimeNs:String(info.ctimeNs)};
+}
 function fixture(t:TestContext,kind:ProjectOutputInput['targetKind']='generated',volume?:string){
  const root=mkdtempSync(path.join(realpathSync(tmpdir()),'mioon-output-pub-'));
  const projectDir=path.join(volume??root,volume?randomUUID():'movie');mkdirSync(projectDir,{mode:0o755});
@@ -512,18 +515,36 @@ for(const format of ['exFAT','FAT32'] as const)test(`real ${format} media public
   try{await assert.rejects(publishProjectOutput(f.store,f.input),stop);}finally{remove();}
   const receipt=JSON.parse(readFileSync(receiptFile,'utf8')) as Record<string,unknown>;
   const payload=owned?bytes.subarray(0,65536):bytes;
-  const fd=openSync(final,'wx',0o644);
-  try{
-   const empty=outputFileIdentity(fstatSync(fd,{bigint:true}));
-   writeFileSync(fd,payload);
-   const allocated=outputFileIdentity(fstatSync(fd,{bigint:true}));
-   const targetIdentity=owned?allocated:empty.ino!==allocated.ino?empty:{...empty,ino:'-1'};
-   writeFileSync(receiptFile,JSON.stringify({...receipt,phase:'copying',mode:'copy',targetIdentity}));
-  }finally{closeSync(fd);}
+  const writeLegacyFile=()=>{
+   const fd=openSync(final,'wx',0o644);
+   try{
+    const empty=fstatSync(fd,{bigint:true});
+    writeFileSync(fd,payload);
+    const written=fstatSync(fd,{bigint:true});
+    fsyncSync(fd);
+    const synced=fstatSync(fd,{bigint:true}), visibleWhileOpen=lstatSync(final,{bigint:true});
+    return {empty,written,synced,visibleWhileOpen};
+   }finally{closeSync(fd);}
+  };
+  const {empty,written,synced,visibleWhileOpen}=writeLegacyFile();
+  // Recovery uses a closed pathname. FAT may report different facts on the
+  // still-open writer, so use the closed file to seed the provably owned case.
+  const closed=lstatSync(final,{bigint:true});
+  const emptyIdentity=outputFileIdentity(empty), closedIdentity=outputFileIdentity(closed);
+  const targetIdentity=owned?closedIdentity:sameOutputIdentity(emptyIdentity,closedIdentity)
+   ?{...emptyIdentity,ino:String(BigInt(emptyIdentity.ino)-1n)}:emptyIdentity;
+  writeFileSync(receiptFile,JSON.stringify({...receipt,phase:'copying',mode:'copy',targetIdentity}));
+  const beforeRecovery=lstatSync(final,{bigint:true});
+  sub.diagnostic(`legacy ${format} file identity ${JSON.stringify({empty:describeOutputStat(empty),written:describeOutputStat(written),
+   synced:describeOutputStat(synced),visibleWhileOpen:describeOutputStat(visibleWhileOpen),closed:describeOutputStat(closed),
+   receipt:targetIdentity,beforeRecovery:describeOutputStat(beforeRecovery)})}`);
+  assert.equal(beforeRecovery.size,BigInt(payload.length));
+  assert.equal(sameOutputIdentity(targetIdentity,outputFileIdentity(beforeRecovery)),owned);
   if(owned){
    const output=await publishProjectOutput(f.store,f.input);
-   assert.deepEqual(readFileSync(path.join(f.projectDir,output.relativePath)),bytes);
-   assert.deepEqual(readdirSync(path.dirname(final)).filter(name=>!name.startsWith('._')),[path.basename(output.relativePath)]);
+   assert.equal(output.relativePath,path.relative(f.projectDir,final));
+   assert.deepEqual(readFileSync(final),bytes);
+   assert.deepEqual(readdirSync(path.dirname(final)).filter(name=>!name.startsWith('._')),[path.basename(final)]);
   }else{
    const identity=outputFileIdentity(statSync(final,{bigint:true}));
    await assert.rejects(inspectProjectOutput(f.store,f.key()),{code:'INVALID_MEDIA',details:{publicationFailure:'target-identity'}});

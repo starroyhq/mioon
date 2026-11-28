@@ -1,4 +1,5 @@
 import {lstatSync} from 'node:fs';
+import {fileIdentityOfStats} from '../../../../packages/business/src/app-db/identity.ts';
 import path from 'node:path';
 import {AppError} from '../../../../packages/contracts/src/app-error.ts';
 import {projectDeleteInputSchema, projectDeleteResponseSchema} from '../../../../packages/contracts/src/project-lifecycle.ts';
@@ -31,7 +32,7 @@ const generation = (file: string): ProjectTrashFileGeneration => {
   let info;
   try {info = lstatSync(file, {bigint: true});} catch {throw sourceChanged();}
   if (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1n) throw sourceChanged();
-  return {dev: String(info.dev), ino: String(info.ino), size: Number(info.size),
+  return {...fileIdentityOfStats(info), size: Number(info.size),
     mtimeNs: String(info.mtimeNs), ctimeNs: String(info.ctimeNs), birthtimeNs: String(info.birthtimeNs)};
 };
 

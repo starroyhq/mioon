@@ -6,13 +6,14 @@ import type {ProjectCopyIntent} from '../../../../packages/contracts/src/project
 import {ensurePrivateDirectory, readPrivateFile, writePrivateFileAtomic} from '../../../../packages/contracts/src/private-storage.ts';
 import {syncCopiedDirectory, validateProjectCopyStagingDirectory} from '../../../../packages/business/src/project-file/backup.ts';
 import {detectFatProjectVolume} from '../../../../packages/business/src/media-reference/location.ts';
+import {fileIdentityOfStats} from '../../../../packages/business/src/app-db/identity.ts';
 
 const LIMIT = 2 * 1024 * 1024;
 export type CopyIntent = ProjectCopyIntent;
 export const copyFailure = (code: string, message: string, status = 409): AppError => new AppError(code, message, status);
 export function copyIdentity(file: string): {dev: string; ino: string} | null {
   const info = lstatSync(file, {bigint: true, throwIfNoEntry: false});
-  return info && !info.isSymbolicLink() && (info.isFile() || info.isDirectory()) ? {dev: String(info.dev), ino: String(info.ino)} : null;
+  return info && !info.isSymbolicLink() && (info.isFile() || info.isDirectory()) ? fileIdentityOfStats(info) : null;
 }
 export function sameCopyIdentity(a: {dev: string; ino: string} | null, b: {dev: string; ino: string} | null): boolean {
   return a !== null && b !== null && a.dev === b.dev && a.ino === b.ino;
@@ -23,7 +24,7 @@ export function isWindowsCopyPlaceholder(file: string, identity: CopyIntent['pla
   if (process.platform !== 'win32' || !identity) return false;
   const info = lstatSync(file, {bigint: true, throwIfNoEntry: false});
   return !!info?.isFile() && info.size === 0n && info.nlink === 1n &&
-    sameCopyIdentity({dev: String(info.dev), ino: String(info.ino)}, identity);
+    sameCopyIdentity(fileIdentityOfStats(info), identity);
 }
 
 /** An old FAT intent owns no entries within its stage. rmdir atomically
@@ -36,7 +37,7 @@ export async function recoverLegacyFatCopyStage(target: string, directory: strin
   try {
     if (!lstatSync(directory, {throwIfNoEntry: false})) return 'cleared';
     const info = validateProjectCopyStagingDirectory(directory);
-    if (!sameCopyIdentity({dev: String(info.dev), ino: String(info.ino)}, identity)) return 'retained';
+    if (!sameCopyIdentity(fileIdentityOfStats(info), identity)) return 'retained';
     rmdirSync(directory);
     syncCopiedDirectory(path.dirname(directory));
     return 'cleared';
