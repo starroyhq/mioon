@@ -2,10 +2,17 @@ import {z} from 'zod';
 import {isNormalizedAbsolutePath} from './media-reference.ts';
 import {projectIdSchema} from './project-file.ts';
 import {projectFileIdentitySchema} from './project-registry.ts';
+import {fatProjectCopyStageSchema} from './project-copy-records.ts';
 import {projectAdoptCopyInputSchema, projectCopyToInputSchema, projectTemplateInputSchema, projectCopyResponseSchema} from './project-copies.ts';
 
 const file = z.string().min(1).max(4096).refine(isNormalizedAbsolutePath);
 const identity = projectFileIdentitySchema.nullable();
+const stageIdentity = projectFileIdentitySchema.extend({birthtimeNs: z.string().regex(/^-?\d{1,40}$/u)});
+const templateStageEntry = z.object({
+  path: z.string().min(1).max(4096).refine(value => !/[\\\0]/u.test(value)
+    && value.split('/').every(part => part !== '' && part !== '.' && part !== '..')),
+  kind: z.enum(['file', 'directory']), identity: stageIdentity,
+}).strict();
 /** Private S5-B continuation, separate from the already shipped S5-A format.
  * This adds no application database tables or schema version. */
 const common = {
@@ -21,8 +28,13 @@ const common = {
 };
 export const projectCopyActionIntentSchema = z.discriminatedUnion('operation', [
   z.object({...common, operation: z.literal('project.adopt-copy'), input: projectAdoptCopyInputSchema}).strict(),
-  z.object({...common, operation: z.literal('project.copy-to'), input: projectCopyToInputSchema}).strict(),
-  z.object({...common, operation: z.literal('project.template.instantiate'), input: projectTemplateInputSchema}).strict(),
+  z.object({...common, operation: z.literal('project.copy-to'), input: projectCopyToInputSchema,
+    fatStage: fatProjectCopyStageSchema.optional(), resumableFatCopy: z.literal(true).optional(), retainedFatStage: z.literal(true).optional(),
+  }).strict(),
+  z.object({...common, operation: z.literal('project.template.instantiate'), input: projectTemplateInputSchema,
+    templateStage: z.object({root: stageIdentity, entries: z.array(templateStageEntry)}).strict().optional(),
+    resumableTemplate: z.literal(true).optional(), retainedTemplateStage: z.literal(true).optional(),
+  }).strict(),
 ]).superRefine((value, ctx) => {
   const response = value.response;
   const expectedTarget = value.operation === 'project.adopt-copy' ? value.input.sourceFile
@@ -43,5 +55,21 @@ export const projectCopyActionIntentSchema = z.discriminatedUnion('operation', [
     && (!response || !value.stageDirectory || !value.stageDirectoryIdentity || !value.stageIdentity || !value.historyIdentity)) {
     ctx.addIssue({code: 'custom', message: 'Copy action has no complete prepared outcome.'});
   }
+  if (value.operation === 'project.template.instantiate' && value.templateStage &&
+      (!value.stageDirectory || value.stageDirectoryIdentity?.dev !== value.templateStage.root.dev
+        || value.stageDirectoryIdentity.ino !== value.templateStage.root.ino)) {
+    ctx.addIssue({code: 'custom', message: 'Template staging ownership does not match the preparation directory.'});
+  }
+  if (value.operation === 'project.copy-to') {
+    if (value.resumableFatCopy && (value.phase !== 'captured' || !value.sourceStamp)) {
+      ctx.addIssue({code: 'custom', message: 'A FAT copy requires a captured source.'});
+    }
+    if (value.fatStage && (!value.resumableFatCopy || !value.stageDirectory ||
+        value.stageDirectoryIdentity?.dev !== value.fatStage.directory.dev || value.stageDirectoryIdentity.ino !== value.fatStage.directory.ino)) {
+      ctx.addIssue({code: 'custom', message: 'FAT staging ownership does not match the preparation directory.'});
+    }
+  }
 });
 export type ProjectCopyActionIntent = z.infer<typeof projectCopyActionIntentSchema>;
+export type TemplateStageEntry = z.infer<typeof templateStageEntry>;
+export type TemplateStageIdentity = z.infer<typeof stageIdentity>;

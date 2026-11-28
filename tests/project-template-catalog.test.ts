@@ -2,7 +2,7 @@ import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash, randomUUID} from 'node:crypto';
 import fs from 'node:fs';
-import {existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync} from 'node:fs';
+import {existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {syncBuiltinESMExports} from 'node:module';
@@ -204,6 +204,21 @@ test('owner abort during template copy removes only this preparation and leaves 
     assertMutationAllowed() {if (++checks >= 2) throw failed;}}), error => error === failed);
   assert.deepEqual(readdirSync(directory), []); assert.equal(existsSync(path.join(f.root, 'final')), false);
   assert.deepEqual(readFileSync(f.media), f.bytes);
+});
+
+test('template rollback preserves a different file that occupies the same staging name', {
+  skip: process.platform === 'win32' && 'Requires renaming an open writable file',
+}, t => {
+  const f = fixture(t), directory = f.stage(), file = path.join(directory, 'media', 'scene.png');
+  let checks = 0;
+  assert.throws(() => f.catalog().prepareAssets('starter', 1, {directory, targetDirectory: path.join(f.root, 'final'),
+    assertMutationAllowed() {
+      if (++checks !== 2) return;
+      renameSync(file, path.join(directory, 'renamed-by-another-owner.png'));
+      writeFileSync(file, 'foreign');
+    }}), code('PROJECT_TEMPLATE_INVALID', 'target-changed'));
+  assert.equal(readFileSync(file, 'utf8'), 'foreign');
+  assert.equal(existsSync(path.join(f.root, 'final')), false);
 });
 
 for (const issue of ['unlisted', 'stale-fingerprint'] as const)

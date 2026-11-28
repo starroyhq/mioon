@@ -14,6 +14,8 @@ import {PROJECT_OUTPUT_FOLDERS} from '../packages/contracts/src/project-output-p
 import {publishProjectOutput,assertPublishedProjectOutput,markProjectOutputRegistered,setProjectOutputPublicationTestHooks,reconcileInterruptedExportPublication} from '../packages/business/src/project-output-publication.ts';
 import type {ProjectOutputInput,PublishedProjectOutput} from '../packages/business/src/project-output-publication.ts';
 import {png,pngChunk} from './helpers/timeline-image-fixtures.ts';
+import {mountProjectVolumeFixture} from './helpers/project-volume-fixture.ts';
+import {outputFileIdentity} from '../packages/business/src/project-output-owner.ts';
 
 const cases: {point: string; forceCopy: boolean; atomicExport?: true}[]=[
  {point:'after_intent',forceCopy:false},{point:'after_final',forceCopy:false},
@@ -64,4 +66,58 @@ for(const scenario of cases)test(`SIGKILL ${scenario.point} ${scenario.atomicExp
  await markProjectOutputRegistered(store,output.publication);assert.equal(existsSync(stageFile),false);
  assert.deepEqual(readFileSync(path.join(projectDir,output.relativePath)),bytes);
  const names=readdirSync(targetDir);await publishProjectOutput(store,publication);assert.deepEqual(readdirSync(targetDir),names);assert.equal(store.list('assets',projectId).length,1);
+});
+
+for(const format of ['exFAT','FAT32'] as const)test(`SIGKILL during real ${format} media publication resumes the same request`,{timeout:120000},async t=>{
+ const volume=await mountProjectVolumeFixture(t,format);
+ if(!volume)return;
+ for(const targetKind of ['assets','generated'] as const)await t.test(targetKind,async sub=>{
+  const root=path.join(volume.root,targetKind),projectDir=path.join(volume.mount,targetKind);
+  mkdirSync(root,{mode:0o700});mkdirSync(projectDir,{mode:0o755});
+  const projectFile=path.join(projectDir,'project.mioon'),projectId=createProjectFile(projectFile);
+  const locate=()=>({localDir:path.join(root,'local'),cacheDir:path.join(root,'cache'),tempDir:path.join(root,'tmp')});
+  const initial=openProjectStore({projectFile,locate});
+  try{initial.put('projects',{id:projectId,name:'Crash recovery'});}finally{initial.close();}
+  const stages=path.join(root,'tmp','artifacts');ensurePrivateDirectory(stages,{create:true});
+  const payload=png({extra:[pngChunk('tEXt',Buffer.from('comment\0'+'x'.repeat(150000)))]});
+  const stageFile=path.join(stages,'complete.png');writeFileSync(stageFile,payload,{mode:0o600});
+  const publication:ProjectOutputInput={owner:{kind:targetKind==='assets'?'import':'image',id:randomUUID(),requestId:randomUUID(),inputHash:'a'.repeat(64)},
+   assetId:randomUUID(),publicationId:randomUUID(),stageFile,targetKind,mimeType:'image/png',sha256:createHash('sha256').update(payload).digest('hex'),sizeBytes:payload.length};
+  const targetDir=path.join(projectDir,PROJECT_OUTPUT_FOLDERS[targetKind]);mkdirSync(targetDir);
+  const foreign=path.join(targetDir,'user.png');writeFileSync(foreign,payload,{flag:'wx'});
+  const foreignIdentity=outputFileIdentity(statSync(foreign,{bigint:true}));
+  const child=spawnSync(process.execPath,[fileURLToPath(new URL('./fixtures/project-output-crash-worker.ts',import.meta.url)),
+   JSON.stringify({root,projectFile,publication,point:'after_copy_chunk',forceCopy:false})],{env:testEnv(),stdio:'pipe',timeout:30000});
+  assert.equal(child.error,undefined);assert.equal(child.status,null);assert.equal(child.signal,'SIGKILL',child.stderr?.toString());
+  const mediaNames=()=>readdirSync(targetDir).filter(name=>!name.startsWith('._')).sort();
+  assert.deepEqual(mediaNames(),['user.png']);
+  const candidateDir=path.join(projectDir,'.mioon-export-staging');
+  const [partial,...others]=readdirSync(candidateDir).filter(name=>!name.startsWith('._'));
+  assert.ok(partial);assert.deepEqual(others,[]);
+  const written=readFileSync(path.join(candidateDir,partial));
+  assert.ok(written.length>0&&written.length<payload.length);
+  assert.deepEqual(written,payload.subarray(0,written.length));
+  assert.deepEqual(readFileSync(stageFile),payload);
+  const store=openProjectStore({projectFile,locate}),release=registerProjectMediaStore(store);
+  sub.after(()=>{release();store.close();});
+  assert.equal(store.list('assets',projectId).length,0);
+  const output=await publishProjectOutput(store,publication);
+  assert.equal(output.publication.assetId,publication.assetId);
+  assert.equal(output.publication.publicationId,publication.publicationId);
+  assert.equal(output.publication.owner.requestId,publication.owner.requestId);
+  assert.deepEqual(readFileSync(path.join(projectDir,output.relativePath)),payload);
+  const {relativePath:_relative,...stored}=output;
+  store.tx(()=>{
+   assertPublishedProjectOutput(store,output.publication);
+   store.put('assets',{id:publication.assetId,projectId,name:'Crash output.png',mimeType:'image/png',width:64,height:64,...stored,
+    provenance:targetKind==='assets'?'user-import':'generated',createdAt:'2026-11-03T00:00:00.000Z'});
+  });
+  await markProjectOutputRegistered(store,output.publication);
+  assert.deepEqual(await publishProjectOutput(store,publication),output);
+  assert.equal(store.list('assets',projectId).length,1);
+  assert.deepEqual(readdirSync(candidateDir),[]);
+  assert.deepEqual(mediaNames(),[path.basename(output.relativePath),'user.png'].sort());
+  assert.deepEqual(outputFileIdentity(statSync(foreign,{bigint:true})),foreignIdentity);
+  assert.deepEqual(readFileSync(foreign),payload);
+ });
 });

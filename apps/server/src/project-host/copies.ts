@@ -12,10 +12,11 @@ import type {ProjectFileFormat} from '../../../../packages/business/src/project-
 import {captureClosedProjectSnapshot} from '../../../../packages/business/src/project-file/closed-copy.ts';
 import {inspectProjectFormatHeader} from '../../../../packages/business/src/project-file/connection.ts';
 import {inspectCopiedProjectFile, openProjectBackup, syncCopiedFile, syncCopiedDirectory, publishProjectCopyFile,
-  createProjectCopyStagingDirectory, validateProjectCopyStagingDirectory} from '../../../../packages/business/src/project-file/backup.ts';
+  createProjectCopyStagingDirectory, validateProjectCopyStagingDirectory, clearFatProjectCopyStage, fatProjectCopyStageIdentity, materializeFatProjectCopy} from '../../../../packages/business/src/project-file/backup.ts';
 import {initializeProjectCopyHistory, readProjectCopyHistory} from '../../../../packages/business/src/project-file/copy-history.ts';
 import {openProjectStore} from '../../../../packages/business/src/project-file/store.ts';
 import {readProjectContentStamp} from '../../../../packages/business/src/project-file/content-stamp.ts';
+import {isFatProjectVolume} from '../../../../packages/business/src/media-reference/location.ts';
 import {copyProjectVersionsToNewProjectInside} from '../../../../packages/business/src/project-versions/copy-to-project.ts';
 import {canonicalJson} from '../../../../packages/business/src/project-versions/document.ts';
 import {projectLocation} from './directories.ts';
@@ -23,14 +24,14 @@ import type {AppDirectories} from './directories.ts';
 import type {ProjectHostManager} from './manager.ts';
 import {projectHostError} from './errors.ts';
 import {copiedProjectConfirmationDirectories} from './copy-outside-confirmations.ts';
-import {copyFailure, copyIdentity, createCopyRecords, sameCopyIdentity} from './copy-records.ts';
+import {copyFailure, copyIdentity, createCopyRecords, isWindowsCopyPlaceholder, recoverLegacyFatCopyStage, sameCopyIdentity} from './copy-records.ts';
 import type {CopyIntent} from './copy-records.ts';
 import {createProjectCopyActions} from './copy-actions.ts';
 import type {ProjectCopyActionBoundary} from './copy-actions.ts';
 import type {ProjectCopyActionInput} from '../../../../packages/contracts/src/project-copies.ts';
 import type {ProjectTemplateCatalogEntry} from './templates.ts';
 
-export type ProjectCopyBoundary = 'prepared' | 'captured' | 'ready' | 'records-prepared' | 'records-published' | 'project-published' | 'registered';
+export type ProjectCopyBoundary = 'prepared' | 'captured' | 'ready' | 'records-prepared' | 'records-published' | 'project-published' | 'registered' | 'copy-build-chunk';
 export interface ProjectCopies extends Omit<ReturnType<typeof createProjectCopyActions>, 'recover' | 'drain'> {
   duplicate(input: ProjectCopyInput): Promise<ProjectCopyResponse>;
   saveAs(input: ProjectCopyInput): Promise<ProjectCopyResponse>;
@@ -109,28 +110,31 @@ export function createProjectCopies({manager, library, directories, assertProjec
     unlinkSync(file);
     syncCopiedDirectory(path.dirname(file));
   };
-  const cleanup = (intent: CopyIntent): void => {
+  const cleanup = (intent: CopyIntent, cleanStage = true): void => {
     // A source history backup is temporary conversion input, never a copied
     // diagnostic archive. Keep only the small app receipt after completion.
     try {
       const directory = work(intent);
       if (lstatSync(directory, {throwIfNoEntry: false})) {
         validatePrivateDirectory(directory);
-        if (readdirSync(directory).some(name => !['source', 'local', 'cache', 'tmp'].includes(name))) return;
+        if (readdirSync(directory).some(name => !['source', 'local', 'cache', 'tmp', 'fat-builder'].includes(name))) return;
         rmSync(directory, {recursive: true});
       }
-      if (intent.stageDirectory && sameCopyIdentity(copyIdentity(intent.stageDirectory), intent.stageDirectoryIdentity)) {
+      if (cleanStage && intent.stageDirectory && sameCopyIdentity(copyIdentity(intent.stageDirectory), intent.stageDirectoryIdentity)) {
         validateProjectCopyStagingDirectory(intent.stageDirectory);
         rmdirSync(intent.stageDirectory); // Only our empty directory; never remove unknown contents.
       }
     } catch { /* A completed receipt remains final; a later recovery can clean its owned stages. */ }
   };
 
-  const abandon = (intent: CopyIntent): void => {
+  const abandon = async (intent: CopyIntent): Promise<void> => {
     // No public outcome exists before ready. Persist a tombstone first: a
     // retry must not silently allocate another identity for this request.
     if (intent.phase !== 'abandoned') intent = save({...intent, phase: 'abandoned'});
-    if (intent.stageDirectory && sameCopyIdentity(copyIdentity(intent.stageDirectory), intent.stageDirectoryIdentity)) {
+    const disposition = intent.retainedFatStage ? 'retained' : intent.stageDirectory
+      ? await recoverLegacyFatCopyStage(intent.input.projectFile, intent.stageDirectory, intent.stageDirectoryIdentity, assertAllowed) : 'cleared';
+    if (disposition === 'retained' && !intent.retainedFatStage) intent = save({...intent, retainedFatStage: true});
+    if (disposition === 'non-fat' && intent.stageDirectory && sameCopyIdentity(copyIdentity(intent.stageDirectory), intent.stageDirectoryIdentity)) {
       validateProjectCopyStagingDirectory(intent.stageDirectory);
       const ownedContents = (directory: string): boolean => readdirSync(directory).every(name => {
         if (!/^project\.mioon(?:-(?:journal|wal|shm))?$/u.test(name) && !/^project-copy-[a-zA-Z0-9_-]+$/u.test(name)) return false;
@@ -142,7 +146,7 @@ export function createProjectCopies({manager, library, directories, assertProjec
         syncCopiedDirectory(path.dirname(intent.stageDirectory));
       }
     }
-    cleanup(intent);
+    cleanup(intent, disposition === 'non-fat');
   };
 
   async function finish(intent: CopyIntent): Promise<ProjectCopyResponse> {
@@ -181,9 +185,17 @@ export function createProjectCopies({manager, library, directories, assertProjec
     if (intent.phase === 'ready') {intent = save({...intent, phase: 'records-published'}); await boundary('records-published', intent);}
 
     const found = copyIdentity(target);
-    if (!found || sameCopyIdentity(found, intent.placeholderIdentity)) {
+    if (!found || isWindowsCopyPlaceholder(target, intent.placeholderIdentity)) {
       if (found) {removeOwnedLink(target, intent.placeholderIdentity); intent = save({...intent, placeholderIdentity: null});}
       publishProjectCopyFile(stageFile(intent), target, {
+        beforeFallbackRename: () => {
+          assertAllowed(); verifyStageDirectory(intent);
+          if (!sameCopyIdentity(copyIdentity(stageFile(intent)), intent.stageIdentity)) throw copyFailure('PROJECT_COPY_TARGET_CHANGED', '准备好的项目文件已被替换。');
+          const actual = inspectCopiedProjectFile(stageFile(intent));
+          if (actual.projectId !== intent.projectId || actual.contentToken !== response.contentToken || actual.contentSequence !== response.contentSequence) {
+            throw copyFailure('PROJECT_COPY_TARGET_CHANGED', '准备好的项目内容已改变，未发布。');
+          }
+        },
         onPlaceholder: identity => {intent = save({...intent, placeholderIdentity: identity});},
         onPublished: () => {intent = save({...intent, phase: 'project-published', fileIdentity: copyIdentity(target), placeholderIdentity: null});},
       });
@@ -229,11 +241,94 @@ export function createProjectCopies({manager, library, directories, assertProjec
     return response;
   }
 
+  async function build(raw: CopyIntent, sourceName: string): Promise<ProjectCopyResponse> {
+    let intent = raw;
+    const {input} = intent, directory = ensureWork(intent), snapshotDirectory = path.join(directory, 'source');
+    assertProjectFile(input.projectFile);
+    const useFatStage = !!intent.resumableFatCopy || await isFatProjectVolume(input.projectFile);
+    assertAllowed();
+    if (useFatStage && !intent.resumableFatCopy) {
+      syncCopiedDirectory(snapshotDirectory);
+      intent = save({...intent, resumableFatCopy: true});
+    }
+    if (useFatStage && intent.stageDirectory) {
+      const removed = intent.fatStage && clearFatProjectCopyStage(intent.stageDirectory, intent.fatStage);
+      intent = save({...intent, stageDirectory: null, stageDirectoryIdentity: null, fatStage: undefined, resumableFatCopy: true,
+        ...(removed ? {} : {retainedFatStage: true})});
+    }
+    if (!intent.stageDirectory) {
+      const stageDirectory = createProjectCopyStagingDirectory(path.dirname(input.projectFile), '.project-copy-');
+      const info = fatProjectCopyStageIdentity(validateProjectCopyStagingDirectory(stageDirectory));
+      if (useFatStage) syncCopiedDirectory(path.dirname(stageDirectory));
+      intent = save({...intent, stageDirectory, stageDirectoryIdentity: {dev: info.dev, ino: info.ino},
+        ...(useFatStage ? {resumableFatCopy: true, fatStage: {directory: info, file: null}} : {})});
+    }
+    verifyStageDirectory(intent);
+    const stageDirectory = intent.stageDirectory!;
+    const builderDirectory = path.join(directory, 'fat-builder');
+    const builderFile = useFatStage ? path.join(builderDirectory, 'project.mioon') : stageFile(intent);
+    if (useFatStage) {
+      if (lstatSync(builderDirectory, {throwIfNoEntry: false})) {validatePrivateDirectory(builderDirectory); rmSync(builderDirectory, {recursive: true});}
+      ensurePrivateDirectory(builderDirectory, {create: true});
+    }
+    // No target has been published in this phase. Only this request's
+    // private staging files can be rebuilt after an interrupted conversion.
+    for (const file of readdirSync(stageDirectory)) {
+      if (useFatStage || file !== 'project.mioon' && !file.startsWith('project-copy-')) throw copyFailure('PROJECT_COPY_TARGET_CHANGED', '暂存目录含未知文件，已保留。');
+      rmSync(path.join(stageDirectory, file), {recursive: true, force: true});
+    }
+    const source = openProjectBackup(path.join(snapshotDirectory, 'project.source.sqlite'));
+    let copied: Awaited<ReturnType<typeof copyProjectToNewFile>>;
+    try {
+      copied = await copyProjectToNewFile(source, {projectFile: builderFile, sourceProjectDir: path.dirname(intent.sourceFile),
+        targetProjectDir: path.dirname(input.projectFile), projectId: intent.projectId, contentToken: intent.contentToken,
+        expectedSource: {projectId: input.projectId, ...intent.sourceStamp!}, clearProcessRevisions: true,
+        ...(targetFormat === undefined ? {} : {targetFormat}),
+        ...(input.name === undefined ? {} : {projectName: input.name}), publish: (from, to) => publishProjectCopyFile(from, to)});
+    } finally {source.close();}
+    assertAllowed();
+    const localDir = stageLocal(intent);
+    if (lstatSync(localDir, {throwIfNoEntry: false})) {validatePrivateDirectory(localDir); rmSync(localDir, {recursive: true});}
+    ensurePrivateDirectory(localDir, {create: true});
+    initializeProjectCopyHistory(stageHistory(intent), intent.projectId, copied);
+    const store = openProjectStore({projectFile: builderFile, locate: () => ({localDir, cacheDir: path.join(directory, 'cache'), tempDir: path.join(directory, 'tmp')}),
+      ...(copied.formatVersion === FORMAT4_PROJECT_SCHEMA_VERSION ? {format4} : {})});
+    let versions = 0;
+    try {
+      if (store.historyState !== 'current') throw copyFailure('PROJECT_COPY_TARGET_CHANGED', '复制目标的初始内容身份不匹配。');
+      const sourceHistory = path.join(snapshotDirectory, 'history.source.sqlite');
+      if (lstatSync(sourceHistory, {throwIfNoEntry: false})) {
+        versions = readProjectCopyHistory(sourceHistory, previous => store.tx(() => copyProjectVersionsToNewProjectInside(previous, store.db, {sourceProjectId: input.projectId,
+          projectId: intent!.projectId, sourceProjectDir: path.dirname(intent!.sourceFile), targetProjectDir: path.dirname(input.projectFile)})).versions);
+      }
+    } finally {store.close();}
+    syncCopiedFile(stageHistory(intent));
+    syncCopiedDirectory(localDir);
+    if (useFatStage) {
+      const stage = intent.fatStage!.directory;
+      await materializeFatProjectCopy(builderFile, stageDirectory, stage, {assertAllowed,
+        onAllocated: file => {intent = save({...intent, fatStage: {directory: stage, file}});},
+        afterChunk: () => boundary('copy-build-chunk', intent)});
+    }
+    const fileIdentity = copyIdentity(stageFile(intent));
+    if (!fileIdentity) throw copyFailure('PROJECT_COPY_TARGET_CHANGED', '复制目标不再存在。');
+    const response = projectCopyResponseSchema.parse({requestId: input.requestId, sourceProjectId: input.projectId,
+      project: {projectId: intent.projectId, projectFile: input.projectFile, fileIdentity, name: input.name ?? copied.name ?? sourceName, lastOpenedAt: null, summary: null},
+      contentSequence: copied.contentSequence, contentToken: copied.contentToken, versions});
+    intent = save({...intent, phase: 'ready', fatStage: undefined, resumableFatCopy: undefined,
+      stageIdentity: fileIdentity, historyIdentity: copyIdentity(stageHistory(intent)), response});
+    rmSync(snapshotDirectory, {recursive: true});
+    if (useFatStage) rmSync(builderDirectory, {recursive: true});
+    await boundary('ready', intent);
+    return finish(intent);
+  }
+
   async function execute(operation: ProjectCopyOperation, input: ProjectCopyInput, existing: CopyIntent | null): Promise<ProjectCopyResponse> {
     let intent = existing;
     const digest = digestFor(operation, input);
     if (intent && intent.digest !== digest) throw copyFailure('REQUEST_ID_REUSED', '请求 ID 已用于不同的项目复制。');
     if (intent?.phase === 'abandoned') throw copyFailure('PROJECT_COPY_INTERRUPTED', '项目复制在准备阶段中断并已作废，请重新发起复制。');
+    if (intent?.phase === 'captured' && intent.resumableFatCopy) return build(intent, library.registry.get(input.projectId)?.name ?? 'Project');
     if (intent && ['ready', 'records-published', 'project-published', 'completed'].includes(intent.phase)) return finish(intent);
     const observed = manager.status(input.projectId);
     if (observed?.leases.window || observed?.state === 'opening') throw projectHostError('PROJECT_HOST_BUSY', {projectId: input.projectId});
@@ -265,54 +360,7 @@ export function createProjectCopies({manager, library, directories, assertProjec
         intent = save({...intent, sourceStamp: {contentSequence: captured.identity.contentSequence, contentToken: captured.identity.contentToken}, phase: 'captured'});
         await boundary('captured', intent);
       }
-      if (!intent.stageDirectory) {
-        const stageDirectory = createProjectCopyStagingDirectory(path.dirname(input.projectFile), '.project-copy-');
-        intent = save({...intent, stageDirectory, stageDirectoryIdentity: copyIdentity(stageDirectory)});
-      }
-      verifyStageDirectory(intent);
-      const stageDirectory = intent.stageDirectory!;
-      // No target has been published in this phase. Only this request's
-      // private staging files can be rebuilt after an interrupted conversion.
-      for (const file of readdirSync(stageDirectory)) {
-        if (file !== 'project.mioon' && !file.startsWith('project-copy-')) throw copyFailure('PROJECT_COPY_TARGET_CHANGED', '暂存目录含未知文件，已保留。');
-        rmSync(path.join(stageDirectory, file), {recursive: true, force: true});
-      }
-      const source = openProjectBackup(path.join(snapshotDirectory, 'project.source.sqlite'));
-      let copied: Awaited<ReturnType<typeof copyProjectToNewFile>>;
-      try {
-        copied = await copyProjectToNewFile(source, {projectFile: stageFile(intent), sourceProjectDir: path.dirname(intent.sourceFile),
-          targetProjectDir: path.dirname(input.projectFile), projectId: intent.projectId, contentToken: intent.contentToken,
-          expectedSource: {projectId: input.projectId, ...intent.sourceStamp!}, clearProcessRevisions: true,
-          ...(targetFormat === undefined ? {} : {targetFormat}),
-          ...(input.name === undefined ? {} : {projectName: input.name}), publish: (from, to) => publishProjectCopyFile(from, to)});
-      } finally {source.close();}
-      assertAllowed();
-      const localDir = stageLocal(intent);
-      if (lstatSync(localDir, {throwIfNoEntry: false})) {validatePrivateDirectory(localDir); rmSync(localDir, {recursive: true});}
-      ensurePrivateDirectory(localDir, {create: true});
-      initializeProjectCopyHistory(stageHistory(intent), intent.projectId, copied);
-      const store = openProjectStore({projectFile: stageFile(intent), locate: () => ({localDir, cacheDir: path.join(directory, 'cache'), tempDir: path.join(directory, 'tmp')}),
-        ...(copied.formatVersion === FORMAT4_PROJECT_SCHEMA_VERSION ? {format4} : {})});
-      let versions = 0;
-      try {
-        if (store.historyState !== 'current') throw copyFailure('PROJECT_COPY_TARGET_CHANGED', '复制目标的初始内容身份不匹配。');
-        const sourceHistory = path.join(snapshotDirectory, 'history.source.sqlite');
-        if (lstatSync(sourceHistory, {throwIfNoEntry: false})) {
-          versions = readProjectCopyHistory(sourceHistory, previous => store.tx(() => copyProjectVersionsToNewProjectInside(previous, store.db, {sourceProjectId: input.projectId,
-            projectId: intent!.projectId, sourceProjectDir: path.dirname(intent!.sourceFile), targetProjectDir: path.dirname(input.projectFile)})).versions);
-        }
-      } finally {store.close();}
-      syncCopiedFile(stageHistory(intent));
-      syncCopiedDirectory(localDir);
-      const fileIdentity = copyIdentity(stageFile(intent));
-      if (!fileIdentity) throw copyFailure('PROJECT_COPY_TARGET_CHANGED', '复制目标不再存在。');
-      const response = projectCopyResponseSchema.parse({requestId: input.requestId, sourceProjectId: input.projectId,
-        project: {projectId: intent.projectId, projectFile: input.projectFile, fileIdentity, name: input.name ?? copied.name ?? registration.name, lastOpenedAt: null, summary: null},
-        contentSequence: copied.contentSequence, contentToken: copied.contentToken, versions});
-      intent = save({...intent, phase: 'ready', stageIdentity: fileIdentity, historyIdentity: copyIdentity(stageHistory(intent)), response});
-      rmSync(snapshotDirectory, {recursive: true});
-      await boundary('ready', intent);
-      return finish(intent);
+      return build(intent, registration.name);
     }, {rejectWindowLeases: true});
   }
   const call = (operation: ProjectCopyOperation, raw: ProjectCopyInput): Promise<ProjectCopyResponse> => {
@@ -335,8 +383,8 @@ export function createProjectCopies({manager, library, directories, assertProjec
     async recover(): Promise<void> {
       assertAllowed();
       for (const intent of records.list()) {
-        if (['prepared', 'captured', 'abandoned'].includes(intent.phase)) {
-          try {abandon(intent);} catch { /* Keep the intent for a later cleanup; unavailable media must not block startup. */ }
+        if (['prepared', 'captured', 'abandoned'].includes(intent.phase) && !intent.resumableFatCopy) {
+          try {await abandon(intent);} catch { /* Keep the intent for a later cleanup; unavailable media must not block startup. */ }
           continue;
         }
         if (intent.phase === 'completed') {cleanup(intent); continue;}
@@ -349,7 +397,7 @@ export function createProjectCopies({manager, library, directories, assertProjec
           cleanup(completed);
           continue;
         }
-        if (['ready', 'records-published', 'project-published', 'completed'].includes(intent.phase)) {
+        if (intent.resumableFatCopy || ['ready', 'records-published', 'project-published', 'completed'].includes(intent.phase)) {
           try {await call(intent.operation, intent.input);} catch { /* Keep exact intent and target; retry never overwrites unknown files. */ }
         }
       }

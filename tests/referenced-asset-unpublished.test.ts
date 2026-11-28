@@ -2,14 +2,14 @@ import {testEnv} from './helpers/test-env.ts';
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
-import {randomUUID} from 'node:crypto';
+import {createHash, randomUUID} from 'node:crypto';
 import fs from 'node:fs';
 import {syncBuiltinESMExports} from 'node:module';
 import {chmodSync, existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync,
   realpathSync, renameSync, rmSync, symlinkSync, unlinkSync, utimesSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {PROJECT_ASSETS_FOLDER} from '../packages/contracts/src/asset-media.ts';
+import {PROJECT_ASSETS_FOLDER, assetImportSchema} from '../packages/contracts/src/asset-media.ts';
 import {projectMediaPath} from '../packages/contracts/src/project-file.ts';
 import {ensurePrivateDirectory} from '../packages/contracts/src/private-storage.ts';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
@@ -20,17 +20,20 @@ import {createReferencedAssetProjectImport} from '../packages/business/src/refer
 import {run} from '../packages/business/src/media.ts';
 import {mediaMtimeMs} from '../packages/business/src/media-reference/fingerprint.ts';
 import {registerProjectMediaStore} from '../packages/business/src/project-media-storage.ts';
+import {outputFileIdentity} from '../packages/business/src/project-output-owner.ts';
+import {publishProjectOutput} from '../packages/business/src/project-output-publication.ts';
 import {createProjectServiceApplication} from '../packages/business/src/project-service-application.ts';
 import {createProjectStore} from '../packages/business/src/project-file/store.ts';
 import {PROJECT_UNPUBLISHED_MEDIA_LIMITS as LIMITS, readProjectUnpublishedMediaSnapshot} from '../packages/business/src/referenced-asset-unpublished.ts';
 import {png} from './helpers/timeline-image-fixtures.ts';
+import {mountProjectVolumeFixture} from './helpers/project-volume-fixture.ts';
 
 const options = {beforeEffect() {}};
 const invalid = {code: 'MEDIA_LIST_PATH_INVALID', status: 400, message: '无法安全读取项目素材列表', details: {}};
 const changed = {code: 'MEDIA_CHANGED_DURING_READ', status: 409, message: '读取期间项目素材已变化', details: {}};
-function fixture(t: TestContext) {
+function fixture(t: TestContext, volume?: string) {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-unpublished-'));
-  const projectDir = path.join(root, 'project'); mkdirSync(projectDir);
+  const projectDir = path.join(volume ?? root, 'project'); mkdirSync(projectDir);
   const store = createProjectStore({projectFile: path.join(projectDir, 'Film.mioon'), locate: () => ({
     localDir: path.join(root, 'local'), cacheDir: path.join(root, 'cache'), tempDir: path.join(root, 'temp'),
   })});
@@ -228,6 +231,48 @@ test('unregistered prepared receipts are not treated as complete even when their
   const f = fixture(t), publication = f.published(1, 'prepared');
   f.store.db.prepare('DELETE FROM assets WHERE id=?').run(publication.asset.id); unlinkSync(publication.file);
   await assert.rejects(readProjectUnpublishedMediaSnapshot(f.store, options), invalid);
+});
+
+for (const format of ['host volume', 'exFAT'] as const) test(`a substituted proof on ${format} cannot roll back another upload`, async t => {
+  const volume = format === 'exFAT' ? await mountProjectVolumeFixture(t, 'exFAT') : undefined;
+  if (format === 'exFAT' && !volume) return;
+  await t.test('reject the unrelated proof before checking or removing its media', async sub => {
+    const f = fixture(sub, volume?.mount), {importer} = runtime(f), bytes = png();
+    const digest = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
+    const input = (name: string) => ({projectId: f.store.projectId, requestId: randomUUID(), name,
+      mimeType: 'image/png', dataBase64: bytes.toString('base64')});
+    const prepareReceipt = (upload: ReturnType<typeof input>) => ({...f.intent(), digest: digest(JSON.stringify(assetImportSchema.parse(upload)))});
+    const first = input('Other request'), second = input('Original request');
+    const other = prepareReceipt(first), original = prepareReceipt(second);
+    const stageFile = path.join(f.receipts, `${original.assetId}.png`);
+    f.receipt(original, `${digest(second.requestId)}.json`);
+    writeFileSync(stageFile, bytes, {mode: 0o600});
+    const published = await publishProjectOutput(f.store, {owner: {kind: 'import', id: original.assetId,
+      requestId: second.requestId, inputHash: original.digest}, assetId: original.assetId, targetKind: 'assets',
+      stageFile, mimeType: 'image/png', sha256: digest(bytes), sizeBytes: bytes.length, displayName: second.name});
+    const physical = path.join(f.projectDir, published.relativePath);
+    const identity = outputFileIdentity(lstatSync(physical, {bigint: true}));
+    const publicationReceipt = path.join(f.store.tempDir, 'publications', `${published.publication.publicationId}.json`);
+    const saved = readFileSync(publicationReceipt);
+    const content = JSON.parse(saved.toString('utf8')) as {phase: string;privateCopy?: boolean};
+    assert.equal(content.phase, 'prepared');
+    assert.equal(content.privateCopy, volume ? true : undefined);
+
+    // The mismatching record has a real proof but no valid asset metadata.
+    // A rollback must never follow that proof into the other request.
+    f.receipt({...other, phase: 'prepared', asset: {id: other.assetId, publication: published.publication}}, `${digest(first.requestId)}.json`);
+    await assert.rejects(importer(first), {code: 'IDEMPOTENCY_CONFLICT'});
+    assert.equal(f.store.list('assets', f.store.projectId).length, 0);
+    assert.deepEqual(readFileSync(publicationReceipt), saved);
+    assert.deepEqual(outputFileIdentity(lstatSync(physical, {bigint: true})), identity);
+    assert.deepEqual(readFileSync(physical), bytes);
+
+    const imported = await importer(second);
+    assert.deepEqual(await importer(second), imported);
+    assert.ok(f.store.get('assets', original.assetId));
+    assert.equal(f.store.list('assets', f.store.projectId).length, 1);
+    assert.deepEqual(outputFileIdentity(lstatSync(physical, {bigint: true})), identity);
+  });
 });
 
 for (const mutation of [

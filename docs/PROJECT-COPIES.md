@@ -51,6 +51,8 @@
 
 模板来自宿主安装时注入的可信 catalog。请求只选择已登记的 ID/版本，不能上传 manifest、白名单或任意源路径。模板必须是当前物理格式的普通项目文件；素材按白名单验证真实大小/hash，拒绝穿越、symlink、隐藏/私有文件、缺失或损坏素材。实例只建到 `<parentDir>/<name>/<name>.mioon` 的**新文件夹**，已存在目录或 symlink 均报 `PROJECT_FILE_EXISTS`，不合并进已有目录。白名单素材复制到新目录并重写引用，不用 hard link；两次请求生成独立 ID、令牌和素材，模板不变。模板不提供原 history、Mio、撤销、草稿、cache、imports 或规范信任。S6-D 的正式示例、界面和真实卷验收另行交付，小测试夹具不能代替正式示例验收。
 
+在 exFAT 和 FAT32 上，模板素材先通过独占句柄分配首个簇，取得稳定身份后继续复制。私有 intent 记录每个已创建条目的完整身份。在完整实例准备好之前发生写入失败或中断，回收身份仍匹配的文件与空目录。原请求可以用原项目 ID 和令牌重试。旧操作的非空暂存或后来被换掉的文件缺少归属证据，保留现场并记入私有 intent。
+
 ## 关闭源与窗口顺序
 
 - 首页复制先检查窗口租约；源在任何窗口打开时返回 `PROJECT_HOST_BUSY`，不会替用户关闭窗口。
@@ -90,9 +92,9 @@ S5-B 的三个操作使用独立的私有 **v1** `project-copy-action-records.ts
 
 同一 `(operation, requestId)` 与同一输入返回固定结果；不同输入复用键返回 `REQUEST_ID_REUSED`。重放不再复制、转换版本、重新分配 ID 或打开目标。目标已编辑但文件身份仍一致时仍返回原回执；目标被移动、替换或撤登记则报 `PROJECT_COPY_TARGET_CHANGED`，不重新创建。
 
-目标已有普通文件、空文件或 symlink 均拒绝覆盖。支持 hard link 的卷采用排他发布；S5 的不支持 hard link 分支（含 exFAT）先用 `wx` 建自己的占位，intent 记录 dev/ino，rename 前核对占位身份。崩溃后仅按身份处理本请求占位，不删除后来文件。核对与 rename 之间被非 SQLite 程序换掉占位的窄竞态是协调人明确接受的边界；没有新增原生 no-replace 端口，也不宣称真实卷验收已完成。
+目标已有普通文件、空文件或 symlink 均拒绝覆盖。支持硬链接的卷沿用排他发布。exFAT、FAT32 等无硬链接的 POSIX 卷使用已经完整分配并核验的同卷项目文件，不创建公共占位。应用内对目标的复制串行，发布前再次核对目录与准备结果、查空目标，随后立即改名。绕开应用锁且能写目录的外部程序仍可在查空与改名间抢入同名文件。Windows 沿用 `wx` 占位回退，只续办仍为空、只有一个链接且身份与回执一致的占位。POSIX 旧回执只记录 dev/ino 的公共占位文件予以保留，不能用当前同名文件的元数据补作归属证明。旧 FAT 缺陷留下的 `records-published` 若目标未占用，按原有项目 ID、令牌和已验证本机记录继续发布。
 
-启动恢复将 `prepared/captured` 阶段未完成的转换作废，只按已记录身份清理本请求的隐藏暂存目录；保留作废记录，同一请求键返回 `PROJECT_COPY_INTERRUPTED`，不重新分配身份或重新复制。目录/文件身份已变时不删后来内容。`ready` 及之后已有固定完整结果的 intent 可在启动恢复中尝试续办发布、登记和回执。发布后故障保留目标与 intent，不能当成“零写入失败”再次覆盖。异常身份、无法清理的未知内容或应用 owner 失效时保留证据，不以换库重开取得旧写权限。实际故障与平台验收以 PR 证据为准；本文不提供未实测的耗时。
+启动恢复会作废未完成且没有恢复证明的 `prepared/captured` 转换，并保留令原请求键返回 `PROJECT_COPY_INTERRUPTED` 的记录。exFAT/FAT32 项目副本在 APFS 上构建完整项目与历史，然后向同卷的私有暂存写入数据库。先分配一字节，记录暂存目录和文件的 dev、ino 与创建时间，再分块写入并核对完整 SHA-256。中断后只回收可证明归属的暂存，按已采集的 APFS 源快照、同一请求 ID、同一项目 ID 和令牌重建。占位或暂存归属无法证明时予以保留，记入本机 intent。`ready` 及之后已有固定完整结果的 intent 可在启动恢复中续办发布、登记和回执。发布后故障保留目标与 intent 供对账。异常身份、无法清理的未知内容或应用 owner 失效时保留证据。
 
 ## 主要错误
 
@@ -102,7 +104,7 @@ S5-B 的三个操作使用独立的私有 **v1** `project-copy-action-records.ts
 | `PROJECT_HOST_BUSY`（409） | 仍有窗口、请求或会写回的工作，不能安全关闭复制 |
 | `PROJECT_LOCKED`（409）、`PROJECT_INVALID`（422）、`PROJECT_FORMAT_NEWER`（409） | 项目或 history 捕获失败；`details.database/reason` 区分来源 |
 | `PROJECT_FILE_EXISTS`（409） | 目标已存在或就是原文件 |
-| `PROJECT_COPY_UNSUPPORTED_FILESYSTEM`（409） | 目标卷连排他占位发布也无法提供；不是缺少 hard link 就拒绝 |
+| `PROJECT_COPY_UNSUPPORTED_FILESYSTEM`（409） | 目标卷的占位或同卷发布条件无法通过校验 |
 | `PROJECT_COPY_BUSY`（409） | 同一目标已有复制进行中 |
 | `REQUEST_ID_REUSED`（409） | 同操作的请求键用于不同输入 |
 | `PROJECT_COPY_SOURCE_CHANGED` / `PROJECT_COPY_TARGET_CHANGED`（409） | 源或目标的位置、文件身份、登记与已绑定结果不一致 |

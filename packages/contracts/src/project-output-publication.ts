@@ -33,6 +33,8 @@ export const projectOutputPublicationReceiptSchema = z.object({
   version:z.literal(1),proof:projectOutputPublicationProofSchema,
   stageRelativePath:z.string().min(1).max(4096),stageIdentity:identitySchema,rootIdentity:identitySchema,directoryIdentity:identitySchema,
   mode:z.enum(['link','copy']),phase:z.enum(['intent','copying','prepared','registered']),targetIdentity:identitySchema.nullable(),
+  privateCopy:z.literal(true).optional(),
+  failure:z.enum(['target-identity','candidate-identity','stage-identity']).optional(),
   finalStats:z.object({mtimeNs:z.string().min(1).max(40),ctimeNs:z.string().min(1).max(40)}).strict().nullable().optional(),
   attempt:z.number().int().min(1).max(16),abandoned:z.array(z.string().min(1).max(1024)).max(16),
 }).strict();

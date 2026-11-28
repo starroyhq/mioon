@@ -20,6 +20,7 @@ import {referenceForPublishedMedia} from './project-media-storage.ts';
 import {NODE_MEDIA_FILE_SYSTEM} from './media-reference/file-system.ts';
 import {hashSamples, isNotDownloaded, mediaMtimeMs, readHeader} from './media-reference/fingerprint.ts';
 import {detectMediaType} from './media-reference/media-type.ts';
+import {detectFatProjectVolume} from './media-reference/location.ts';
 import {assertProjectOutputStore, outputFileIdentity, sameOutputIdentity,isProjectOutputAdmissionFailure} from './project-output-owner.ts';
 import type {OutputFileIdentity} from './project-output-owner.ts';
 import {isPublishedProjectOutput} from './project-output-proof.ts';
@@ -47,6 +48,7 @@ type RegisterExport = (output: PublishedProjectOutput) => void;
 const record = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 const extensions: Readonly<Record<string, string>> = {'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'video/mp4': 'mp4', 'video/webm': 'webm', 'audio/wav': 'wav', 'audio/mpeg': 'mp3', 'audio/mp4': 'm4a'};
 const inFlight = new WeakMap<ProjectStore, Map<string, Promise<PublishedProjectOutput>>>();
+const fatOutputVolumes = new WeakMap<ProjectStore, Promise<boolean>>();
 const ordinaryOutputMode = 0o666;
 export interface ProjectOutputPublicationTestHooks {
   readonly forceCopy?: boolean;
@@ -61,6 +63,35 @@ export function setProjectOutputPublicationTestHooks(store: ProjectStore, hooks:
   testHooks.set(store, hooks); return () => {if (testHooks.get(store) === hooks) testHooks.delete(store);};
 }
 function invalid(): never {throw new AppError('INVALID_MEDIA', '本地产物或发布回执无法验证', 409);}
+type RecoveryFailure = NonNullable<Receipt['failure']>;
+class UnrecoverableProjectOutput extends AppError {
+  constructor(failure: RecoveryFailure) {
+    super('INVALID_MEDIA', failure === 'stage-identity'
+      ? '原任务的暂存文件已缺失或改变，无法继续发布。'
+      : '原任务留下的文件身份不符，已保留文件并停止发布。', 409, {publicationFailure: failure});
+  }
+}
+export const isUnrecoverableProjectOutput = (error: unknown): error is AppError => error instanceof UnrecoverableProjectOutput;
+function assertRecoverableReceipt(receipt: Receipt): void {
+  if (receipt.failure) throw new UnrecoverableProjectOutput(receipt.failure);
+}
+function failRecovery(store: ProjectStore, receipt: Receipt, failure: RecoveryFailure, options: ProjectOutputOptions): never {
+  writeReceipt(store, {...receipt, failure}, options);
+  throw new UnrecoverableProjectOutput(failure);
+}
+function fatOutputVolume(store: ProjectStore): Promise<boolean> {
+  const known = fatOutputVolumes.get(store);
+  if (known) return known;
+  const inspection = detectFatProjectVolume(store.projectFile).then(detected => {
+    if (detected === null) throw new AppError('INVALID_MEDIA', '无法确认项目卷的文件系统，请稍后重试。', 409);
+    return detected;
+  }).catch(error => {
+    fatOutputVolumes.delete(store);
+    throw error;
+  });
+  fatOutputVolumes.set(store, inspection);
+  return inspection;
+}
 function conflict(): never {throw new AppError('IDEMPOTENCY_CONFLICT', '产物发布身份与原请求不一致', 409);}
 type VerificationPoint = 'stage-hash' | 'stage-sync' | 'copy-source' | 'copy-target' | 'final-hash' |
   'final-sync' | 'reference' | 'read-published' | 'registration' | 'registered-cleanup' | 'restore-receipt';
@@ -358,6 +389,7 @@ class RegistrationCtimeChanged extends CtimeChanged {
 function registrationReceipt(store: ProjectStore, proof: ProjectOutputPublicationProof, options: ProjectOutputOptions): RegistrationReceipt {
   const receipt = readReceipt(store, proof.owner, proof.assetId, options);
   if (!receipt?.finalStats || !receipt.targetIdentity || !['prepared', 'registered'].includes(receipt.phase) || !isDeepStrictEqual(receipt.proof, proof)) invalid();
+  assertRecoverableReceipt(receipt);
   return {...receipt, finalStats: receipt.finalStats, targetIdentity: receipt.targetIdentity};
 }
 function checkRegistration(store: ProjectStore, receipt: RegistrationReceipt, options: ProjectOutputOptions): BigIntStats {
@@ -404,7 +436,19 @@ export async function inspectProjectOutput(store: ProjectStore, input: {owner: P
   if (!receipt) return null;
   const file = path.join(store.projectDir, receipt.proof.relativePath);
   checkReceiptDirectories(store, receipt, options);
-  if (!lstatSync(file, {throwIfNoEntry: false})) return null;
+  assertRecoverableReceipt(receipt);
+  const visible = lstatSync(file, {bigint: true, throwIfNoEntry: false});
+  if (!visible) return null;
+  if (receipt.targetIdentity && !sameOutputIdentity(receipt.targetIdentity, outputFileIdentity(visible)) &&
+      receipt.phase !== 'registered' && receipt.proof.targetKind !== 'exports' &&
+      (receipt.privateCopy || await fatOutputVolume(store))) {
+    checkReceiptDirectories(store, receipt, options);
+    const current = lstatSync(file, {bigint: true, throwIfNoEntry: false});
+    if (!current) return null;
+    if (!sameOutputIdentity(receipt.targetIdentity, outputFileIdentity(current)) && !committedOutput(store, receipt.proof)) {
+      failRecovery(store, receipt, 'target-identity', options);
+    }
+  }
   try {return await verifiedFinal(store, receipt, options);} catch (error) {if (error instanceof BytesMismatch && error.field !== 'ctime' && receipt.phase !== 'prepared' && receipt.phase !== 'registered') return null; throw error;}
 }
 export async function readPublishedProjectOutput(store: ProjectStore, input: {owner: ProjectOutputOwner; assetId: string}, options: ProjectOutputOptions & {maxBytes: number}): Promise<Buffer | null> {
@@ -413,6 +457,7 @@ export async function readPublishedProjectOutput(store: ProjectStore, input: {ow
   const check = (): void => checkReceiptDirectories(store, receipt, options);
   const file = path.join(store.projectDir, receipt.proof.relativePath);
   check();
+  assertRecoverableReceipt(receipt);
   if (!lstatSync(file, {throwIfNoEntry: false})) return null;
   const identity = receipt.targetIdentity ?? (receipt.mode === 'link' ? receipt.stageIdentity : undefined);
   if (!identity) invalid();
@@ -454,14 +499,30 @@ function removeOwnedOutput(file: string, directoryIdentity: OutputFileIdentity, 
   unlinkSync(file);
   syncDirectory(directory);
 }
-function committedExport(store: ProjectStore, proof: ProjectOutputPublicationProof): boolean {
+function committedOutput(store: ProjectStore, proof: ProjectOutputPublicationProof): boolean {
   const asset: unknown = store.get('assets', proof.assetId);
   if (asset === null) return false;
   if (!record(asset) || !isDeepStrictEqual(asset.publication, proof) || !isPublishedProjectOutput(asset, {
-      projectId: proof.projectId, assetId: proof.assetId, owner: proof.owner, targetKind: 'exports',
+      projectId: proof.projectId, assetId: proof.assetId, owner: proof.owner, targetKind: proof.targetKind,
       sha256: proof.sha256, sizeBytes: proof.sizeBytes, mimeType: proof.mimeType,
   })) invalid();
   return true;
+}
+/** Roll back a prepared FAT-media install when its caller failed before
+ * publishing the business row. The sealed source and request can be reused. */
+export function discardUnregisteredFatOutput(store: ProjectStore, proof: ProjectOutputPublicationProof, beforeRemove?: () => void): void {
+  const receipt = readReceipt(store, proof.owner, proof.assetId, {});
+  if (!receipt?.privateCopy || receipt.phase !== 'prepared' || receipt.failure || !receipt.targetIdentity ||
+      !isDeepStrictEqual(receipt.proof, proof) || committedOutput(store, proof)) return;
+  checkReceiptDirectories(store, receipt, {});
+  const file = path.join(store.projectDir, proof.relativePath);
+  const pending = lstatSync(file, {bigint: true, throwIfNoEntry: false});
+  if (pending && (!pending.isFile() || pending.nlink !== 1n || !sameOutputIdentity(receipt.targetIdentity, outputFileIdentity(pending)))) {
+    failRecovery(store, receipt, 'target-identity', {});
+  }
+  beforeRemove?.();
+  if (pending) removeOwnedOutput(file, receipt.directoryIdentity, receipt.targetIdentity, 1n);
+  writeReceipt(store, {...receipt, phase: 'copying', finalStats: null}, {});
 }
 class ExportNameOccupied extends Error {}
 class ExportInstallUnresolved extends Error {
@@ -478,7 +539,7 @@ function linkUnavailable(error: unknown, directory: string): boolean {
   const {type} = statfsSync(directory);
   return type === 0x4d44 || type === 0x2011bab0;
 }
-function installExportFile(workingFile: string, file: string, directoryIdentity: OutputFileIdentity, sizeBytes: number,
+function installOutputFile(workingFile: string, file: string, directoryIdentity: OutputFileIdentity, sizeBytes: number,
   check: () => void): 'link' | 'rename' {
   try {linkSync(workingFile, file);return 'link';}
   catch (error) {
@@ -511,7 +572,7 @@ function installExportFile(workingFile: string, file: string, directoryIdentity:
     return 'rename';
   }
 }
-function exportCopyPath(store: ProjectStore, receipt: Receipt): string {
+function privateOutputCopyPath(store: ProjectStore, receipt: Receipt): string {
   return path.join(store.projectDir, '.mioon-export-staging',
     receipt.proof.publicationId + '-' + receipt.attempt + '.' + extensions[receipt.proof.mimeType]);
 }
@@ -521,10 +582,10 @@ export function reconcileInterruptedExportPublication(store: ProjectStore, owner
   const receipt = readReceipt(store, owner, assetId, {});
   if (!receipt?.targetIdentity || receipt.proof.targetKind !== 'exports' || receipt.phase === 'registered') return;
   checkReceiptDirectories(store, receipt, {});
-  const file = path.join(store.projectDir, receipt.proof.relativePath), working = exportCopyPath(store, receipt);
+  const file = path.join(store.projectDir, receipt.proof.relativePath), working = privateOutputCopyPath(store, receipt);
   try {
     const visible = lstatSync(file, {bigint: true, throwIfNoEntry: false});
-    if (visible && sameOutputIdentity(receipt.targetIdentity, outputFileIdentity(visible)) && !committedExport(store, receipt.proof)) {
+    if (visible && sameOutputIdentity(receipt.targetIdentity, outputFileIdentity(visible)) && !committedOutput(store, receipt.proof)) {
       removeOwnedOutput(file, receipt.directoryIdentity, receipt.targetIdentity, 2n);
     }
   } catch (error) {throw new ExportInstallUnresolved(error);}
@@ -537,7 +598,7 @@ export function reconcileInterruptedExportPublication(store: ProjectStore, owner
 }
 /** Use the verified hidden descriptor for sampling and the final name for
  * the locator. The atomic install keeps the same inode and modification time. */
-async function stagedExportReference(file: string, proof: ProjectOutputPublicationProof,
+async function stagedOutputReference(file: string, proof: ProjectOutputPublicationProof,
   verification: FileVerification, signal?: AbortSignal): Promise<MediaReference> {
   const info = verification.current('reference');
   if (info.nlink !== 1n || isNotDownloaded(info)) invalid();
@@ -553,10 +614,10 @@ async function stagedExportReference(file: string, proof: ProjectOutputPublicati
       mtimeMs: mediaMtimeMs(info), sampledSha256, fullSha256: proof.sha256};
   } finally {await source.close();}
 }
-async function copyAndInstallExport(store: ProjectStore, receipt: Receipt, stage: string, stageInfo: BigIntStats,
-  options: ProjectOutputOptions, register?: RegisterExport): Promise<PublishedProjectOutput> {
+async function copyAndInstallOutput(store: ProjectStore, receipt: Receipt, stage: string, stageInfo: BigIntStats,
+  options: ProjectOutputOptions, register?: RegisterExport, fatMedia = false): Promise<PublishedProjectOutput> {
   const {proof} = receipt, file = path.join(store.projectDir, proof.relativePath);
-  const workingFile = exportCopyPath(store, receipt), directory = path.dirname(workingFile);
+  const workingFile = privateOutputCopyPath(store, receipt), directory = path.dirname(workingFile);
   checkReceiptDirectories(store, receipt, options);
   ensurePrivateDirectory(directory, {create: true});
   const directoryInfo = lstatSync(directory, {bigint: true}), directoryIdentity = outputFileIdentity(directoryInfo);
@@ -576,7 +637,12 @@ async function copyAndInstallExport(store: ProjectStore, receipt: Receipt, stage
   };
   // A restarted copy can dispose of only the leaf whose identity reached the
   // durable receipt. An unknown file will instead collide with exclusive open.
-  if (lstatSync(workingFile, {throwIfNoEntry: false}) && receipt.targetIdentity) {
+  const previousCandidate = lstatSync(workingFile, {bigint: true, throwIfNoEntry: false});
+  if (previousCandidate && receipt.targetIdentity) {
+    if (receipt.privateCopy && (!previousCandidate.isFile() || previousCandidate.nlink !== 1n ||
+        !sameOutputIdentity(receipt.targetIdentity, outputFileIdentity(previousCandidate)))) {
+      failRecovery(store, receipt, 'candidate-identity', options);
+    }
     removeOwnedOutput(workingFile, directoryIdentity, receipt.targetIdentity, 1n);
   }
   const fault = (point: Parameters<NonNullable<ProjectOutputPublicationTestHooks['fault']>>[0]): void =>
@@ -585,7 +651,8 @@ async function copyAndInstallExport(store: ProjectStore, receipt: Receipt, stage
   let candidateIdentity: OutputFileIdentity | undefined, installed = false;
   try {
     check();
-    const target = await open(workingFile, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, ordinaryOutputMode)
+    const outputMode = proof.targetKind === 'assets' ? 0o644 : ordinaryOutputMode;
+    const target = await open(workingFile, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, outputMode)
       .catch(error => {
         if (record(error) && error.code === 'EEXIST') throw new ExportNameOccupied();
         throw error;
@@ -608,6 +675,7 @@ async function copyAndInstallExport(store: ProjectStore, receipt: Receipt, stage
         throw new BytesMismatch('copy-target', 'identity');
       }
       receipt.targetIdentity = candidateIdentity; receipt.mode = 'copy'; receipt.phase = 'copying';
+      if (fatMedia) receipt.privateCopy = true;
       writeReceipt(store, receipt, options);
       fault('after_target_identity'); check();
       await copyVerifiedStage(stage, stageInfo, workingFile, target, candidateIdentity, proof, check, () => fault('after_copy_chunk'), chunkBytes);
@@ -617,7 +685,7 @@ async function copyAndInstallExport(store: ProjectStore, receipt: Receipt, stage
       await readVerifiedBytes(workingFile, proof, check, verification, 'final-hash', {chunkBytes});
       await syncVerifiedFile(workingFile, check, verification, 'final-sync');
       syncDirectory(directory);
-      return stagedExportReference(workingFile, proof, verification, options.signal);
+      return stagedOutputReference(workingFile, proof, verification, options.signal);
     });
     let verified = await verify();
     fault('after_final');
@@ -641,7 +709,7 @@ async function copyAndInstallExport(store: ProjectStore, receipt: Receipt, stage
         register?.(published);
         const recheck = () => checkCandidate(() => {publicationCheck(); checkDirectory();});
         recheck();
-        const mode = installExportFile(workingFile, file, receipt.directoryIdentity, proof.sizeBytes, recheck);
+        const mode = installOutputFile(workingFile, file, receipt.directoryIdentity, proof.sizeBytes, recheck);
         installed = true;
         const installedBeforeHook = fileMetadata(file, publicationCheck);
         assertFileFacts(installedBeforeHook, expected, 'registration');
@@ -678,7 +746,7 @@ async function copyAndInstallExport(store: ProjectStore, receipt: Receipt, stage
       let unresolved = false;
       // A failed DB acknowledgement alone cannot authorize removal.
       try {
-        if (installed && (!register || !committedExport(store, proof))) {
+        if (installed && (!register || !committedOutput(store, proof))) {
           removeOwnedOutput(file, receipt.directoryIdentity, candidateIdentity, 2n);
         }
       } catch {
@@ -701,10 +769,13 @@ async function executePublication(store: ProjectStore, input: ProjectOutputInput
   projectOutputOwnerSchema.parse(input.owner); uuid.parse(input.assetId); if (store.db.isTransaction) throw new TypeError('Output I/O must run outside SQLite transactions');
   fence(store, options);
   let receipt = readReceipt(store, input.owner, input.assetId, options);
+  const fatMedia = input.targetKind !== 'exports' && (receipt?.privateCopy === true || await fatOutputVolume(store));
+  if (input.targetKind !== 'exports') fence(store, options);
   let stageInfo: BigIntStats | undefined;
   if (receipt) {
     if (receipt.proof.targetKind !== input.targetKind || receipt.proof.sha256 !== input.sha256 || receipt.proof.sizeBytes !== input.sizeBytes || receipt.proof.mimeType !== input.mimeType || input.publicationId && receipt.proof.publicationId !== input.publicationId) conflict();
     checkReceiptDirectories(store, receipt, options);
+    assertRecoverableReceipt(receipt);
   } else {
     const stageRelativePath = path.relative(store.tempDir, input.stageFile).split(path.sep).join('/');
     const file = stagePath(store, {stageRelativePath});
@@ -741,7 +812,7 @@ async function executePublication(store: ProjectStore, input: ProjectOutputInput
     if (existing) {
       const identity = current.targetIdentity ?? (current.mode === 'link' ? current.stageIdentity : null);
       if (identity && sameOutputIdentity(identity, outputFileIdentity(existing))) {
-        if (register && current.phase !== 'registered' && !committedExport(store, current.proof)) {
+        if (register && current.phase !== 'registered' && !committedOutput(store, current.proof)) {
           // Recover an interrupted install before trying to publish again.
           removeOwnedOutput(file, current.directoryIdentity, identity, 2n);
           continue;
@@ -756,19 +827,38 @@ async function executePublication(store: ProjectStore, input: ProjectOutputInput
           }));
           return result;
         }
-        catch (error) {if (!(error instanceof BytesMismatch) || error.field === 'ctime' || current.phase === 'prepared' || current.phase === 'registered') throw error;}
-      } else if (current.targetIdentity || current.phase === 'prepared' || current.phase === 'registered') invalid();
+        catch (error) {
+          if (!(error instanceof BytesMismatch) || error.field === 'ctime' || current.phase === 'prepared' || current.phase === 'registered') throw error;
+          if (fatMedia && current.phase === 'copying' && !committedOutput(store, current.proof)) {
+            // A legacy copy can be incomplete even when its recorded identity
+            // still matches. Recover only the exact owned file, then replay.
+            check();
+            removeOwnedOutput(file, current.directoryIdentity, identity, 1n);
+            continue;
+          }
+        }
+      } else if (current.targetIdentity || current.phase === 'prepared' || current.phase === 'registered') {
+        if (fatMedia && current.phase !== 'registered' && !committedOutput(store, current.proof)) {
+          failRecovery(store, current, 'target-identity', options);
+        }
+        invalid();
+      }
       receipt = nextAttempt(store, current, input, options); continue;
     }
     if (current.phase === 'registered') invalid();
     const stage = stagePath(store, current);
+    if (fatMedia && !lstatSync(stage, {throwIfNoEntry: false})) failRecovery(store, current, 'stage-identity', options);
     validateManagedDirectory(path.dirname(stage),{root:store.tempDir,private:true});
     validateManagedFile(stage, {root: store.tempDir, private: true, maxBytes: current.proof.sizeBytes});
     const chunkBytes = bytePassChunkSize(options, current.proof.sizeBytes);
-    stageInfo = await hashFile(stage, {...current.proof, identity: current.stageIdentity, mtimeNs: stageInfo?.mtimeNs}, check, 'stage-hash', chunkBytes);
+    try {stageInfo = await hashFile(stage, {...current.proof, identity: current.stageIdentity, mtimeNs: stageInfo?.mtimeNs}, check, 'stage-hash', chunkBytes);}
+    catch (error) {
+      if (fatMedia && error instanceof BytesMismatch) failRecovery(store, current, 'stage-identity', options);
+      throw error;
+    }
     check();
-    if (current.proof.targetKind === 'exports') {
-      try {return await copyAndInstallExport(store, current, stage, stageInfo, options, register);}
+    if (current.proof.targetKind === 'exports' || fatMedia) {
+      try {return await copyAndInstallOutput(store, current, stage, stageInfo, options, register, fatMedia);}
       catch (error) {
         if (!(error instanceof ExportNameOccupied)) throw error;
         receipt = nextAttempt(store, current, input, options, false);

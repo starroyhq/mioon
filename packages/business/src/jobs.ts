@@ -43,7 +43,7 @@ import {isSeedance25Binding} from '../../contracts/src/seedance-video.ts';
 import {markGenerationPreflightFailure,isGenerationPreflightFailure,currentGenerationClaim,readGenerationLinkedJob} from './generation-inputs.ts';
 import {adoptFormat5GeneratedVersionInside} from './format5-sequence-sync.ts';
 import {assertMediaTerminated,awaitProvider,boundedShutdown,checkpoint} from './operation-lifecycle.ts';
-import {publishProjectOutput,markProjectOutputRegistered,assertPublishedProjectOutput,registerVerifiedProjectOutputs,isExportInstallUnresolved,reconcileInterruptedExportPublication} from './project-output-publication.ts';
+import {publishProjectOutput,markProjectOutputRegistered,assertPublishedProjectOutput,registerVerifiedProjectOutputs,isExportInstallUnresolved,reconcileInterruptedExportPublication,isUnrecoverableProjectOutput,discardUnregisteredFatOutput} from './project-output-publication.ts';
 import {createOutputArtifactStage,readOutputArtifact,writeOutputArtifact,outputArtifactStage,outputArtifactDigest,restoredArtifactAudioCheck,assertOutputArtifactStage,discardCompletedExportArtifact,sealOutputArtifactStage} from './output-artifact-storage.ts';
 import type {OutputArtifact} from '../../contracts/src/output-artifact.ts';
 import {exportOutputArtifactIdentity} from '../../contracts/src/output-artifact.ts';
@@ -457,10 +457,15 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
      const shot=recordValue(get('shots',j!.shotId));if(shot&&!shot.selectedVersionId&&typeof shot.revision==='number'&&!isCanvasArchived(store.db,'shots',j!.shotId)&&(format5?targetAllowed:allowAgentTaskJobTargetMutation(store.db,'job',j!.id,{kind:'shot',id:j!.shotId})))put('shots',{...shot,selectedVersionId:version.id,revision:shot.revision+1,updatedAt:now()});services.saveJob(j!,{status:'succeeded',phase:'complete',progress:100,versionId:version.id,error:null});
     });
     if (projectOwner && published) {
-      await registerVerifiedProjectOutputs(projectOwner, {signal, beforeEffect: checkOutput}, () => {
-        commit();
-        return markProjectOutputRegistered(projectOwner, published.publication, {signal});
-      });
+      try {
+        await registerVerifiedProjectOutputs(projectOwner, {signal, beforeEffect: checkOutput}, () => {
+          commit();
+          return markProjectOutputRegistered(projectOwner, published.publication, {signal});
+        });
+      } catch (error) {
+        try {discardUnregisteredFatOutput(projectOwner, published.publication);} catch {/* A lost owner cannot authorize cleanup. */}
+        throw error;
+      }
     } else commit();
     credentialRetries.delete(j.id);
    }
@@ -528,6 +533,8 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     // restart resumes that task; it never creates a replacement generation.
     if(property(error,'terminationUnconfirmed'))persistMediaPause('jobs',j.id,'');
     return;
+   } else if(latest?.status==='downloading'&&isUnrecoverableProjectOutput(error)) {
+    saveGenerationGuarded(latest,{status:'failed',phase:'output_publication_failed',error:{...safeError(error),retryable:false},nextPollAt:0});
    } else if(j.providerId==='mock'&&j.status==='downloading'&&errorCode==='MOCK_RENDERER_UNSUPPORTED')services.saveJob(latest as JobRecord,{status:'failed',phase:'provider_failed',error:{...safeError(error),retryable:false},nextPollAt:0});
    else if(['running','downloading','submission_unknown'].includes(j.status))services.saveJob(latest as JobRecord,{...rejectionPatch,error:safeError(error,j.status==='downloading'?'DOWNLOAD_FAILED':'POLL_ERROR'),nextPollAt:Date.now()+1000});
    else saveGenerationGuarded(guardJob,{status:'failed',error:safeError(error)});

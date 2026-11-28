@@ -14,7 +14,8 @@ import {captureClosedProjectSnapshot} from '../../../../packages/business/src/pr
 import {inspectProjectFormatHeader} from '../../../../packages/business/src/project-file/connection.ts';
 import {withLockedProjectCopy} from '../../../../packages/business/src/project-file/adopt-copy.ts';
 import {createProjectCopyStagingDirectory, validateProjectCopyStagingDirectory, inspectCopiedProjectFile, openProjectBackup,
-  publishProjectCopyDirectory, publishProjectCopyFile, syncCopiedFile, syncCopiedDirectory} from '../../../../packages/business/src/project-file/backup.ts';
+  publishProjectCopyDirectory, publishProjectCopyFile, syncCopiedFile, syncCopiedDirectory, clearFatProjectCopyStage,
+  fatProjectCopyStageIdentity, materializeFatProjectCopy} from '../../../../packages/business/src/project-file/backup.ts';
 import {initializeProjectCopyHistory, readProjectCopyHistory} from '../../../../packages/business/src/project-file/copy-history.ts';
 import {applyFormat5ConversionInside, prepareFormat5Conversion} from '../../../../packages/business/src/project-file/format5-conversion-store.ts';
 import {prepareTrustedFormat5Conversion} from '../../../../packages/business/src/project-file/format5-upgrade.ts';
@@ -22,18 +23,21 @@ import {openProjectStore} from '../../../../packages/business/src/project-file/s
 import type {ProjectStore} from '../../../../packages/business/src/project-file/store.ts';
 import {copyProjectVersionsToNewProjectInside} from '../../../../packages/business/src/project-versions/copy-to-project.ts';
 import {canonicalJson} from '../../../../packages/business/src/project-versions/document.ts';
+import {isFatProjectVolume} from '../../../../packages/business/src/media-reference/location.ts';
+import type {TemplateStageEntry} from '../../../../packages/contracts/src/project-copy-action-records.ts';
 import {projectLocation} from './directories.ts';
 import type {AppDirectories} from './directories.ts';
 import type {ProjectHostManager} from './manager.ts';
-import {copyFailure, copyIdentity, sameCopyIdentity} from './copy-records.ts';
+import {copyFailure, copyIdentity, isWindowsCopyPlaceholder, recoverLegacyFatCopyStage, sameCopyIdentity} from './copy-records.ts';
 import {createCopyActionRecords} from './copy-action-records.ts';
 import type {ActionIntent} from './copy-action-records.ts';
 import {copiedProjectConfirmationDirectories} from './copy-outside-confirmations.ts';
-import {createProjectTemplateCatalog} from './templates.ts';
+import {createProjectTemplateCatalog, removeTemplateStageEntries, templateStageIdentity} from './templates.ts';
 import type {ProjectTemplateCatalogEntry} from './templates.ts';
 
-export type ProjectCopyActionBoundary = 'prepared' | 'captured' | 'staging' | 'ready' | 'records-prepared' | 'records-published' | 'directory-placeholder' | 'project-published' | 'registered';
+export type ProjectCopyActionBoundary = 'prepared' | 'captured' | 'staging' | 'ready' | 'records-prepared' | 'records-published' | 'directory-placeholder' | 'project-published' | 'registered' | 'copy-build-chunk';
 type Replace = (file: string, expected: {projectId: string; contentSequence: number; contentToken: string; fileIdentity: {dev: string; ino: string}}) => void;
+type TemplateIntent = Extract<ActionIntent, {operation: 'project.template.instantiate'}>;
 const fileFailure = (error: unknown): unknown => {
   if (error instanceof AppError) return error;
   const code = (error as {code?: unknown} | null)?.code;
@@ -95,7 +99,10 @@ export function createProjectCopyActions({manager, library, directories, assertP
     const directory = work(intent);
     if (lstatSync(directory, {throwIfNoEntry: false})) {
       validatePrivateDirectory(directory);
-      if (readdirSync(directory).some(name => !['source', 'recheck', 'local', 'cache', 'tmp'].includes(name))) return;
+      const known = ['source', 'recheck', 'local', 'cache', 'tmp'];
+      if (intent.operation === 'project.copy-to') known.push('fat-builder');
+      if (intent.operation === 'project.template.instantiate') known.push('promote-input.mioon', 'promoted-source');
+      if (readdirSync(directory).some(name => !known.includes(name))) return;
       rmSync(directory, {recursive: true});
     }
   };
@@ -108,9 +115,40 @@ export function createProjectCopyActions({manager, library, directories, assertP
       }
     } catch { /* A committed receipt is final, including after the target moves. */ }
   };
-  const abandon = (intent: ActionIntent): void => {
+  const clearTemplateStage = (intent: TemplateIntent): boolean => {
+    const directory = intent.stageDirectory;
+    if (!directory || !lstatSync(directory, {throwIfNoEntry: false})) return false;
+    if (!intent.templateStage || !matches(directory, intent.stageDirectoryIdentity)) return true;
+    const actual = templateStageIdentity(validateProjectCopyStagingDirectory(directory));
+    if (actual.birthtimeNs !== intent.templateStage.root.birthtimeNs) return true;
+    removeTemplateStageEntries(directory, intent.templateStage.root, intent.templateStage.entries);
+    // A matching staging directory does not own every name under it.
+    if (templateStageIdentity(validateProjectCopyStagingDirectory(directory)).birthtimeNs !== actual.birthtimeNs
+      || !matches(directory, intent.stageDirectoryIdentity) || readdirSync(directory).length > 0) return true;
+    rmdirSync(directory); syncCopiedDirectory(path.dirname(directory));
+    return false;
+  };
+  const resetTemplatePreparation = (intent: TemplateIntent): TemplateIntent => {
+    const retained = clearTemplateStage(intent);
+    cleanupWork(intent);
+    const next: TemplateIntent = {...intent, phase: 'prepared', stageDirectory: null, stageDirectoryIdentity: null,
+      templateStage: undefined, resumableTemplate: true, ...(retained ? {retainedTemplateStage: true} : {})};
+    save(next); return next;
+  };
+  const canResumeTemplate = (intent: TemplateIntent): Promise<boolean> => intent.resumableTemplate ? Promise.resolve(true)
+    : isFatProjectVolume(path.join(intent.input.parentDir, path.basename(intent.targetFile)));
+  const abandon = async (intent: ActionIntent): Promise<void> => {
     if (intent.phase !== 'abandoned') intent = save({...intent, phase: 'abandoned'});
-    if (intent.stageDirectory && matches(intent.stageDirectory, intent.stageDirectoryIdentity)) {
+    let cleanStage = true;
+    if (intent.operation === 'project.copy-to' && intent.stageDirectory) {
+      const disposition = intent.retainedFatStage ? 'retained'
+        : await recoverLegacyFatCopyStage(intent.targetFile, intent.stageDirectory, intent.stageDirectoryIdentity, assertAllowed);
+      if (disposition === 'retained' && !intent.retainedFatStage) save({...intent, retainedFatStage: true});
+      cleanStage = disposition === 'non-fat';
+    }
+    if (intent.operation === 'project.template.instantiate') {
+      if (clearTemplateStage(intent) && !intent.retainedTemplateStage) save({...intent, retainedTemplateStage: true});
+    } else if (cleanStage && intent.stageDirectory && matches(intent.stageDirectory, intent.stageDirectoryIdentity)) {
       validateProjectCopyStagingDirectory(intent.stageDirectory);
       const safeTree = (directory: string): boolean => readdirSync(directory).every(name => {
         const info = lstatSync(path.join(directory, name));
@@ -183,9 +221,21 @@ export function createProjectCopyActions({manager, library, directories, assertP
         publishProjectCopyDirectory(intent.stageDirectory!, folder); syncCopiedDirectory(path.dirname(folder));
       } else {
         const found = copyIdentity(target);
-        if (found && !sameCopyIdentity(found, intent.placeholderIdentity)) throw copyFailure('PROJECT_COPY_TARGET_CHANGED', '目标已被其他文件占用。');
+        if (found && !isWindowsCopyPlaceholder(target, intent.placeholderIdentity)) throw copyFailure('PROJECT_COPY_TARGET_CHANGED', '目标已被其他文件占用。');
         if (found) {unlinkSync(target); syncCopiedDirectory(path.dirname(target)); intent = save({...intent, placeholderIdentity: null});}
-        publishProjectCopyFile(stageFile(intent), target, {onPlaceholder: identity => {intent = save({...intent, placeholderIdentity: identity});}});
+        publishProjectCopyFile(stageFile(intent), target, {
+          beforeFallbackRename: () => {
+            assertAllowed();
+            if (!matches(intent.stageDirectory!, intent.stageDirectoryIdentity) || !matches(stageFile(intent), intent.stageIdentity)) {
+              throw copyFailure('PROJECT_COPY_TARGET_CHANGED', '准备好的项目文件或目录已被替换。');
+            }
+            const actual = inspectCopiedProjectFile(stageFile(intent));
+            if (actual.projectId !== intent.projectId || actual.contentToken !== response.contentToken || actual.contentSequence !== response.contentSequence) {
+              throw copyFailure('PROJECT_COPY_TARGET_CHANGED', '准备好的项目内容已改变，未发布。');
+            }
+          },
+          onPlaceholder: identity => {intent = save({...intent, placeholderIdentity: identity});},
+        });
       }
     }
     if (!matches(target, intent.stageIdentity)) throw copyFailure('PROJECT_COPY_TARGET_CHANGED', '已发布文件身份与准备结果不一致。');
@@ -240,11 +290,45 @@ export function createProjectCopyActions({manager, library, directories, assertP
 
   async function build(raw: ActionIntent, sourceFile: string, sourceHistory: string | null, replace?: Replace): Promise<ProjectCopyResponse> {
     let intent = raw;
+    const useFatStage = raw.operation === 'project.copy-to' && (!!raw.resumableFatCopy || await isFatProjectVolume(raw.targetFile));
+    assertAllowed();
+    if (useFatStage && intent.operation === 'project.copy-to' && !intent.resumableFatCopy) {
+      syncCopiedDirectory(path.dirname(sourceFile));
+      intent = save({...intent, resumableFatCopy: true});
+    }
+    if (useFatStage && intent.operation === 'project.copy-to' && intent.stageDirectory) {
+      const removed = intent.fatStage && clearFatProjectCopyStage(intent.stageDirectory, intent.fatStage);
+      intent = save({...intent, stageDirectory: null, stageDirectoryIdentity: null, fatStage: undefined, resumableFatCopy: true,
+        ...(removed ? {} : {retainedFatStage: true})});
+    }
     const parent = intent.targetDirectory ? path.dirname(intent.targetDirectory) : path.dirname(intent.targetFile);
     const stageDirectory = createProjectCopyStagingDirectory(parent, '.project-copy-');
-    intent = save({...intent, stageDirectory, stageDirectoryIdentity: copyIdentity(stageDirectory)}); await boundary('staging', intent);
+    const stageInfo = validateProjectCopyStagingDirectory(stageDirectory);
+    const stageDirectoryIdentity = {dev: String(stageInfo.dev), ino: String(stageInfo.ino)};
+    if (useFatStage) syncCopiedDirectory(parent);
+    intent = save({...intent, stageDirectory, stageDirectoryIdentity,
+      ...(intent.operation === 'project.template.instantiate'
+        ? {templateStage: {root: templateStageIdentity(stageInfo), entries: []}} : {}),
+      ...(useFatStage ? {resumableFatCopy: true, fatStage: {directory: fatProjectCopyStageIdentity(stageInfo), file: null}} : {})});
+    await boundary('staging', intent);
+    const rememberEntries = (...entries: TemplateStageEntry[]): void => {
+      if (intent.operation === 'project.template.instantiate' && intent.templateStage) {
+        intent = save({...intent, templateStage: {...intent.templateStage, entries: [...intent.templateStage.entries, ...entries]}});
+      }
+    };
+    if (intent.operation === 'project.template.instantiate' && !matches(stageDirectory, stageDirectoryIdentity)) {
+      throw copyFailure('PROJECT_COPY_TARGET_CHANGED', '模板暂存目录已改变。');
+    }
     const template = intent.operation === 'project.template.instantiate' ? catalog.prepareAssets(intent.input.templateId, intent.input.templateVersion,
-      {directory: stageDirectory, targetDirectory: intent.targetDirectory!, locale: intent.input.locale, assertMutationAllowed: assertAllowed}) : null;
+      {directory: stageDirectory, targetDirectory: intent.targetDirectory!, locale: intent.input.locale,
+        assertMutationAllowed: assertAllowed,
+        ...(intent.resumableTemplate ? {rememberEntry: rememberEntries} : {})}) : null;
+    const builderDirectory = path.join(work(intent), 'fat-builder');
+    const builderFile = useFatStage ? path.join(builderDirectory, 'project.mioon') : stageFile(intent);
+    if (useFatStage) {
+      if (lstatSync(builderDirectory, {throwIfNoEntry: false})) {validatePrivateDirectory(builderDirectory); rmSync(builderDirectory, {recursive: true});}
+      ensurePrivateDirectory(builderDirectory, {create: true});
+    }
     const captured = openProjectBackup(sourceFile);
     const promote = intent.operation === 'project.template.instantiate' && targetFormat === FORMAT5_PROJECT_SCHEMA_VERSION
       && captured.identity.formatVersion !== FORMAT5_PROJECT_SCHEMA_VERSION;
@@ -264,21 +348,32 @@ export function createProjectCopyActions({manager, library, directories, assertP
         promoted = promoteTemplateSourceToFormat5(bridge, intent);
         copySource = promoted;
       }
-      const copiedResult = await copyProjectToNewFile(copySource, {projectFile: stageFile(intent), sourceProjectDir: path.dirname(intent.sourceFile),
+      const copiedResult = await copyProjectToNewFile(copySource, {projectFile: builderFile, sourceProjectDir: path.dirname(intent.sourceFile),
         targetProjectDir: path.dirname(intent.targetFile), projectId: intent.projectId, contentToken: intent.contentToken,
         ...(promote ? {} : {expectedSource: {projectId: intent.sourceProjectId, ...intent.sourceStamp!}}), clearProcessRevisions: true,
         ...(targetFormat === undefined ? {} : {targetFormat}),
         ...('name' in intent.input ? {projectName: intent.input.name} : {}),
         ...(template ? {referenceTargets: template.referenceTargets, templatePresentation: template.presentation} : {}),
-        publish: (from, to) => publishProjectCopyFile(from, to)});
+        publish: (from, to) => {
+          if (intent.operation === 'project.template.instantiate' && intent.resumableTemplate) {
+            const relative = (file: string) => path.relative(stageDirectory, file).split(path.sep).join('/');
+            const tempParent = path.dirname(from), tempIdentity = templateStageIdentity(lstatSync(from, {bigint: true}));
+            rememberEntries({kind: 'directory', path: relative(tempParent), identity: templateStageIdentity(validateProjectCopyStagingDirectory(tempParent))},
+              {kind: 'file', path: relative(from), identity: tempIdentity}, {kind: 'file', path: relative(to), identity: tempIdentity});
+          }
+          publishProjectCopyFile(from, to);
+        }});
       copied = copiedResult;
     } finally {
       if (promoted) promoted.close();
       if (!capturedClosed) captured.close();
     }
     assertAllowed();
+    if (useFatStage && lstatSync(localStage(intent), {throwIfNoEntry: false})) {
+      validatePrivateDirectory(localStage(intent)); rmSync(localStage(intent), {recursive: true});
+    }
     ensurePrivateDirectory(localStage(intent), {create: true}); initializeProjectCopyHistory(historyStage(intent), intent.projectId, copied);
-    const store = openProjectStore({projectFile: stageFile(intent), locate: () => ({localDir: localStage(intent), cacheDir: path.join(work(intent), 'cache'), tempDir: path.join(work(intent), 'tmp')}),
+    const store = openProjectStore({projectFile: builderFile, locate: () => ({localDir: localStage(intent), cacheDir: path.join(work(intent), 'cache'), tempDir: path.join(work(intent), 'tmp')}),
       ...(copied.formatVersion === FORMAT4_PROJECT_SCHEMA_VERSION ? {format4} : {})});
     let versions = 0;
     try {
@@ -286,23 +381,43 @@ export function createProjectCopyActions({manager, library, directories, assertP
       if (sourceHistory) versions = readProjectCopyHistory(sourceHistory, previous => store.tx(() => copyProjectVersionsToNewProjectInside(previous, store.db,
         {sourceProjectId: intent.sourceProjectId, projectId: intent.projectId, sourceProjectDir: path.dirname(intent.sourceFile), targetProjectDir: path.dirname(intent.targetFile)})).versions);
     } finally {store.close();}
-    syncCopiedFile(stageFile(intent)); syncCopiedFile(historyStage(intent)); syncCopiedDirectory(localStage(intent));
+    syncCopiedFile(builderFile); syncCopiedFile(historyStage(intent)); syncCopiedDirectory(localStage(intent));
+    if (useFatStage && intent.operation === 'project.copy-to' && intent.fatStage) {
+      const stage = intent.fatStage.directory;
+      await materializeFatProjectCopy(builderFile, stageDirectory, stage, {assertAllowed,
+        onAllocated: file => {
+          if (intent.operation !== 'project.copy-to') throw new TypeError('Unexpected FAT copy operation');
+          intent = save({...intent, fatStage: {directory: stage, file}});
+        },
+        afterChunk: () => boundary('copy-build-chunk', intent)});
+    }
     const fileIdentity = copyIdentity(stageFile(intent));
     const response = projectCopyResponseSchema.parse({requestId: intent.input.requestId, sourceProjectId: intent.sourceProjectId,
       project: {projectId: intent.projectId, projectFile: intent.targetFile, fileIdentity, name: copied.name ?? 'Project', lastOpenedAt: null, summary: null},
       contentSequence: copied.contentSequence, contentToken: copied.contentToken, versions});
-    intent = save({...intent, phase: 'ready', stageIdentity: fileIdentity, historyIdentity: copyIdentity(historyStage(intent)), response});
+    intent = save({...intent, phase: 'ready', stageIdentity: fileIdentity, historyIdentity: copyIdentity(historyStage(intent)), response,
+      ...(intent.operation === 'project.copy-to' ? {fatStage: undefined, resumableFatCopy: undefined} : {})});
     // Full source history is conversion input only. The complete target and
     // its rebound versions suffice for every continuation after ready.
     rmSync(path.join(work(intent), 'source'), {recursive: true, force: true});
+    if (useFatStage) rmSync(builderDirectory, {recursive: true});
     await boundary('ready', intent); return finish(intent, replace);
   }
 
   async function execute(operation: ProjectCopyActionOperation, input: ProjectCopyActionInput, existing: ActionIntent | null): Promise<ProjectCopyResponse> {
+    let resumed: TemplateIntent | undefined;
     if (existing) {
       if (existing.digest !== digestFor(operation, input)) throw copyFailure('REQUEST_ID_REUSED', '请求 ID 已用于不同的项目操作。');
-      if (['prepared', 'captured', 'abandoned'].includes(existing.phase)) {abandon(existing); throw copyFailure('PROJECT_COPY_INTERRUPTED', '复制准备已中断并作废，请重新发起。');}
-      return finish(existing);
+      if (!['prepared', 'captured', 'abandoned'].includes(existing.phase)) return finish(existing);
+      if (existing.operation === 'project.copy-to' && existing.phase === 'captured' && existing.resumableFatCopy) {
+        assertProjectFile(existing.targetFile);
+        const directory = path.join(work(existing), 'source'), history = path.join(directory, 'history.source.sqlite');
+        return build(existing, path.join(directory, 'project.source.sqlite'), lstatSync(history, {throwIfNoEntry: false}) ? history : null);
+      }
+      if (existing.operation !== 'project.template.instantiate' || existing.phase === 'abandoned' || !await canResumeTemplate(existing)) {
+        await abandon(existing); throw copyFailure('PROJECT_COPY_INTERRUPTED', '复制准备已中断并作废，请重新发起。');
+      }
+      resumed = resetTemplatePreparation(existing);
     }
     const template = operation === 'project.template.instantiate' ? catalog.describe((input as ProjectTemplateInput).templateId, (input as ProjectTemplateInput).templateVersion) : null;
     const sourceFile = template?.projectFile ?? (input as ProjectAdoptCopyInput).sourceFile;
@@ -311,16 +426,21 @@ export function createProjectCopyActions({manager, library, directories, assertP
     if (operation !== 'project.adopt-copy' && lstatSync(operation === 'project.template.instantiate' ? path.dirname(targetFile) : targetFile, {throwIfNoEntry: false})) throw copyFailure('PROJECT_FILE_EXISTS', '目标文件或文件夹已存在。');
     const sourceIdentity = copyIdentity(sourceFile);
     if (!sourceIdentity || !template && !sameCopyIdentity(sourceIdentity, (input as ProjectAdoptCopyInput).sourceIdentity)) throw copyFailure('PROJECT_COPY_SOURCE_CHANGED', '所选源文件身份已改变。');
+    if (resumed && (sourceFile !== resumed.sourceFile || sourceProjectId !== resumed.sourceProjectId || !sameCopyIdentity(sourceIdentity, resumed.sourceIdentity)
+      || template?.sourceStamp.contentSequence !== resumed.sourceStamp?.contentSequence || template?.sourceStamp.contentToken !== resumed.sourceStamp?.contentToken)) {
+      throw copyFailure('PROJECT_COPY_SOURCE_CHANGED', '所选源文件或项目内容已改变。');
+    }
     if (operation === 'project.copy-to' && manager.status(sourceProjectId)) throw copyFailure('PROJECT_HOST_BUSY', '源项目尚未关闭。');
     if (operation === 'project.adopt-copy' && library.registry.copyOf({projectId: sourceProjectId, projectFile: sourceFile}) === null) {
       throw copyFailure('PROJECT_COPY_SOURCE_CHANGED', '所选文件不再是仍有登记原件的副本。');
     }
     library.registry.assertCanRegister?.(); assertAllowed();
-    let intent = save({version: 1, operation, input, digest: digestFor(operation, input), projectId: randomUUID(), contentToken: randomBytes(16).toString('hex'),
+    const resumableTemplate = template && (resumed || await isFatProjectVolume(path.join((input as ProjectTemplateInput).parentDir, path.basename(targetFile))));
+    let intent: ActionIntent = resumed ?? save({version: 1, operation, input, digest: digestFor(operation, input), projectId: randomUUID(), contentToken: randomBytes(16).toString('hex'),
       sourceFile, sourceProjectId, sourceIdentity, sourceStamp: template?.sourceStamp ?? (input as ProjectAdoptCopyInput).sourceStamp,
       targetFile, targetDirectory: operation === 'project.template.instantiate' ? path.dirname(targetFile) : null,
       phase: 'prepared', stageDirectory: null, stageDirectoryIdentity: null, stageIdentity: null, historyIdentity: null, recordsIdentity: null,
-      placeholderIdentity: null, directoryPlaceholderIdentity: null, response: null} as ActionIntent);
+      placeholderIdentity: null, directoryPlaceholderIdentity: null, response: null, ...(resumableTemplate ? {resumableTemplate: true} : {})} as ActionIntent);
     if (operation === 'project.adopt-copy') checkAdopt(intent);
     await boundary('prepared', intent);
     const directory = path.join(ensureWork(intent), 'source');
@@ -352,7 +472,21 @@ export function createProjectCopyActions({manager, library, directories, assertP
     const intent = records.read(operation, input.requestId), target = targetFor(operation, input);
     if (targets.has(target)) return Promise.reject(copyFailure('PROJECT_COPY_BUSY', '目标正在复制，请稍后重试。'));
     targets.add(target);
-    const promise = execute(operation, input, intent).catch(error => {throw fileFailure(error);}).finally(() => {running.delete(id); targets.delete(target);});
+    const promise = execute(operation, input, intent).catch(error => {
+      if (operation === 'project.template.instantiate') {
+        try {
+          const prepared = records.read(operation, input.requestId);
+          if (prepared?.operation === operation && (prepared.phase === 'prepared' || prepared.phase === 'captured') && prepared.digest === digest) {
+            if (prepared.resumableTemplate) resetTemplatePreparation(prepared);
+            else {
+              if (clearTemplateStage(prepared)) save({...prepared, retainedTemplateStage: true});
+              cleanupWork(prepared);
+            }
+          }
+        } catch { /* Startup can retry proven cleanup without replacing the original error. */ }
+      }
+      throw fileFailure(error);
+    }).finally(() => {running.delete(id); targets.delete(target);});
     running.set(id, {digest, promise}); return promise;
   };
   return {
@@ -368,8 +502,12 @@ export function createProjectCopyActions({manager, library, directories, assertP
           intent = save({...intent, phase: 'completed'}); cleanup(intent); continue;
         }
         if (intent.phase === 'completed') {cleanup(intent); continue;}
-        if (['prepared', 'captured', 'abandoned'].includes(intent.phase)) {
-          try {abandon(intent);} catch { /* Keep the intent for a later cleanup; unavailable media must not block startup. */ }
+        if (['prepared', 'captured', 'abandoned'].includes(intent.phase)
+          && (intent.operation !== 'project.copy-to' || !intent.resumableFatCopy)) {
+          try {
+            if (intent.operation === 'project.template.instantiate' && intent.phase !== 'abandoned' && await canResumeTemplate(intent)) resetTemplatePreparation(intent);
+            else await abandon(intent);
+          } catch { /* Keep the intent for a later cleanup; unavailable media must not block startup. */ }
           continue;
         }
         try {await call(intent.operation, intent.input);} catch { /* Preserve published identities; never overwrite another file on startup. */ }

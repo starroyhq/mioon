@@ -1,11 +1,12 @@
-import {randomUUID} from 'node:crypto';
-import {chmodSync, closeSync, constants, fstatSync, fsyncSync, linkSync, lstatSync, mkdtempSync, openSync, readdirSync, readSync, renameSync, rmSync, rmdirSync} from 'node:fs';
+import {createHash, randomUUID} from 'node:crypto';
+import {chmodSync, closeSync, constants, fstatSync, fsyncSync, ftruncateSync, linkSync, lstatSync, mkdtempSync, openSync, readdirSync, readSync, renameSync, rmSync, rmdirSync, unlinkSync, writeSync} from 'node:fs';
 import type {BigIntStats} from 'node:fs';
 import path from 'node:path';
 import {backup, DatabaseSync} from 'node:sqlite';
 import {createPrivateTemporaryDirectory, ensurePrivateDirectory, validateManagedFile} from '@mioon/contracts/private-storage';
 import {AppError} from '../../../contracts/src/app-error.ts';
 import {isProjectId, PROJECT_DATABASE_NAMES} from '../../../contracts/src/project-file.ts';
+import type {FatProjectCopyStage, FatProjectCopyStageIdentity} from '../../../contracts/src/project-copy-records.ts';
 import {isProjectFileHeld} from './held-files.ts';
 import {isAppLibraryHeld} from '../app-db/connection.ts';
 import {projectFileError} from './errors.ts';
@@ -223,17 +224,130 @@ export function createProjectCopyStagingDirectory(parent:string,prefix='project-
   validateProjectCopyStagingDirectory(created);return created;
  }catch(error){rmSync(created,{recursive:true,force:true});throw error;}
 }
+
+export function fatProjectCopyStageIdentity(info: BigIntStats): FatProjectCopyStageIdentity {
+  return {dev: String(info.dev), ino: String(info.ino), birthtimeNs: String(info.birthtimeNs)};
+}
+
+function matchesFatStageIdentity(info: BigIntStats, expected: FatProjectCopyStageIdentity): boolean {
+  return String(info.dev) === expected.dev && String(info.ino) === expected.ino && String(info.birthtimeNs) === expected.birthtimeNs;
+}
+
+function verifyFatCopyDirectory(directory: string, expected: FatProjectCopyStageIdentity): void {
+  const actual = validateProjectCopyStagingDirectory(directory);
+  if (!matchesFatStageIdentity(actual, expected) || !process.getuid || actual.uid !== BigInt(process.getuid()) || (actual.mode & 0o077n) !== 0n) {
+    throw new AppError('PROJECT_COPY_TARGET_CHANGED', '项目复制暂存目录的身份或权限已改变。', 409);
+  }
+}
+
+/** A mismatched entry is left in place. A retry can use a fresh private stage
+ * without ever claiming a file by its name or byte count alone. */
+export function clearFatProjectCopyStage(directory: string, stage: FatProjectCopyStage): boolean {
+  if (!lstatSync(directory, {throwIfNoEntry: false})) return true;
+  try { verifyFatCopyDirectory(directory, stage.directory); }
+  catch (error) { if (error instanceof AppError) return false; throw error; }
+  const file = path.join(directory, 'project.mioon');
+  const actual = lstatSync(file, {bigint: true, throwIfNoEntry: false});
+  if (actual && stage.file && actual.isFile() && actual.nlink === 1n && matchesFatStageIdentity(actual, stage.file)) {
+    unlinkSync(file); syncCopiedDirectory(directory);
+  }
+  if (readdirSync(directory).length !== 0) return false;
+  verifyFatCopyDirectory(directory, stage.directory);
+  rmdirSync(directory); syncCopiedDirectory(path.dirname(directory));
+  return true;
+}
+
+/** Materialize a closed APFS builder without SQLite journals on the target
+ * volume. The first real data write always follows the durable ownership
+ * callback, so recovery can identify and clear an interrupted FAT file. */
+export async function materializeFatProjectCopy(source: string, directory: string, stage: FatProjectCopyStageIdentity, options: {
+  readonly assertAllowed: () => void;
+  readonly onAllocated: (identity: FatProjectCopyStageIdentity) => void;
+  readonly afterChunk: () => Promise<void>;
+}): Promise<void> {
+  const file = path.join(directory, 'project.mioon');
+  const before = lstatSync(source, {bigint: true}), sourceIdentity = fatProjectCopyStageIdentity(before);
+  const changed = () => new AppError('PROJECT_COPY_TARGET_CHANGED', '项目复制文件的身份或内容已改变。', 409);
+  if (!before.isFile() || before.nlink !== 1n || before.size === 0n || before.size > BigInt(Number.MAX_SAFE_INTEGER) ||
+      isProjectFileHeld(sourceIdentity) || isAppLibraryHeld(sourceIdentity)) throw changed();
+  const size = Number(before.size);
+  let owned: FatProjectCopyStageIdentity | undefined;
+  let output: number | undefined;
+  const input = openSync(source, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const verifySource = (actual: BigIntStats): void => {
+      if (!matchesFatStageIdentity(actual, sourceIdentity) || !actual.isFile() || actual.nlink !== 1n ||
+          actual.size !== before.size || actual.mtimeNs !== before.mtimeNs || actual.ctimeNs !== before.ctimeNs) throw changed();
+    };
+    const verify = (): void => {
+      options.assertAllowed(); verifyFatCopyDirectory(directory, stage);
+      if (owned) {
+        const actual = lstatSync(file, {bigint: true});
+        if (!actual.isFile() || actual.nlink !== 1n || !matchesFatStageIdentity(actual, owned)) throw changed();
+      }
+    };
+    verifySource(fstatSync(input, {bigint: true})); verify();
+    output = openSync(file, constants.O_RDWR | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+    owned = fatProjectCopyStageIdentity(fstatSync(output, {bigint: true})); verify();
+    try { ftruncateSync(output, 1); }
+    finally { owned = fatProjectCopyStageIdentity(fstatSync(output, {bigint: true})); }
+    verify(); fsyncSync(output); syncCopiedDirectory(directory); options.onAllocated(owned);
+    const buffer = Buffer.alloc(64 * 1024), sourceHash = createHash('sha256');
+    let offset = 0;
+    while (offset < size) {
+      verify();
+      const read = readSync(input, buffer, 0, Math.min(size - offset, buffer.length), offset);
+      if (!read) throw changed();
+      sourceHash.update(buffer.subarray(0, read));
+      let written = 0;
+      while (written < read) {
+        const count = writeSync(output, buffer, written, read - written, offset + written);
+        if (!count) throw changed();
+        written += count;
+      }
+      offset += read;
+      if (offset < size) await options.afterChunk();
+    }
+    verify(); verifySource(fstatSync(input, {bigint: true})); verifySource(lstatSync(source, {bigint: true}));
+    fsyncSync(output);
+    const saved = fstatSync(output, {bigint: true}), targetHash = createHash('sha256');
+    if (saved.size !== before.size) throw changed();
+    for (let verified = 0; verified < size;) {
+      verify();
+      const read = readSync(output, buffer, 0, Math.min(size - verified, buffer.length), verified);
+      if (!read) throw changed();
+      targetHash.update(buffer.subarray(0, read));
+      verified += read;
+    }
+    verify();
+    const checked = lstatSync(file, {bigint: true});
+    if (checked.size !== saved.size || checked.mtimeNs !== saved.mtimeNs || checked.ctimeNs !== saved.ctimeNs ||
+        sourceHash.digest('hex') !== targetHash.digest('hex')) throw changed();
+    syncCopiedDirectory(directory);
+  } catch (error) {
+    if (owned && output !== undefined) {
+      closeSync(output); output = undefined;
+      try { clearFatProjectCopyStage(directory, {directory: stage, file: owned}); }
+      catch { /* Keep the original failure. A durable intent can try again. */ }
+    }
+    const code = (error as {code?: unknown})?.code;
+    if (code === 'ENOSPC' || code === 'EDQUOT') throw new AppError('PROJECT_COPY_CAPACITY', '目标位置的可用空间不足。', 507);
+    throw error;
+  } finally { closeSync(input); if (output !== undefined) closeSync(output); }
+}
+
 export interface ProjectCopyPlaceholder {readonly dev:string;readonly ino:string}
 export interface PublishProjectCopyOptions {
  readonly onPlaceholder?:(identity:ProjectCopyPlaceholder)=>void;
+ readonly beforeFallbackRename?:()=>void;
  readonly onPublished?:()=>void;
 }
 /** S5 publication only. V2's established hard-link failure contract remains
- * in publishCopiedFile. The coordinator accepts the metadata-check/rename
- * gap on volumes without links; no stronger inode CAS is claimed here. */
+ * in publishCopiedFile. POSIX volumes without links can rename the already
+ * allocated, verified stage without leaving an empty public placeholder. */
 export function publishProjectCopyFile(temporary:string,destination:string,options:PublishProjectCopyOptions={}):void {
  if(path.resolve(temporary)===path.resolve(destination))throw new TypeError('A project publication needs a distinct stage');
- validateProjectCopyStagingDirectory(path.dirname(destination));
+ const destinationDir=path.dirname(destination),initialParent=validateProjectCopyStagingDirectory(destinationDir);
  let placeholder:ProjectCopyPlaceholder|undefined,published=false;
  try{
   try{linkSync(temporary,destination);published=true;}
@@ -241,6 +355,36 @@ export function publishProjectCopyFile(temporary:string,destination:string,optio
    const code=(error as {code?:unknown})?.code;
    if(code==='EEXIST')throw projectFileError('PROJECT_FILE_EXISTS',{database:'project',reason:'exists'});
    if(!['EPERM','ENOTSUP','EOPNOTSUPP','ENOSYS','EXDEV'].includes(String(code)))throw error;
+   if(process.platform!=='win32'){
+    options.beforeFallbackRename?.();
+    const sourceDir=path.dirname(temporary),stage=lstatSync(temporary,{bigint:true});
+    validateProjectCopyStagingDirectory(sourceDir);
+    const parent=validateProjectCopyStagingDirectory(destinationDir);
+    if(!stage.isFile()||stage.size===0n||stage.nlink!==1n||stage.dev!==parent.dev||
+       parent.dev!==initialParent.dev||parent.ino!==initialParent.ino||parent.birthtimeNs!==initialParent.birthtimeNs||
+       !process.getuid||parent.uid!==BigInt(process.getuid())||(parent.mode&0o022n)!==0n){
+     throw new AppError('PROJECT_COPY_UNSUPPORTED_FILESYSTEM','目标卷不能安全发布项目文件。',409);
+    }
+    // The application owner serializes its copies. Like media publication on
+    // exFAT, an external writer with access can race the final absence check.
+    if(lstatSync(destination,{throwIfNoEntry:false}))throw projectFileError('PROJECT_FILE_EXISTS',{database:'project',reason:'exists'});
+    try{renameSync(temporary,destination);}
+    catch(failure){
+     const why=(failure as {code?:unknown})?.code;
+     if(why==='ENOSPC'||why==='EDQUOT')throw new AppError('PROJECT_COPY_CAPACITY','目标位置的可用空间不足。',507);
+     throw failure;
+    }
+    published=true;
+    const installed=lstatSync(destination,{bigint:true});
+    if(!installed.isFile()||installed.nlink!==1n||installed.dev!==stage.dev||installed.ino!==stage.ino||
+       installed.birthtimeNs!==stage.birthtimeNs||installed.size!==stage.size||installed.mtimeNs!==stage.mtimeNs){
+     throw new AppError('PROJECT_COPY_TARGET_CHANGED','目标身份与复制提交不一致。',409);
+    }
+    options.onPublished?.();
+    syncCopiedDirectory(destinationDir);
+    if(sourceDir!==destinationDir)syncCopiedDirectory(sourceDir);
+    return;
+   }
    let fd:number;
    try{fd=openSync(destination,'wx',0o600);}
    catch(failure){

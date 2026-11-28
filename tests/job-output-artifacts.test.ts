@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {chmodSync,closeSync,existsSync,fstatSync,ftruncateSync,openSync,readFileSync,readdirSync,statSync,writeSync} from 'node:fs';
-import {mkdtemp,copyFile,readFile,readdir,rename,rm} from 'node:fs/promises';
+import {chmodSync,closeSync,existsSync,fstatSync,ftruncateSync,openSync,readFileSync,readdirSync,statSync,writeFileSync,writeSync} from 'node:fs';
+import {mkdir,mkdtemp,copyFile,readFile,readdir,rename,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
-import {openStore} from '../packages/business/src/project-file/test-store.ts';
+import {createProjectFile} from '../packages/business/src/project-file/connection.ts';
+import {openStore,openServerTestStore} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import type {JobRecord} from '../packages/business/src/services.ts';
 import type {Provider} from '../packages/business/src/provider-registry.ts';
@@ -21,6 +22,8 @@ import {isTimelineRenderRecord} from '../packages/contracts/src/timeline-acknowl
 import {timelineDeliveryContentDisposition} from '../packages/contracts/src/timeline-delivery.ts';
 import {readTimelineDeliveryDownload} from '../packages/business/src/timeline-delivery-read.ts';
 import {readOwnedTimelineAsset} from '../packages/business/src/timeline-sources.ts';
+import {outputFileIdentity} from '../packages/business/src/project-output-owner.ts';
+import {mountProjectVolumeFixture} from './helpers/project-volume-fixture.ts';
 
 const row=(value:unknown):Record<string,unknown>=>{assert.ok(value&&typeof value==='object'&&!Array.isArray(value));return value as Record<string,unknown>;};
 async function sourceFile(root:string):Promise<string>{const file=path.join(root,'source.mp4');await run('ffmpeg',['-hide_banner','-loglevel','error','-n','-f','lavfi','-i','color=c=blue:s=144x256:r=30:d=0.2','-an','-c:v','libx264','-preset','ultrafast','-threads','1','-pix_fmt','yuv420p',file],{timeout:30000});return file;}
@@ -211,6 +214,62 @@ test('a moved private download stage retains its task and serializes an I/O erro
  const retained=row(await services.call('job.get',{jobId:job.id})),error=row(retained.error),serialized=JSON.stringify(retained);
  assert.equal(retained.status,'downloading');assert.equal(retained.providerJobId,'existing-private-download-job');assert.equal(retained.requestId,job.requestId);assert.equal(retained.submissionCount,1);assert.deepEqual(calls,{submit:1,poll:1,download:1});
  assert.deepEqual(error,{code:'ENOENT',message:'本地产物文件不可用，已保留任务记录',retryable:true});assert.equal(serialized.includes(root),false);assert.equal(serialized.includes(store.tempDir),false);assert.equal(serialized.includes(moved),false);assert.equal(store.list('versions').length,0);assert.equal(store.list('assets').length,0);assert.deepEqual(await readFile(moved),await readFile(source));
+});
+
+test('an unrecoverable legacy exFAT video receipt stops local publication retries without deleting the unowned result',{timeout:120000},async t=>{
+ const volume=await mountProjectVolumeFixture(t,'exFAT');
+ if(!volume)return;
+ const projectDir=path.join(volume.mount,'project');await mkdir(projectDir);
+ const projectFile=path.join(projectDir,'project.mioon');createProjectFile(projectFile);
+ const source=await sourceFile(volume.root),payload=await readFile(source);
+ const store=openServerTestStore({projectFile,locate:()=>({localDir:path.join(volume.root,'local'),cacheDir:path.join(volume.root,'cache'),
+  tempDir:path.join(volume.root,'scratch')})},path.join(volume.root,'app'));
+ const calls={submit:0,poll:0,download:0};
+ const provider:Provider={id:'ark',capabilities:{models:['fixture'],inputModes:['text'],aspectRatios:['9:16'],durations:[4],configured:true,enabled:true,mock:false},
+  submit:async()=>{calls.submit++;return{providerJobId:'original-result'};},poll:async()=>{calls.poll++;return{status:'succeeded'};},reconcile:async()=>null,
+  download:async(_id,destination)=>{calls.download++;await copyFile(source,destination);}};
+ const providers=new Map([['ark',provider]]),services=createServices(store,providers);
+ let worker:ReturnType<typeof startWorker>|undefined;
+ try{
+  const project=row(await services.call('project.create',{name:'Legacy video publication'}));
+  const shot=row(await services.call('shot.create',{projectId:project.id,title:'Frozen output',prompt:'Synthetic blue rectangle',duration:4}));
+  const request={shotId:shot.id,expectedRevision:shot.revision,providerId:'ark',requestId:randomUUID()};
+  const accepted=row(await services.call('generation.submit',request)),jobId=String(accepted.id);
+  let final='',receiptFile='';
+  const remove=setProjectOutputPublicationTestHooks(store,{fault(point,proof){
+   if(point!=='after_intent'||proof.owner.id!==jobId)return;
+   final=path.join(projectDir,proof.relativePath);receiptFile=path.join(store.tempDir,'publications',`${proof.publicationId}.json`);
+   const intent=JSON.parse(readFileSync(receiptFile,'utf8')) as Record<string,unknown>;
+   const fd=openSync(final,'wx');
+   try{
+    const empty=outputFileIdentity(fstatSync(fd,{bigint:true}));
+    writeFileSync(fd,payload);
+    const allocated=outputFileIdentity(fstatSync(fd,{bigint:true}));
+    const targetIdentity=empty.ino!==allocated.ino?empty:{...empty,ino:'-1'};
+    writeFileSync(receiptFile,JSON.stringify({...intent,phase:'copying',mode:'copy',targetIdentity}));
+   }finally{closeSync(fd);}
+   throw Error('Stop with the legacy receipt before allowing the next worker pass');
+  }});
+  try{worker=startWorker(store,services,providers);await worker.tick();await worker.tick();}finally{remove();await worker?.stop();worker=undefined;}
+  assert.ok(final&&receiptFile);
+  assert.deepEqual(calls,{submit:1,poll:1,download:1});
+  const before=outputFileIdentity(statSync(final,{bigint:true}));
+  const pending=row(await services.call('job.get',{jobId}));
+  assert.equal(pending.status,'downloading');
+  services.saveJob(store.get('jobs',jobId) as JobRecord,{nextPollAt:0});
+  worker=startWorker(store,services,providers);await worker.tick();await worker.tick();
+  const finished=row(await services.call('job.get',{jobId}));
+  assert.equal(finished.status,'failed');
+  assert.equal(row(finished.error).code,'INVALID_MEDIA');
+  assert.equal(row(finished.error).retryable,false);
+  assert.equal(finished.requestId,request.requestId);
+  assert.deepEqual(calls,{submit:1,poll:1,download:1});
+  assert.equal(store.list('assets').length,0);assert.equal(store.list('versions').length,0);
+  assert.deepEqual(outputFileIdentity(statSync(final,{bigint:true})),before);
+  assert.deepEqual(readFileSync(final),payload);
+  assert.equal(JSON.parse(readFileSync(receiptFile,'utf8')).failure,'target-identity');
+  assert.equal(row(await services.call('generation.submit',request)).id,jobId);
+ }finally{await worker?.stop();await services.drain();store.close();}
 });
 
 test('completed generation artifact over 64 MiB resumes after restart, rejects corrupt manifest and registers its exact IDs once',async t=>{

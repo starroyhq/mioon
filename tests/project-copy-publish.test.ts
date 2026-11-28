@@ -6,7 +6,8 @@ import {chmodSync,existsSync,lstatSync,mkdtempSync,readFileSync,renameSync,rmSyn
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {syncBuiltinESMExports} from 'node:module';
-import {createProjectCopyStagingDirectory,validateProjectCopyStagingDirectory,publishProjectCopyFile,publishCopiedFile} from '../packages/business/src/project-file/backup.ts';
+import {createProjectCopyStagingDirectory,validateProjectCopyStagingDirectory,publishProjectCopyFile,publishCopiedFile,
+ clearFatProjectCopyStage,fatProjectCopyStageIdentity} from '../packages/business/src/project-file/backup.ts';
 const code=(expected:string)=>(error:unknown)=>Boolean(error&&typeof error==='object'&&'code' in error&&error.code===expected);
 function fixture(t:TestContext){
  const root=mkdtempSync(path.join(tmpdir(),'mioon-s5-publish-')),stage=path.join(root,'stage'),target=path.join(root,'target.mioon');
@@ -31,7 +32,7 @@ for(const links of [true,false])for(const kind of ['empty','content','symlink'] 
  assert.deepEqual(readFileSync(f.stage),f.bytes);if(kind!=='symlink')assert.equal(readFileSync(f.target,'utf8'),kind==='content'?'keep':'');
 });
 
-test('fallback reserves wx, records its exact identity and renames only over that placeholder',t=>{
+test('Windows fallback reserves wx and renames only over its exact placeholder',{skip:process.platform!=='win32'},t=>{
  const f=fixture(t);noLinks(t);const order:string[]=[];let oldInode:string|undefined;
  publishProjectCopyFile(f.stage,f.target,{onPlaceholder:identity=>{
   order.push('placeholder');const info=lstatSync(f.target,{bigint:true});assert.equal(String(info.dev),identity.dev);assert.equal(String(info.ino),identity.ino);assert.equal(info.size,0n);oldInode=identity.ino;
@@ -39,19 +40,19 @@ test('fallback reserves wx, records its exact identity and renames only over tha
  assert.deepEqual(order,['placeholder','published']);assert.equal(existsSync(f.stage),false);assert.notEqual(String(lstatSync(f.target,{bigint:true}).ino),oldInode);
 });
 
-test('fallback refuses a substituted placeholder and never removes the replacement',t=>{
+test('Windows fallback refuses a substituted placeholder',{skip:process.platform!=='win32'},t=>{
  const f=fixture(t);noLinks(t);const held=path.join(f.root,'saved-placeholder');
  assert.throws(()=>publishProjectCopyFile(f.stage,f.target,{onPlaceholder:()=>{renameSync(f.target,held);writeFileSync(f.target,'a foreign file');}}),code('PROJECT_FILE_EXISTS'));
  assert.equal(readFileSync(f.target,'utf8'),'a foreign file');assert.equal(readFileSync(held).length,0);assert.deepEqual(readFileSync(f.stage),f.bytes);
 });
 
-test('an intent write failure cleans only its own placeholder and retains the complete stage',t=>{
+test('Windows intent write failure cleans only its own placeholder',{skip:process.platform!=='win32'},t=>{
  const f=fixture(t);noLinks(t);const sentinel=Error('intent write failed');
  assert.throws(()=>publishProjectCopyFile(f.stage,f.target,{onPlaceholder:()=>{throw sentinel;}}),error=>error===sentinel);
  assert.equal(existsSync(f.target),false);assert.deepEqual(readFileSync(f.stage),f.bytes);
 });
 
-test('rename failure removes the owned placeholder without changing the stage',t=>{
+test('rename failure leaves no target without changing the stage',t=>{
  const f=fixture(t);noLinks(t);t.mock.method(fs,'renameSync',()=>{throw Object.assign(Error('denied'),{code:'EACCES'});});syncBuiltinESMExports();
  assert.throws(()=>publishProjectCopyFile(f.stage,f.target),code('EACCES'));assert.equal(existsSync(f.target),false);assert.deepEqual(readFileSync(f.stage),f.bytes);
 });
@@ -62,11 +63,57 @@ for(const links of [true,false])test(`failure after publication preserves the co
  assert.deepEqual(readFileSync(f.target),f.bytes);
 });
 
-test('unavailable wx publication is reported explicitly while the V2 link-only contract stays unchanged',t=>{
+test('unavailable Windows wx publication does not change the V2 link-only contract',{skip:process.platform!=='win32'},t=>{
  const f=fixture(t);noLinks(t);
  assert.throws(()=>publishCopiedFile(f.stage,f.target),code('EOPNOTSUPP'));assert.equal(existsSync(f.target),false);
  const open=fs.openSync;t.mock.method(fs,'openSync',(...args:Parameters<typeof fs.openSync>)=>{if(String(args[0])===f.target)throw Object.assign(Error('unsupported'),{code:'ENOTSUP'});return open(...args);});syncBuiltinESMExports();
  assert.throws(()=>publishProjectCopyFile(f.stage,f.target),code('PROJECT_COPY_UNSUPPORTED_FILESYSTEM'));assert.equal(existsSync(f.target),false);assert.deepEqual(readFileSync(f.stage),f.bytes);
+});
+
+test('POSIX fallback publishes the allocated inode without creating a placeholder',{skip:process.platform==='win32'},t=>{
+ const f=fixture(t);noLinks(t);const before=lstatSync(f.stage,{bigint:true});let checked=false,published=false;
+ publishProjectCopyFile(f.stage,f.target,{
+  beforeFallbackRename:()=>{checked=true;assert.equal(existsSync(f.target),false);},
+  onPlaceholder:()=>assert.fail('POSIX fallback must never create a public placeholder'),
+  onPublished:()=>{published=true;assert.equal(checked,true);assert.deepEqual(readFileSync(f.target),f.bytes);},
+ });
+ assert.equal(published,true);assert.equal(existsSync(f.stage),false);
+ const after=lstatSync(f.target,{bigint:true});assert.equal(after.ino,before.ino);assert.equal(after.birthtimeNs,before.birthtimeNs);
+});
+
+test('POSIX fallback rejects a target that appears after the stage check',{skip:process.platform==='win32'},t=>{
+ const f=fixture(t);noLinks(t);
+ assert.throws(()=>publishProjectCopyFile(f.stage,f.target,{beforeFallbackRename:()=>writeFileSync(f.target,'foreign content')}),code('PROJECT_FILE_EXISTS'));
+ assert.equal(readFileSync(f.target,'utf8'),'foreign content');assert.deepEqual(readFileSync(f.stage),f.bytes);
+});
+
+test('POSIX fallback rejects an empty or foreign-writable stage before touching the target',{skip:process.platform==='win32'},t=>{
+ const f=fixture(t);noLinks(t);
+ chmodSync(f.root,0o777);
+ assert.throws(()=>publishProjectCopyFile(f.stage,f.target),code('PROJECT_COPY_UNSUPPORTED_FILESYSTEM'));
+ chmodSync(f.root,0o700);writeFileSync(f.stage,'');
+ assert.throws(()=>publishProjectCopyFile(f.stage,f.target),code('PROJECT_COPY_UNSUPPORTED_FILESYSTEM'));
+ assert.equal(existsSync(f.target),false);
+});
+
+test('POSIX fallback reports disk full while retaining the allocated private source',{skip:process.platform==='win32'},t=>{
+ const f=fixture(t);noLinks(t);
+ t.mock.method(fs,'renameSync',()=>{throw Object.assign(Error('simulated full volume'),{code:'ENOSPC'});});syncBuiltinESMExports();
+ assert.throws(()=>publishProjectCopyFile(f.stage,f.target),code('PROJECT_COPY_CAPACITY'));
+ assert.equal(existsSync(f.target),false);assert.deepEqual(readFileSync(f.stage),f.bytes);
+ assert.throws(()=>publishCopiedFile(f.stage,f.target),code('EOPNOTSUPP'));
+});
+
+test('partial stage cleanup preserves a reused inode and entries without a recorded identity',{skip:process.platform==='win32'},t=>{
+ const f=fixture(t),directory=createProjectCopyStagingDirectory(f.root),file=path.join(directory,'project.mioon');
+ writeFileSync(file,'original copied prefix');
+ const dirIdentity=fatProjectCopyStageIdentity(lstatSync(directory,{bigint:true})),identity=fatProjectCopyStageIdentity(lstatSync(file,{bigint:true}));
+ assert.equal(clearFatProjectCopyStage(directory,{directory:dirIdentity,file:null}),false);
+ const reused={...identity,birthtimeNs:String(BigInt(identity.birthtimeNs)+1n)};
+ assert.equal(clearFatProjectCopyStage(directory,{directory:dirIdentity,file:reused}),false);
+ assert.equal(readFileSync(file,'utf8'),'original copied prefix');
+ assert.equal(clearFatProjectCopyStage(directory,{directory:dirIdentity,file:identity}),true);
+ assert.equal(existsSync(directory),false);
 });
 
 test('portable stage directories allow ordinary project permissions but never a symbolic ancestor',t=>{

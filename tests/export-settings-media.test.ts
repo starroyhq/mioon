@@ -1,10 +1,9 @@
 import type {MediaReference} from '../packages/contracts/src/media-reference.ts';
 import {mediaFixturePath} from './helpers/media-reference-fixtures.ts';
-import {testEnv} from './helpers/test-env.ts';
-import test,{type TestContext} from 'node:test';
+import {mountProjectVolumeFixture} from './helpers/project-volume-fixture.ts';
+import test from 'node:test';
 import assert from 'node:assert/strict';
-import {spawnSync} from 'node:child_process';
-import {mkdir,mkdtemp,writeFile,readFile,realpath,rm,readdir} from 'node:fs/promises';
+import {mkdir,mkdtemp,writeFile,readFile,rm,readdir} from 'node:fs/promises';
 import {lstatSync,readdirSync,renameSync,writeFileSync,existsSync,utimesSync} from 'node:fs';
 import {isProjectStore} from '../packages/business/src/project-file/store.ts';
 import {tmpdir} from 'node:os';
@@ -501,39 +500,10 @@ test('worker publication keeps failed or interrupted multi-chunk copies private'
  });
 });
 
-async function mountExfatFixture(t: TestContext): Promise<{root: string; mount: string} | undefined> {
- const root=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-export-exfat-'));
- const mount=path.join(root,'volume'), home=path.join(root,'home'), temp=path.join(root,'temp');
- const image=path.join(root,'fixture.dmg'), hostDevice=lstatSync(root).dev;
- const hdiutil=(...args: string[])=>spawnSync('/usr/bin/hdiutil',args,{
-  stdio:'pipe',timeout:20000,env:{...testEnv(),HOME:home,TMPDIR:temp},
- });
- const mounted=()=>{
-  const info=lstatSync(mount,{throwIfNoEntry:false});
-  return info!==undefined&&info.dev!==hostDevice;
- };
- t.after(async()=>{
-  if(mounted()){
-   const detach=hdiutil('detach',mount);
-   if(detach.status!==0&&mounted())assert.equal(hdiutil('detach','-force',mount).status,0,'detach the test exFAT image');
-   assert.equal(mounted(),false,'never traverse a mounted image during test cleanup');
-  }
-  await rm(root,{recursive:true,force:true});
- });
- await Promise.all([mkdir(mount),mkdir(home),mkdir(temp)]);
- const create=hdiutil('create','-size','64m','-fs','ExFAT','-volname','MIOONTEST','-layout','MBRSPUD','-type','UDIF',image);
- if(create.status!==0){t.skip(`exFAT image creation unavailable (hdiutil ${create.error?.message??create.signal??create.status})`);return;}
- const attach=hdiutil('attach','-nobrowse','-noautoopen','-mountpoint',mount,image);
- if(attach.status!==0){t.skip(`exFAT image mount unavailable (hdiutil ${attach.error?.message??attach.signal??attach.status})`);return;}
- if(!mounted()){t.skip('hdiutil did not mount the exFAT image at the test mountpoint');return;}
- return {root,mount};
-}
-
 test('worker atomically publishes and rolls back on a real exFAT volume',{
- skip:process.platform!=='darwin'?'exFAT disk image fixture requires macOS hdiutil':false,
  timeout:120000,
 },async t=>{
- const fixture=await mountExfatFixture(t);
+ const fixture=await mountProjectVolumeFixture(t,'exFAT');
  if(!fixture)return;
  const {root,mount}=fixture,workspace=path.join(mount,'project');
  await mkdir(workspace);
