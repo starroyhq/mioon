@@ -1210,6 +1210,12 @@ export const timelineDeliveryMessages = {
     "en": "Checking",
     "ja": "確認中"
   },
+  "export.preflight.phase.preparing": {
+    "zh-Hans": "素材还在准备",
+    "zh-Hant": "素材仍在準備",
+    "en": "Preparing media",
+    "ja": "素材を準備中"
+  },
   "export.preflight.phase.ready": {
     "zh-Hans": "检查通过",
     "zh-Hant": "檢查通過",
@@ -2694,10 +2700,10 @@ export const timelineDeliveryMessages = {
     "ja": "素材検査が時間上限に達し、すべての確認は完了していません"
   },
   "export.preflight.issue.PREFLIGHT_BUSY": {
-    "zh-Hans": "另一项交付检查仍在运行，请稍后重新检查",
-    "zh-Hant": "另一項交付檢查仍在執行，請稍後重新檢查",
-    "en": "Another delivery check is still running. Check again later",
-    "ja": "別の出力確認がまだ実行中です。後で再確認してください"
+    "zh-Hans": "请稍后重新检查",
+    "zh-Hant": "請稍後重新檢查",
+    "en": "Check again shortly",
+    "ja": "しばらくしてから再確認してください"
   },
   "export.preflight.issue.PREFLIGHT_STALE": {
     "zh-Hans": "时间线或素材信息已变化，请重新检查已保存的快照",

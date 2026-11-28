@@ -26,6 +26,7 @@ import type {
   SubjectBindingOperation, SubjectEditOperation,
 } from '../packages/contracts/src/sequence-edit.ts';
 import {defaultPrevisScene} from '../packages/contracts/src/previs.ts';
+import {sequenceEditIntentPayloadSchema} from '../packages/contracts/src/sequence-editing.ts';
 
 const uuid = (last: string): string => `10000000-0000-4000-8000-${last.padStart(12, '0')}`;
 const projectId = uuid('1'), filmId = uuid('2'), actionId = uuid('3'), epoch = uuid('4');
@@ -158,6 +159,8 @@ test('side follows the SA operation kind and every kind maps to one stable name'
     [{kind: 'track', edit: {kind: 'version', clipId: clipA, version: null, locked: false}}, 'timeline.clip.version'],
     [{kind: 'track', edit: {kind: 'split-at-scenes', assetId: shotA, resultId: nodeA}}, 'timeline.clip.splitAtScenes'],
     [{kind: 'track', edit: {kind: 'paste-clip', clipId: clipA, startFrame: 0}}, 'timeline.clip.paste'],
+    [{kind: 'track', edit: {kind: 'copy-as-new-shot', clipId: clipA, newClipId: uuid('52'),
+      copyNodeId: nodeB}}, 'timeline.clip.copy-as-new-shot'],
   ];
   const subjectSamples: Array<[SubjectEditOperation, string]> = [
     [createBinding, 'subject.binding.create'],
@@ -278,6 +281,25 @@ test('the envelope validator accepts a valid board action and rejects contract v
   ];
   for (const candidate of rejected) assert.equal(sequenceEditEnvelopeSchema.safeParse(candidate).success, false,
     JSON.stringify(candidate).slice(0, 160));
+});
+
+test('copy-as-new-shot requires the same strict clip and node identities on preview and commit', () => {
+  const operation = {kind: 'track', edit: {kind: 'copy-as-new-shot',
+    clipId: clipA, newClipId: uuid('52'), copyNodeId: nodeB}} as const;
+  const copyIntent = intent(operation);
+  const copyEnvelope = envelope({originSide: 'timeline', intents: [copyIntent]});
+  assert.equal(sequenceEditIntentPayloadSchema.safeParse(copyIntent).success, true);
+  assert.equal(isSequenceEditEnvelope(copyEnvelope), true);
+  for (const edit of [
+    {...operation.edit, clipId: 'not-a-uuid'},
+    {...operation.edit, newClipId: undefined},
+    {...operation.edit, copyNodeId: null},
+    {...operation.edit, startFrame: 0},
+  ]) {
+    const malformedIntent = {...copyIntent, operation: {...operation, edit}};
+    assert.equal(sequenceEditIntentPayloadSchema.safeParse(malformedIntent).success, false);
+    assert.equal(isSequenceEditEnvelope({...copyEnvelope, intents: [malformedIntent]}), false);
+  }
 });
 
 test('impact counts cover nodes, edges, main-track and other-track items, cues and bindings', () => {

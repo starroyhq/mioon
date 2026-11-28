@@ -16,24 +16,27 @@ function appFunction<S extends string>(start: S,end: string,env: { [s: string]: 
 const deferred=<T = unknown>()=>{let resolve!: (value?: T | PromiseLike<T>) => void;const promise=new Promise<T>(r=>resolve=(r as (value?: T | PromiseLike<T>) => void));return{promise,resolve};};
 function navigation(){
   let serial=1,current=true,dirty=true,abandoned=0,resets=0;
-  const held=deferred();
+  const held=deferred(), settledClaims: string[] = [];
   const controller={capture:()=>serial,isCurrent:(value: number)=>value===serial,hasUnsaved:()=>dirty,abandonCurrentInput:(value: number)=>{if(value!==serial)return false;abandoned++;return true;}};
   const shotTextRef={current:controller};
   const guard=appFunction('async function guardNavigation(', 'async function guardProjectNavigation(',{
     msg:messageKey,nativeWindow:null,context:()=>({projectId:'p'}),isCurrent:()=>current,shotTextRef,subtitlesRef:{current:null},clipDraftRef:{current:null},subjectsRef:{current:null},dirtyRef:{current:false},confirm:()=>held.promise,
     setShotDirty:()=>resets++,setClipDirty:()=>{},setSourceDirty:()=>{},setSubjectDirty:()=>{},setSubtitleDirty:()=>{},setInspectorEpoch:()=>{},
+    settleDiscardedAgentEditingDrafts:(projectId: string)=>settledClaims.push(projectId),
   });
-  return{guard,held,shotTextRef,controller,newEdit:()=>serial++,leave:()=>current=false,clean:()=>dirty=false,counts:()=>({abandoned,resets})};
+  return{guard,held,shotTextRef,controller,settledClaims,newEdit:()=>serial++,leave:()=>current=false,clean:()=>dirty=false,counts:()=>({abandoned,resets})};
 }
 
 test('actual App navigation sees synchronous shot text edits before generic dirty effect and preserves stored intent',async()=>{
   const f=navigation(),pending=f.guard();assert.deepEqual(f.counts(),{abandoned:0,resets:0});f.held.resolve!(true);assert.equal(await pending,true);
   assert.deepEqual(f.counts(),{abandoned:1,resets:1});
+  assert.deepEqual(f.settledClaims,['p']);
   assert.doesNotMatch(app.slice(app.indexOf('async function guardNavigation('),app.indexOf('async function guardProjectNavigation(')),/clearPending|transport\.|\.discardStored\(|\.recover\(/);
 });
 for(const change of ['edit','controller','project'])test(`actual App late confirmation cannot discard newer ${change} shot draft`,async()=>{
   const f=navigation(),pending=f.guard();if(change==='edit')f.newEdit();if(change==='controller')f.shotTextRef.current={...f.controller};if(change==='project')f.leave();f.held.resolve!(true);
   assert.equal(await pending,false);assert.deepEqual(f.counts(),{abandoned:0,resets:0});
+  assert.deepEqual(f.settledClaims,[]);
 });
 test('actual App cancelled navigation leaves shot draft untouched',async()=>{const f=navigation(),pending=f.guard();f.held.resolve!(false);assert.equal(await pending,false);assert.deepEqual(f.counts(),{abandoned:0,resets:0});});
 

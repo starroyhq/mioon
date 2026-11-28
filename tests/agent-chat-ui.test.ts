@@ -64,10 +64,12 @@ const navigationProjectId = '77000000-0000-4000-8000-000000000001', navigationNe
 function projectNavigation({ draft = true, imageDraft = false, dirty = false, confirmation = true }: {draft?:boolean;imageDraft?:boolean;dirty?:boolean;confirmation?:boolean|Promise<unknown>} = {}) {
   const editorSession = {current: 'normal'}, calls: [string,...unknown[]][] = [], currentProject = { current: navigationProjectId }, navigationEpoch = { current: 0 }, projectEpoch = { current: 0 }, dirtyRef = { current: dirty }, formatState = {}, workspaceRef = { current: {  } };
   let backupFailure: {projectId: string; name: string} | null = {projectId: navigationProjectId, name: 'Previous failed project'};
+  const discardedClaims: string[] = [];
   const context = () => ({ projectId: currentProject.current, epoch: navigationEpoch.current, workspace: workspaceRef.current });
   const identity=projectEntryOwnerFixture(()=>projectEntryFixture([{id:navigationProjectId},{id:navigationNextId},{id:navigationLaterId}]));
   const guardEnv = { message, msg: message, ...createI18nTestContext(), nativeWindow: null, localDeliveryRef: { current: null }, shotTextRef: { current: null }, clipDraftRef: { current: null }, deliveryNameRef: { current: null }, subtitlesRef: { current: { controller: { getState: () => null, hasUnsaved: () => false, discardDraft: () => calls.push(['discardSubtitles']) } } }, setSubtitleDirty: (value: unknown) => calls.push(['subtitleDirty', value]), context, dirtyRef, timelineFormatRef: { current: { controller: { getState: () => formatState, hasUnsaved: () => false, discardDraft: () => calls.push(['discardFormat']) } } }, confirm: async (message: unknown) => { calls.push(['confirm', message]); return confirmation; }, isCurrent: (captured: { projectId: string; epoch: number; workspace: Record<string, unknown>|null|undefined; }) => captured.projectId === currentProject.current && captured.epoch === navigationEpoch.current && 'normal' === 'normal',
-    setShotDirty: (value: unknown) => calls.push(['shotDirty', value]), setClipDirty: (value: unknown) => calls.push(['clipDirty', value]), setSourceDirty: (value: unknown) => calls.push(['sourceDirty', value]), setSubjectDirty: (value: unknown) => calls.push(['subjectDirty', value]), subjectsRef: { current: { state: { scope: 'fixture-subject-scope' }, controller: { discardDrafts: (scope: unknown) => calls.push(['discardSubjects', scope]) } } }, setInspectorEpoch: () => calls.push(['inspectorEpoch']) };
+    setShotDirty: (value: unknown) => calls.push(['shotDirty', value]), setClipDirty: (value: unknown) => calls.push(['clipDirty', value]), setSourceDirty: (value: unknown) => calls.push(['sourceDirty', value]), setSubjectDirty: (value: unknown) => calls.push(['subjectDirty', value]), subjectsRef: { current: { state: { scope: 'fixture-subject-scope' }, controller: { discardDrafts: (scope: unknown) => calls.push(['discardSubjects', scope]) } } }, setInspectorEpoch: () => calls.push(['inspectorEpoch']),
+    currentProject, settleDiscardedAgentEditingDrafts: (id: string) => { discardedClaims.push(id); } };
   const { guardNavigation, guardProjectNavigation } = Function(...Object.keys(guardEnv), `${stripSourceTypes(guardSource,{loader:'tsx'})}\n${stripSourceTypes(projectGuardSource,{loader:'tsx'})}\nreturn { guardNavigation, guardProjectNavigation };`)(...Object.values(guardEnv));
   const restored = { activeMode: 'canvas', canvas: { selectedId: null, viewport: { zoom: 1 } } };
   const env = ({ message, msg: message, ...createI18nTestContext(), application: null, nativeWindow: null, nativeProjectEntry: null, workspaceRef, editorSession, projectOpenAttempt, canPublishProjectOpen, projectResponseMatches, projectOpenFailureKind, canOfferBackupRecovery,
@@ -81,7 +83,7 @@ function projectNavigation({ draft = true, imageDraft = false, dirty = false, co
   env.prepareSettingsDeparture = () => Function(...Object.keys(env), `${stripSourceTypes(settingsDepartureSource,{loader:'tsx'})}\nreturn prepareSettingsDeparture();`)(...Object.values(env));
   env.projectSessionReady = () => Function(...Object.keys(env), `${stripSourceTypes(sessionReadySource,{loader:'tsx'})}\nreturn projectSessionReady();`)(...Object.values(env));
   const selectProject = Function(...Object.keys(env), `return (${stripSourceTypes(projectSource,{loader:'tsx'})});`)(...Object.values(env));
-  return { selectProject, guardNavigation, calls, currentProject, navigationEpoch, env };
+  return { selectProject, guardNavigation, calls, discardedClaims, currentProject, navigationEpoch, env };
 }
 
 test('actual App project guard Cancel retains unsent chat and current project without clearing any panel', async () => {
@@ -93,6 +95,7 @@ test('actual App project guard Cancel retains unsent chat and current project wi
 
 test('actual App project guard Confirm permits project-key isolation; no draft or merely running reply needs no prompt', async () => {
   const f = projectNavigation(); assert.equal(await f.selectProject(navigationNextId), true); assert.equal(f.currentProject.current, navigationNextId); assert.equal(f.env.projectSessionReady(), true);
+  assert.deepEqual(f.discardedClaims, [navigationProjectId, navigationProjectId]);
   assert.deepEqual(f.calls.filter(call => call[0] === 'autoReread'), [['autoReread', navigationNextId]], 'A confirmed switch runs the bounded automatic re-read for the new project');
   assert.equal(f.env.backupFailure, null);
   assert.equal(f.calls.filter(call => call[0] === 'confirm').length, 1); assert.equal(f.calls.filter(call => call[0] === 'setData').length, 1);
@@ -119,6 +122,7 @@ test('actual App dirty-panel guard retains source drafts on Cancel and clears di
   const cancelled = projectNavigation({ draft: false, dirty: true, confirmation: false });
   assert.equal(await cancelled.guardNavigation(), false);
   assert.equal(cancelled.calls.length, 1); assert.equal(cancelled.calls[0][0], 'confirm');
+  assert.deepEqual(cancelled.discardedClaims, []);
   const confirmed = projectNavigation({ draft: false, dirty: true });
   assert.equal(await confirmed.guardNavigation(), true);
   assert.deepEqual(confirmed.calls.filter(call => ['shotDirty', 'clipDirty', 'sourceDirty', 'subjectDirty', 'subtitleDirty'].includes(call[0])),
@@ -126,6 +130,7 @@ test('actual App dirty-panel guard retains source drafts on Cancel and clears di
   assert.deepEqual(confirmed.calls.filter(call => call[0] === 'discardSubtitles'), [['discardSubtitles']]);
   assert.deepEqual(confirmed.calls.filter(call => call[0] === 'discardSubjects'), [['discardSubjects', 'fixture-subject-scope']]);
   assert.equal(confirmed.calls.filter(call => call[0] === 'inspectorEpoch').length, 1);
+  assert.deepEqual(confirmed.discardedClaims, [navigationProjectId]);
 });
 
 test('actual App navigation rejects late discard confirmation after a newer project and mode switches ignore chat draft', async () => {

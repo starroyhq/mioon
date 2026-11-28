@@ -134,7 +134,9 @@ test('format-5 explicit forms and clip drags receive editing admission without a
   // Adding a subtitle is an explicit edit; the form must not open locked behind a second Edit click.
   assert.match(app, /<AgentEditingBoundary autoAcquire workspaceScope=\{editorSession\.current\|\|'unverified'\} disabled=\{false\} projectId=\{subtitles\.state\?\.projectId\}/u);
   // The first clip drag used to be cancelled by a synchronous admission check that returned false.
-  assert.ok(app.includes("acquireAgentEditingTarget(currentProject.current || '', {kind:'timeline_clip',id:clipId,revision:0}); return true;"));
+  assert.match(app, /onAdmitClipDrag=\{clipId => currentProject\.current \? holdAgentEditingTarget\(currentProject\.current, \{kind:'timeline_clip',id:clipId,revision:0\}\) : true\}/u);
+  const timeline = readFileSync(path.join(root, 'apps/web/src/Timeline.tsx'), 'utf8');
+  assert.match(timeline, /finally \{ drag\.release\?\.\(settled\); \}/u);
   assert.doesNotMatch(app, /onAdmitClipDrag=\{clipId => \{.*?return false; \}\}/su);
 });
 

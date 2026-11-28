@@ -1,7 +1,8 @@
 import {createHash,randomUUID} from 'node:crypto';
-import {constants,lstatSync,openSync,fstatSync,fsyncSync,fchmodSync,closeSync,realpathSync} from 'node:fs';
+import {isDeepStrictEqual} from 'node:util';
+import {constants,lstatSync,openSync,fstatSync,fsyncSync,fchmodSync,closeSync,realpathSync,unlinkSync} from 'node:fs';
 import path from 'node:path';
-import {ensurePrivateDirectory,validatePrivateDirectory,validateManagedFile,readPrivateFile,writePrivateFileAtomic,getWindowsManagedFileIO} from '../../contracts/src/private-storage.ts';
+import {ensurePrivateDirectory,validatePrivateDirectory,validateManagedFile,readPrivateFile,writePrivateFileAtomic,removePrivateFile,getWindowsManagedFileIO} from '../../contracts/src/private-storage.ts';
 import {outputArtifactSchema,outputArtifactFileInfoSchema} from '../../contracts/src/output-artifact.ts';
 import type {OutputArtifact} from '../../contracts/src/output-artifact.ts';
 import type {ProjectOutputOwner} from '../../contracts/src/project-output-publication.ts';
@@ -64,6 +65,20 @@ export function outputArtifactStage(store:ProjectStore,artifact:OutputArtifact):
 export function assertOutputArtifactStage(store:ProjectStore,artifact:OutputArtifact):void{
  const file=outputArtifactStage(store,artifact),info=lstatSync(file,{bigint:true});
  if(!info.isFile()||info.isSymbolicLink()||realpathSync(file)!==file||!sameOutputIdentity(artifact.stageIdentity,outputFileIdentity(info))||Number(info.size)!==artifact.info.sizeBytes||isProjectFileHeld(outputFileIdentity(info))||isAppLibraryHeld(outputFileIdentity(info)))invalid();
+}
+/** A known terminal export can discard its exact completed render. Interrupted
+ * attempts that will resume keep the bytes and original asset identity. */
+export function discardCompletedExportArtifact(store: ProjectStore, artifact: OutputArtifact): void {
+ if(artifact.kind!=='export'||!isDeepStrictEqual(readOutputArtifact(store,artifact.owner,'export',artifact.sourceIdentity),artifact))invalid();
+ const file=outputArtifactStage(store,artifact);
+ assertOutputArtifactStage(store,artifact);
+ const info=validateManagedFile(file,{root:store.tempDir,private:true,maxBytes:artifact.info.sizeBytes});
+ const current=lstatSync(file,{bigint:true});
+ if(!info||!current.isFile()||current.nlink!==1n||!sameOutputIdentity(artifact.stageIdentity,outputFileIdentity(current)))return invalid();
+ if(process.platform==='win32')getWindowsManagedFileIO().removeOwnedFile(file,{root:store.tempDir,expected:info,maxBytes:artifact.info.sizeBytes});
+ else unlinkSync(file);
+ removePrivateFile(path.join(path.dirname(file),'complete.json'),{root:store.tempDir,maxBytes:32768});
+ syncDirectory(path.dirname(file));
 }
 export function writeOutputArtifact(store:ProjectStore,input:{owner:ProjectOutputOwner;kind:OutputArtifact['kind'];sourceIdentity:string;stageFile:string;info:MediaFileInfo;audioCheck?:OutputArtifact['audioCheck']},check:()=>void):OutputArtifact{
  check();const dir=directory(store,input.owner,input.kind,true),info=outputArtifactFileInfoSchema.parse(input.info);

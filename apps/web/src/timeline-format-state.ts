@@ -3,6 +3,7 @@ import type { MessageDescriptor, MessageKey } from '../../../packages/i18n/src/i
 import { timelineOutputPreset, isTimelineMutationResponse, isTimelineFormatReadResponse } from '@mioon/contracts';
 import { TIMELINE_FORMAT_WRITE_PRESETS as TIMELINE_OUTPUT_PRESETS } from '../../../packages/contracts/src/timeline-output-geometry.ts';
 import type { TimelineOutputPreset } from '../../../packages/contracts/src/timeline-output-geometry.ts';
+import { isSequenceEditNoop } from './edit-ui/lost-response.ts';
 
 export { TIMELINE_OUTPUT_PRESETS };
 const reasonKeys = Object.freeze({ CLIPS_PRESENT: 'timeline.format.clips', HISTORY_PRESENT: 'timeline.format.history', REQUEST_HISTORY: 'timeline.format.requests', EXPORT_HISTORY: 'timeline.format.exports', PENDING_EDIT: 'timeline.format.editPending' });
@@ -136,7 +137,7 @@ export function createTimelineFormatController({ read, submit, createRequestId, 
       if (state.saved && ((context.projectRevision ?? 0) > state.saved.projectRevision || (context.timelineRevision ?? 0) > state.saved.timelineRevision || context.timelineId && context.timelineId !== state.saved.timelineId) && state.phase === 'ready') emit({ phase: 'stale' });
     },
     setVisible(value: boolean): void { visible = Boolean(value); },
-    async load(expectedScope: string | null = state.scope): Promise<TimelineFormatSaved | null> {
+    async load(expectedScope: string | null = state.scope, quiet = false): Promise<TimelineFormatSaved | null> {
       sync();
       const projectId = state.projectId;
       if (expectedScope !== state.scope || !projectId || !state.connected) return null;
@@ -157,7 +158,8 @@ export function createTimelineFormatController({ read, submit, createRequestId, 
       } catch (error) {
         if (!owned(captured) || captured.generation !== generation) return null;
         const code = errorCode(error);
-        emit({ phase: 'error', errorMessage: message(code === 'UNAUTHORIZED' ? 'timeline.format.unauthorized' : 'timeline.format.readFailed'), error: code === 'UNAUTHORIZED' ? '会话已过期，请重新登录。' : '无法核对输出规格，请检查连接后重试。' });
+        if (quiet) emit({phase: 'stale'});
+        else emit({ phase: 'error', errorMessage: message(code === 'UNAUTHORIZED' ? 'timeline.format.unauthorized' : 'timeline.format.readFailed'), error: code === 'UNAUTHORIZED' ? '会话已过期，请重新登录。' : '无法核对输出规格，请检查连接后重试。' });
         if (code === 'UNAUTHORIZED') onUnauthorized();
         return null;
       } finally { if (activeRead === abort) activeRead = null; }
@@ -188,6 +190,14 @@ export function createTimelineFormatController({ read, submit, createRequestId, 
       try {
         result = await submit(intent);
         if (!owned(intent)) return null;
+        if (result?.status === 'not_applied' && isSequenceEditNoop(result.error)) {
+          emit({submitting: false, uncertain: null});
+          const latest = await controller.load(intent.scope, true);
+          if (owned(intent) && serial === intent.serial && latest && latest.timelineId === intent.timelineId && latest.presetId === presetId) {
+            emit({base: latest, draftPresetId: latest.presetId, dirty: false, conflict: false});
+          }
+          return null;
+        }
         if (result?.status === 'applied') {
           const timeline = result.timeline;
           if (!timelineFormatAcknowledged(intent, timeline)) throw protocolError();

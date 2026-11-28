@@ -29,20 +29,23 @@ function nameFixture(context:DeliveryNameContext={scope:`${id}:1`,projectId:id,e
  return {controller,get live(){return live;},set(patch: { scope: string; projectId?: string; enabled?: boolean; }){live={...live,...patch};controller.setContext(live);},choose(value: string){return controller.choose(value,live.scope,controller.getVersion(live.scope));}};
 }
 function projectGuard(f: ReturnType<typeof nameFixture>,confirmation:()=>Promise<unknown>=async()=>true){
- const reference={current:{controller:f.controller}},events:(string|{message:unknown;dirty:unknown})[]=[],formatState={};
+ const reference={current:{controller:f.controller}},events:(string|{message:unknown;dirty:unknown})[]=[],formatState={},settled:(string|null)[]=[];
  const guard=actual('  async function guardProjectNavigation(','  async function prepareSettingsDeparture(',{
   nativeWindow:null,clipDraftRef:{current:null},localDeliveryRef:{current:null},deliveryNameRef:reference,timelineFormatRef:{current:{controller:{getState:()=>formatState,hasUnsaved:()=>false,discardDraft:()=>events.push('discard-format')}}},
+  currentProject:{current:f.live.projectId??null},settleDiscardedAgentEditingDrafts:(projectId:string|null)=>settled.push(projectId),
   guardNavigation:async(message: unknown,dirty: unknown)=>{events.push({message,dirty});return confirmation();},
  });
- return {guard,reference,events};
+ return {guard,reference,events,settled};
 }
 
 test('actual project guard allows first project without a delivery draft and preserves cancelled drafts',async()=>{
  const empty=nameFixture({scope:'null:0',projectId:null,enabled:false}),first=projectGuard(empty);
  assert.equal(await first.guard('select first'),true);assert.equal((first.events[0] as {dirty:boolean}).dirty,false);
+ assert.deepEqual(first.settled,[null]);
  const f=nameFixture();f.choose('版本 A');const h=projectGuard(f,async()=>false);
  assert.equal(await h.guard('discard?'),false);assert.equal(f.controller.getName(f.live.scope),'版本 A');assert.equal(f.controller.hasUnsaved(),true);
  assert.equal((h.events[0] as {dirty:boolean}).dirty,true);assert.ok(!h.events.includes('discard-format'));
+ assert.deepEqual(h.settled,[]);
 });
 
 test('actual project guard rejects new typing and replacement controller during confirmation',async()=>{
@@ -51,6 +54,7 @@ test('actual project guard rejects new typing and replacement controller during 
   const result=h.guard('discard?');
   if(replacement)h.reference.current={controller:nameFixture().controller};else f.choose('更新的草稿');
   wait.resolve!(true);assert.equal(await result,false);assert.ok(!h.events.includes('discard-format'));
+  assert.deepEqual(h.settled,[]);
   assert.equal(f.controller.hasUnsaved(),true);
  }
 });

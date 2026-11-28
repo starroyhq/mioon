@@ -1,5 +1,6 @@
 import type {IncomingMessage,ServerResponse} from 'node:http';
-import {agentTaskEditingSchema} from '@mioon/contracts/agent-tasks-v2';
+import {agentTaskEditingResolveBatchSchema,agentTaskEditingSchema} from '@mioon/contracts/agent-tasks-v2';
+import type {AgentTaskEditingLiveness} from '@mioon/contracts/agent-tasks-v2';
 import {agentTaskFailure} from '@mioon/business/agent/task-runtime-v2';
 import type {AgentTaskRuntime} from '@mioon/business/agent/task-runtime-v2';
 import type {AgentTaskTools} from '@mioon/business/agent/task-tools-v2';
@@ -18,7 +19,13 @@ async function body(req:IncomingMessage,maxBytes=128*1024):Promise<unknown>{
 function query(url:URL,allowed:readonly string[]):void{const keys=[...url.searchParams.keys()];if(new Set(keys).size!==keys.length||keys.some(key=>!allowed.includes(key)))throw agentTaskFailure('AGENT_TASK_INVALID');}
 /** Host/origin/authentication are enforced by the enclosing server before this
  * route family, including streams, policy changes and editor claims. */
-export function createAgentTaskHttp({runtime,tools,assertMutationAllowed}:{runtime:AgentTaskRuntime;tools?:AgentTaskTools;assertMutationAllowed?:()=>void}){
+export function createAgentTaskHttp({runtime,tools,assertMutationAllowed,editingLiveness=()=>'uncertain',editingOwnerAdmission}:{
+  runtime:AgentTaskRuntime;
+  tools?:AgentTaskTools;
+  assertMutationAllowed?:()=>void;
+  editingLiveness?:(projectId:string,ownerId:string)=>AgentTaskEditingLiveness;
+  editingOwnerAdmission?:(projectId:string,ownerId:string)=>boolean;
+}){
   const clients=new Set<ChatSseStream>();
   const mutationBody=async(req:IncomingMessage,maxBytes?:number):Promise<unknown>=>{const input=await body(req,maxBytes);assertMutationAllowed?.();return input;};
   return {
@@ -42,12 +49,42 @@ export function createAgentTaskHttp({runtime,tools,assertMutationAllowed}:{runti
           if(req.method==='GET'){
             query(url,['projectId','ownerId','requestId']);const projectId=url.searchParams.get('projectId'),ownerId=url.searchParams.get('ownerId')??undefined;
             if(!projectId||!/^[-a-f0-9]{36}$/u.test(projectId))throw agentTaskFailure('AGENT_TASK_INVALID');
-            const requestId=url.searchParams.get('requestId');json(res,200,{claims:runtime.journal.claims(projectId,ownerId),targets:runtime.journal.revisionSnapshot(projectId),timelineRevision:runtime.timelineRevision(projectId),...(requestId?{receipt:runtime.journal.lookupEdit(requestId)}:{})});
+            const requestId=url.searchParams.get('requestId');json(res,200,{claims:runtime.journal.claims(projectId,ownerId),targets:runtime.journal.revisionSnapshot(projectId),timelineRevision:runtime.timelineRevision(projectId),...(ownerId?{ownerVersion:runtime.journal.editingOwnerVersion(projectId,ownerId)}:{}),...(requestId?{receipt:runtime.journal.lookupEdit(requestId)}:{})});
           }else if(req.method==='POST'){
             query(url,[]);const input=await mutationBody(req);if(rejectProjectMismatch(res,address,input))return true;
             const parsed=agentTaskEditingSchema.safeParse(input);if(!parsed.success)throw agentTaskFailure('AGENT_TASK_INVALID');
-            json(res,200,runtime.journal.edit(parsed.data));
+            json(res,200,runtime.journal.edit(parsed.data,()=>{
+              const {projectId,ownerId,action}=parsed.data;
+              if(!ownerId.startsWith('desktop:'))return;
+              if(editingOwnerAdmission?.(projectId,ownerId))return 'native-live';
+              // A final keepalive release and native destruction travel over
+              // different transports. A closed owner can only end its own claim.
+              if(action==='release'&&editingLiveness(projectId,ownerId)==='retained')return 'native-closed';
+              throw agentTaskFailure('AGENT_TASK_EDIT_OWNER_UNCERTAIN');
+            }));
           }else {res.setHeader('Allow','GET, POST');json(res,405,{code:'METHOD_NOT_ALLOWED',message:'请使用 GET 或 POST。'});}return true;
+        }
+        if(url.pathname===prefix+'/editing/retained'){
+          if(!address)throw agentTaskFailure('AGENT_TASK_NOT_FOUND');
+          if(runtime.readOnly)throw agentTaskFailure('AGENT_TASK_READ_ONLY');
+          query(url,[]);
+          if(req.method==='GET')json(res,200,{groups:runtime.journal.editingClaimGroups(address.projectId,editingLiveness)});
+          else {res.setHeader('Allow','GET');json(res,405,{code:'METHOD_NOT_ALLOWED',message:'请使用 GET。'});}
+          return true;
+        }
+        if(url.pathname===prefix+'/editing/resolve-batch'){
+          if(!address)throw agentTaskFailure('AGENT_TASK_NOT_FOUND');
+          if(runtime.readOnly)throw agentTaskFailure('AGENT_TASK_READ_ONLY');
+          if(req.method==='GET'){
+            query(url,['requestId']);const requestId=url.searchParams.get('requestId');
+            if(!requestId||requestId.length<8||requestId.length>200)throw agentTaskFailure('AGENT_TASK_INVALID');
+            json(res,200,{receipt:runtime.journal.lookupEditingBatch(address.projectId,requestId)});
+          }else if(req.method==='POST'){
+            query(url,[]);const input=await mutationBody(req);if(rejectProjectMismatch(res,address,input))return true;
+            const parsed=agentTaskEditingResolveBatchSchema.safeParse(input);if(!parsed.success)throw agentTaskFailure('AGENT_TASK_INVALID');
+            json(res,200,runtime.journal.resolveEditingBatch(parsed.data,editingLiveness));
+          }else {res.setHeader('Allow','GET, POST');json(res,405,{code:'METHOD_NOT_ALLOWED',message:'请使用 GET 或 POST。'});}
+          return true;
         }
         const tail=url.pathname.slice(prefix.length+1).split('/').map(value=>decodeURIComponent(value)),projectId=tail[0];
         if(!/^[-a-f0-9]{36}$/u.test(projectId)||tail.length>4)throw agentTaskFailure('AGENT_TASK_NOT_FOUND');

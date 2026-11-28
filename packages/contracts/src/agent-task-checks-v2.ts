@@ -4,6 +4,7 @@ import {AGENT_TASK_GOAL_TYPES,AGENT_TASK_GOAL_LIMIT} from './agent-task-goals-v2
 export const AGENT_TASK_CHECK_GROUPS=['export_render','generation','timeline','decomposition_frames'] as const;
 export const AGENT_TASK_CHECK_TYPES=['export_status','export_artifact','export_parameters','generation_status','generation_publication','generation_cost','timeline_references','timeline_preflight','decomposition_status','frame_status'] as const;
 export const AGENT_TASK_CHECK_STATUSES=['passed','failed','pending','not_applicable'] as const;
+export const AGENT_TASK_CHECK_BASIS_LIMIT=2000;
 export const AGENT_TASK_CHECK_TARGET_KINDS=['project','shot','asset','version','job','export','image_task','image_group','image_version','frame_task','scene_task','timeline','step','run'] as const;
 export const AGENT_TASK_CHECK_REASONS=['TASK_PENDING','TASK_FAILED','TASK_CANCELLED','TASK_INTERRUPTED','RESULT_UNKNOWN','RECORD_UNAVAILABLE','ARTIFACT_UNAVAILABLE','PARAMETERS_MISMATCH','VERSION_UNPUBLISHED','COST_UNKNOWN','COST_PENDING','COST_SUBMITTED','REFERENCES_UNAVAILABLE','PREFLIGHT_NOT_REQUESTED','PREFLIGHT_BLOCKED','PREFLIGHT_INCOMPLETE','PREFLIGHT_STALE','PREFLIGHT_UNAVAILABLE','NOT_CHANGED','NO_APPLICABLE_TASK'] as const;
 
@@ -26,7 +27,7 @@ export const agentTaskCheckValuesSchema=z.object({
 }).strict();
 export const agentTaskCheckSchema=z.object({
  id:z.string().min(1).max(240),type:z.enum(AGENT_TASK_CHECK_TYPES),source:z.literal('host'),
- status:z.enum(AGENT_TASK_CHECK_STATUSES),target,basis:z.array(basis).min(1).max(2000),
+ status:z.enum(AGENT_TASK_CHECK_STATUSES),target,basis:z.array(basis).min(1).max(AGENT_TASK_CHECK_BASIS_LIMIT),
  reason:z.object({code:z.enum(AGENT_TASK_CHECK_REASONS),params:agentTaskCheckValuesSchema.optional()}).strict().optional(),
  progress:z.number().finite().min(0).max(100).optional(),
  expected:agentTaskCheckValuesSchema.optional(),current:agentTaskCheckValuesSchema.optional(),

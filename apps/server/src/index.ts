@@ -53,6 +53,7 @@ import {composeApplicationRuntime} from './application-runtime.ts';
 import {createApplicationRpc} from './application-rpc.ts';
 import {createInitializedProject} from './project-host/create-project.ts';
 import {createProjectEntries} from './project-entries.ts';
+import type {ProjectRuntimeOptions} from './project-runtime.ts';
 import {createNodeProjectCatalogClient} from './project-catalog-client.ts';
 import type {ProjectCatalogClient} from './project-catalog-client.ts';
 import {createBackgroundCoordinator} from './project-host/background-coordinator.ts';
@@ -206,6 +207,11 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
   const catalogClient = options.projectCatalogClient ?? createNodeProjectCatalogClient();
   let server: Server | undefined;
   const opened = new Map<string, HostedProject>();
+  let editingWindowRegistry: ProjectRuntimeOptions['editingWindows'];
+  const editingWindows: NonNullable<ProjectRuntimeOptions['editingWindows']> = {
+    editingLiveness: (projectId, ownerId) => editingWindowRegistry?.editingLiveness?.(projectId, ownerId) ?? 'uncertain',
+    editingOwnerAdmission: (projectId, ownerId) => editingWindowRegistry?.editingOwnerAdmission?.(projectId, ownerId) ?? false,
+  };
   const selfPort = (): number | undefined => { const address = server?.address(); return address !== null && typeof address === 'object' ? address.port : undefined; };
   const listeningPort = (): number => { const result = selfPort(); if (result === undefined) throw new TypeError('The local HTTP listener is not bound to a TCP port.'); return result; };
   try {
@@ -242,7 +248,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
       openStore: options => { assertProjectFile(options.projectFile); return openProjectStore(options); },
       maintenance: {recoverProjectFile: file => { assertProjectFile(file); return recoverProjectFile(file, format4 ? {deferLegacyRecovery: true} : readFormat); }},
       recoverySnapshot: recover => assertProjectFile.withSnapshot(recover),
-      factory: async context => { const runtime = await composeHostedProject(context, appLibrary, app, options, selfPort, listeningPort); opened.set(context.projectId, runtime); return runtime; },
+      factory: async context => { const runtime = await composeHostedProject(context, appLibrary, app, options, selfPort, listeningPort, editingWindows); opened.set(context.projectId, runtime); return runtime; },
       onEvent: event => { try {backgroundTasks.onHostEvent(event);} finally {
         if ((event.type === 'closed' || event.type === 'open-failed') && event.projectId !== null) opened.delete(event.projectId);
       } },
@@ -314,6 +320,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
         return withNativeMedia(input.projectId,options,(port,fence)=>port.discard(input,fence));},
     };
     const projectEntries = createProjectEntries({manager, registry: appLibrary.registry, projectsDir: directories.projectsDir, copies, trash, assertProjectFile, nativeRelink, targetFormat, catalogClient,
+      nativeFcpExportFor: runtime => runtime.project.services.fcpExport,
       catalogTimeoutMs: options.projectCatalogTimeoutMsForTest,
       updateActivity: () => {
         const active = appLibrary.taskIndex.list().filter(task => task.phase === 'prepared' || task.phase === 'active');
@@ -331,6 +338,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
         }
         return calculateWorkspaceScope({root, channel, directory, db});
       }});
+    editingWindowRegistry = projectEntries;
     const userRules=createMioUserRules(library,{signal:shutdown.signal});
     const appAgentHttp = createApplicationAgentHttp(library, shutdown.signal);
     const rpc = createApplicationRpc({library, app, manager, directories, backups, withProjectRecords: backups.withProjectRecords, copies, trash, createProject, format4,

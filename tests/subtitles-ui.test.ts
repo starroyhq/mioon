@@ -13,6 +13,8 @@ import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import * as subtitles from '../apps/web/src/subtitle-state.ts';
 import { timelineHistoryState } from '../apps/web/src/timeline-history.ts';
+import { format5FixtureId, format5SequenceFixture } from './fixtures/format5-sequence.ts';
+import { FORMAT5_LIMITS } from '../packages/contracts/src/project-format5.ts';
 
 import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
@@ -70,6 +72,24 @@ test('selection and explicit discard preserve existing saved text and reject a r
   h.controller.edit('text', 'draft'); assert.equal(h.controller.select(secondId), false); assert.equal(h.controller.getState().cueId, cueId);
   h.controller.discardDraft(); assert.equal((h.controller.getState().draft)!.text, cue().text); assert.equal(h.controller.select(secondId), true);
   h.controller.edit('text', 'stale', first); assert.equal((h.controller.getState().draft)!.text, '第二条');
+});
+
+test('an explicit no-op accepts a matching refreshed subtitle without a failure or success notice', async () => {
+  const h = fixture({submit: async () => {
+    const refreshed = timeline({revision: 9});
+    refreshed.subtitles.cues[0]!.text = '另一会话已保存';
+    h.set({timeline: refreshed});
+    return {status: 'not_applied', error: {code: 'SEQUENCE_EDIT_NOOP'}};
+  }});
+  h.controller.select(cueId);
+  h.controller.edit('text', '另一会话已保存');
+  assert.equal(await h.controller.save(), null);
+  const state = h.controller.getState();
+  assert.equal(state.baseRevision, 9);
+  assert.equal(state.dirty, false);
+  assert.equal(state.conflict, false);
+  assert.equal(state.errorMessage, null);
+  assert.equal(state.uncertain, null);
 });
 
 test('edits during a fresh ACK survive with the acknowledged CAS revision', async () => {
@@ -216,16 +236,94 @@ const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'u
 const section = (start: string, end: string) => app.slice(app.indexOf(start), app.indexOf(end));
 const compile = (source: string, name: string, scope:Record<string,unknown>) => { const env = { msg: message, ...scope }; return Function(...Object.keys(env), `${source}; return ${name};`)(...Object.values(env)) as (...args:unknown[])=>Promise<{status:string}>; };
 
+test('native subtitle selection validates a detached cue beside projected dialogue and preserves its anchor on text edit', async () => {
+  const {timeline: native} = format5SequenceFixture();
+  const detached = {id: format5FixtureId(21), text: 'Existing A', startFrame: 3, durationFrames: 4, anchor: null};
+  native.subtitles!.cues.push(detached);
+  let readback = native;
+  const intents: subtitles.SubtitleIntent[] = [];
+  const controller = subtitles.createSubtitleController({
+    createRequestId: () => 'native-subtitle-request',
+    getContext: () => ({scope: 'native', projectId: native.projectId, timeline: readback, connected: true}),
+    submit: async intent => {
+      intents.push(intent);
+      readback = {...native, revision: native.revision + 1, subtitles: {...native.subtitles!,
+        cues: native.subtitles!.cues.map(cue => cue.id === detached.id ? {...cue, text: 'Updated'} : cue)}};
+      return {status: 'applied', timeline: readback};
+    },
+  });
+  controller.setVisible(true);
+  const scopes = { context: () => ({projectId: native.projectId}), panelIntent: {current: 1},
+    subtitlesRef: {current: {controller}}, viewRef: {current: {activeMode: 'editing'}}, loading: false,
+    isCurrent: () => true, setPropertiesPage() {}, setRightDockTab() {}, setPanelOpen() {} };
+  controller.setContext({scope: 'native', projectId: native.projectId, timeline: native, connected: true});
+  const openSubtitle = compile(section('  async function openSubtitle(', '  function clipReplacementContext('), 'openSubtitle', scopes);
+  const seeks: unknown[] = [];
+  const locate = compile(section('  function format5LocateSubtitleCue(', '  function notifyFormat5CommandFailure('),
+    'format5LocateSubtitleCue', { dataRef: {current: {timeline: native}}, openSubtitle: (id: string) => openSubtitle(id, 0),
+      updateView: (_mode: string, value: unknown) => seeks.push(value) });
+  const ui = componentHarness('SubtitleInspector.tsx');
+  const render = () => ui.render({state: controller.getState(), controller, onBack() {}, onOpenTasks() {}});
+
+  await openSubtitle(detached.id, 0);
+  render();
+  assert.equal(ui.find('subtitle-text')!.props['aria-invalid'], false);
+  assert.equal(ui.find('subtitle-validation')!.props.role, undefined);
+  await openSubtitle(native.subtitles!.cues[0]!.id, 0);
+  await locate(detached.id, 0);
+  assert.equal(controller.getState().cueId, detached.id);
+  assert.deepEqual(seeks, [{playhead: detached.startFrame}]);
+  render();
+  assert.equal(ui.find('subtitle-validation')!.props.role, undefined);
+
+  controller.edit('startFrame', 2);
+  assert.equal(subtitles.subtitleDraftMessage(controller.getState())?.key, 'subtitles.error.overlap');
+  controller.discardDraft();
+  controller.edit('text', 'Updated');
+  assert.equal(subtitles.subtitleCanSave(controller.getState()), true);
+  const saved = await controller.save();
+  assert.ok(saved);
+  assert.deepEqual(intents[0]!.input.patch, {text: 'Updated', durationFrames: 4});
+  assert.equal(subtitles.subtitleAcknowledged(intents[0], {...readback, revision: readback.revision + 1}, true), false);
+  assert.equal(controller.getState().uncertain, null);
+  assert.equal(controller.getState().dirty, false);
+  assert.equal(readback.subtitles!.cues.find(cue => cue.id === detached.id)?.anchor, null);
+});
+
+test('native subtitle drafts use native cue and duration limits', () => {
+  const { timeline: native } = format5SequenceFixture();
+  const firstFrame = subtitles.TIMELINE_SUBTITLE_LIMITS.durationFrames;
+  const count = FORMAT5_LIMITS.subtitleCues;
+  native.durationFrames = firstFrame + count + 1;
+  native.clips[1]!.durationFrames = native.durationFrames - native.clips[1]!.startFrame;
+  native.subtitles!.cues = Array.from({length: count - 1}, (_, index) => ({
+    id: format5FixtureId(100 + index), text: 'Caption', startFrame: firstFrame + index, durationFrames: 1, anchor: null,
+  }));
+  const controller = subtitles.createSubtitleController({createRequestId: () => 'native-limits', submit: async () => null});
+  controller.setContext({projectId: native.projectId, timeline: native, connected: true});
+  controller.setVisible(true);
+  assert.equal(controller.begin(firstFrame + count - 1), true);
+  controller.edit('text', 'Last caption');
+  assert.equal(subtitles.subtitleCanSave(controller.getState()), true);
+  assert.equal(subtitles.subtitleAddMessage({...native, subtitles: {cues: [
+    ...native.subtitles!.cues, {id: format5FixtureId(100 + count), text: 'Last caption',
+      startFrame: firstFrame + count - 1, durationFrames: 1},
+  ]}}, firstFrame + count)?.key, 'subtitles.error.limit');
+});
+
 test('actual App subtitle selection keeps other Properties/Agent drafts and requires explicit subtitle discard', async () => {
-  const h = fixture(), updates: unknown[] = [], untouched = { clip: 'clip draft', source: 'source draft', format: 'format draft', agent: 'agent draft' };
+  const h = fixture(), updates: unknown[] = [], settledClaims: string[] = [], untouched = { clip: 'clip draft', source: 'source draft', format: 'format draft', agent: 'agent draft' };
   let approved = false, current = true;
   const scope = { playbackClock: createTimelinePlaybackClock(), context: () => ({ projectId, epoch: 1 }), panelIntent: { current: 1 }, subtitlesRef: { current: { controller: h.controller } }, viewRef: { current: { activeMode: 'editing', editing: { playhead: 120 } } }, loading: false,
-    confirm: async () => approved, isCurrent: () => current, notify: () => {}, openTasks: () => {}, setPropertiesPage: (value: unknown) => updates.push(['page', value]), setRightDockTab: (value: unknown) => updates.push(['tab', value]), setPanelOpen: (...args: unknown[]) => updates.push(['panel', ...args]) };
+    confirm: async () => approved, isCurrent: () => current, notify: () => {}, openTasks: () => {}, setPropertiesPage: (value: unknown) => updates.push(['page', value]), setRightDockTab: (value: unknown) => updates.push(['tab', value]), setPanelOpen: (...args: unknown[]) => updates.push(['panel', ...args]),
+    settleDiscardedAgentEditingDrafts: (id: string) => { assert.equal(h.controller.getState().dirty, false); settledClaims.push(id); } };
   const open = compile(section('  async function openSubtitle(', '  function clipReplacementContext('), 'openSubtitle', scope);
   await open(cueId); assert.equal(h.controller.getState().cueId, cueId); h.controller.edit('text', 'subtitle draft'); updates.length = 0;
   await open(secondId); assert.equal((h.controller.getState().draft)!.text, 'subtitle draft'); assert.deepEqual((updates as unknown), []);
+  assert.deepEqual((settledClaims as unknown), []);
   approved = true; await open(secondId); assert.equal(h.controller.getState().cueId, secondId); assert.deepEqual(untouched, { clip: 'clip draft', source: 'source draft', format: 'format draft', agent: 'agent draft' });
   h.controller.edit('text', 'keep'); current = false; await open(cueId); assert.equal((h.controller.getState().draft)!.text, 'keep');
+  assert.deepEqual(settledClaims, [projectId]);
 });
 
 test('actual App selection confirmation rejects later edits and panel intent instead of reopening a hidden pane', async () => {
@@ -259,7 +357,8 @@ test('actual App history handler blocks a dirty subtitle and calls the shared un
 
 function navigationGuard(h: { controller: unknown; intents?: subtitles.SubtitleIntent[]; changes?: subtitles.SubtitleState[]; set?: (patch: { scope?: string; projectId?: string; timeline?: { id: string; projectId: string; revision: number; fps: number; width: number; height: number; durationFrames: number; tracks: { id: string; kind: string; name: string; orderIndex: number; hidden: boolean; muted: boolean; }[]; clips: { id: string; assetId: string; trackId: string; name: string; startFrame: number; durationFrames: number; sourceInFrame: number; gain: number; rect: { x: number; y: number; width: number; height: number; }; }[]; subtitles: { profileId: string; cues: { id: string; text: string; startFrame: number; durationFrames: number; }[]; }; createdAt: string; updatedAt: string; }; pending?: boolean; connected?: boolean; }) => void; context?: { pending: boolean; scope: string; projectId: string; timeline: { durationFrames: number; subtitles: { profileId: string; cues: ReturnType<typeof cue>[]; }; projectId: string; revision: number; id: string; fps: number; width: number; height: number; tracks: { id: string; kind: string; name: string; orderIndex: number; hidden: boolean; muted: boolean; }[]; clips: { id: string; assetId: string; trackId: string; name: string; startFrame: number; durationFrames: number; sourceInFrame: number; gain: number; rect: { x: number; y: number; width: number; height: number; }; }[]; createdAt: string; updatedAt: string; }; connected: boolean; }; requests?: number; }, confirm: (message?:unknown)=>Promise<unknown>, resets: unknown[][]) {
   const scope = { nativeWindow: null, shotTextRef: { current: null }, clipDraftRef: { current: null }, context: () => ({ projectId }), isCurrent: () => true, subtitlesRef: { current: { controller: h.controller } }, dirtyRef: { current: false }, confirm,
-    subjectsRef: { current: null }, ...Object.fromEntries(['setShotDirty', 'setClipDirty', 'setSourceDirty', 'setSubjectDirty', 'setSubtitleDirty', 'setInspectorEpoch'].map(name => [name, (value: unknown) => resets.push([name, value])])) };
+    subjectsRef: { current: null }, settleDiscardedAgentEditingDrafts: (id: string) => resets.push(['settleClaims', id]),
+    ...Object.fromEntries(['setShotDirty', 'setClipDirty', 'setSourceDirty', 'setSubjectDirty', 'setSubtitleDirty', 'setInspectorEpoch'].map(name => [name, (value: unknown) => resets.push([name, value])])) };
   return compile(section('  async function guardNavigation(', '  async function guardProjectNavigation('), 'guardNavigation', scope);
 }
 test('actual App navigation consults same-tick subtitle state before React dirty rerender', async () => {
@@ -269,6 +368,7 @@ test('actual App navigation consults same-tick subtitle state before React dirty
   assert.equal(await guard(), false); assert.equal(prompts.length, 1); assert.equal((h.controller.getState().draft)!.text, 'same-tick'); assert.deepEqual((resets as unknown), []);
   approved = true; assert.equal(await guard(), true); assert.equal(h.controller.getState().dirty, false); assert.equal((h.controller.getState().draft)!.text, cue().text);
   assert.ok(resets.some(([name, value]) => name === 'setSubtitleDirty' && value === false));
+  assert.deepEqual(resets.at(-1), ['settleClaims', projectId]);
 });
 
 test('actual App late navigation confirmation cannot discard a newer subtitle draft in the same project', async () => {

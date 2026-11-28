@@ -47,11 +47,11 @@ export function isNotDownloaded(stats: {readonly size: bigint; readonly blocks: 
   return stats.size >= BigInt(NOT_DOWNLOADED_MIN_BYTES) && stats.blocks === 0n;
 }
 
-/** Reads exactly `length` bytes from `start`, in chunks of at most 64 KiB,
+/** Reads exactly `length` bytes from `start`, in bounded chunks,
  * checking `signal` before each. A short read means the file changed. */
 export async function readExactly(handle: MediaFileHandle, start: number, length: number, consume: (chunk: Uint8Array) => void,
-  signal?: AbortSignal): Promise<void> {
-  const buffer = new Uint8Array(Math.min(length, READ_CHUNK_BYTES));
+  signal?: AbortSignal, chunkBytes = READ_CHUNK_BYTES): Promise<void> {
+  const buffer = new Uint8Array(Math.min(length, chunkBytes));
   for (let done = 0; done < length;) {
     signal?.throwIfAborted();
     const wanted = Math.min(buffer.length, length - done);
@@ -82,11 +82,11 @@ export async function hashSamples(handle: MediaFileHandle, sizeBytes: number, si
 
 /** SHA-256 of the whole file; `onBytes` hears of every chunk read. */
 export async function hashWhole(handle: MediaFileHandle, sizeBytes: number,
-  {signal, onBytes}: {readonly signal?: AbortSignal; readonly onBytes?: (bytes: number) => void} = {}): Promise<string> {
+  {signal, onBytes, chunkBytes}: {readonly signal?: AbortSignal; readonly onBytes?: (bytes: number) => void; readonly chunkBytes?: number} = {}): Promise<string> {
   const hash = createHash('sha256');
   await readExactly(handle, 0, sizeBytes, chunk => {
     hash.update(chunk);
     onBytes?.(chunk.length);
-  }, signal);
+  }, signal, chunkBytes);
   return hash.digest('hex');
 }
