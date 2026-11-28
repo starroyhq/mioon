@@ -228,6 +228,7 @@ test('template intent refreshes an exFAT inode allocated by the first physical w
     const stats = fstat(fd, {bigint: true});
     if (stats.ino === openedInode) {
       if (!wroteFirstByte) {
+        assert.equal(stats.size, 1n, 'FAT32 must grow the file before writing to pin the inode past close');
         assert.equal(args[2], 1, 'the first write must allocate exactly one physical byte');
         assert.equal(args[3], 0);
       } else assert.ok(savedInodes.length >= 2, 'the stable inode must be durable before streaming');

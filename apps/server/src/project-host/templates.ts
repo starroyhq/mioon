@@ -1,5 +1,5 @@
 import {createHash} from 'node:crypto';
-import {closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readSync, rmdirSync, unlinkSync, writeSync} from 'node:fs';
+import {closeSync, constants, fstatSync, ftruncateSync, lstatSync, mkdirSync, openSync, readSync, rmdirSync, unlinkSync, writeSync} from 'node:fs';
 import type {BigIntStats} from 'node:fs';
 import path from 'node:path';
 import {AppError} from '../../../../packages/contracts/src/app-error.ts';
@@ -179,13 +179,17 @@ export function createProjectTemplateCatalog(entries: readonly ProjectTemplateCa
             if (!before.isFile() || before.nlink !== 1n || !sameIdentity(before, owned.identity)) throw invalid('target-changed', item.path);
           };
           checkTarget();
-          // FAT assigns the durable inode at first physical write. Merely
-          // growing the length can leave the empty-file identity in place.
+          // Some FAT32 implementations expose the allocated inode at truncate
+          // but delay it until close for a write to an empty file. Other FAT
+          // implementations can require the physical write to allocate it.
           let allocate = item.sizeBytes > 0 && (rememberEntry !== undefined || empty.ino < 0n);
           rememberEntry?.({...owned});
           verified = readManifestFile(selected.directory, item, chunk => {
             assertMutationAllowed();
             if (allocate) {
+              try {ftruncateSync(fd, 1);}
+              finally {owned.identity = templateStageIdentity(fstatSync(fd, {bigint: true}));}
+              checkTarget();
               try {
                 // A positional write leaves the handle offset at zero so the
                 // normal streaming write below also hashes/copies this byte.

@@ -1,5 +1,5 @@
 import {createHash, randomUUID} from 'node:crypto';
-import {chmodSync, closeSync, constants, fstatSync, fsyncSync, linkSync, lstatSync, mkdtempSync, openSync, readdirSync, readSync, renameSync, rmSync, rmdirSync, unlinkSync, writeSync} from 'node:fs';
+import {chmodSync, closeSync, constants, fstatSync, fsyncSync, ftruncateSync, linkSync, lstatSync, mkdtempSync, openSync, readdirSync, readSync, renameSync, rmSync, rmdirSync, unlinkSync, writeSync} from 'node:fs';
 import type {BigIntStats} from 'node:fs';
 import path from 'node:path';
 import {backup, DatabaseSync} from 'node:sqlite';
@@ -260,8 +260,8 @@ export function clearFatProjectCopyStage(directory: string, stage: FatProjectCop
 }
 
 /** Materialize a closed APFS builder without SQLite journals on the target
- * volume. The first physical byte allocates the inode; persist its updated
- * identity before writing the rest of the database. */
+ * volume. Persist the allocated file's identity before writing the rest of
+ * the database. */
 export async function materializeFatProjectCopy(source: string, directory: string, stage: FatProjectCopyStageIdentity, options: {
   readonly assertAllowed: () => void;
   readonly onAllocated: (identity: FatProjectCopyStageIdentity) => void;
@@ -293,7 +293,12 @@ export async function materializeFatProjectCopy(source: string, directory: strin
     if (readSync(input, prefix, 0, 1, 0) !== 1) throw changed();
     output = openSync(file, constants.O_RDWR | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
     owned = fatProjectCopyStageIdentity(fstatSync(output, {bigint: true})); verify();
-    try { if (writeSync(output, prefix, 0, 1, 0) !== 1) throw changed(); }
+    try {
+      // On macOS FAT32, a first write alone can keep the temporary empty-file
+      // inode until close. Truncate to one byte before writing the prefix.
+      ftruncateSync(output, 1);
+      if (writeSync(output, prefix, 0, 1, 0) !== 1) throw changed();
+    }
     finally { owned = fatProjectCopyStageIdentity(fstatSync(output, {bigint: true})); }
     verify(); fsyncSync(output); syncCopiedDirectory(directory); options.onAllocated(owned);
     const buffer = Buffer.alloc(64 * 1024), sourceHash = createHash('sha256');
