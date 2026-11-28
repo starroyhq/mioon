@@ -82,6 +82,7 @@ function selectionHarness({refresh,confirm=true,videoDirectory}: {refresh?(proje
   mioFollowCandidate:{current:null},setMioFollow(){},
   // This fixture owns no editing claims; match the empty-owner refresh wait.
   refreshAgentEditingTargets:async()=>{await Promise.allSettled([]);},
+  settleDiscardedAgentEditingDrafts(){},
   openedProject:{current:projectOpenAttempt(id(1),0,'normal')},settingsNavigation:{current:createSettingsNavigationRegistry()},
   projectOpening:{phase:'ready',projectId:id(1),error:''},homePage:'projects',
   projectEntryIdentityRef:{current:identity},readProjectEntryIdentity,projectDirectoryProjects,

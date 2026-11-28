@@ -404,7 +404,7 @@ test('actual Timeline renders decorative bounded SVG inside existing clip button
   h.render({ busy: true }); assert.equal(h.find('timeline-clip-clip-one')!.props.draggable, false);
   const source = readFileSync(new URL('../apps/web/src/Timeline.tsx', import.meta.url), 'utf8');
   assert.match(source, /session\.projectId === timeline!\.projectId && session\.revision === timeline!\.revision/);
-  assert.match(source, /if \(!allowed \|\| !payloadMatches \|\| value!\.unchanged\) return/);
+  assert.match(source, /const submit = allowed && payloadMatches && !value!\.unchanged;\s*clearDrag\(!submit\);\s*if \(!submit\) return/);
   const css = readFileSync(new URL('../apps/web/src/styles.css', import.meta.url), 'utf8'); assert.match(css, /\.timeline-waveform\{[^}]*pointer-events:none/); h.unmount();
 });
 

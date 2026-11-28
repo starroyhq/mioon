@@ -16,6 +16,7 @@ import {
   mediaTypeOfName, outsideProjectLocations, readMediaBytes, referenceForFile, resolveReferencePath,
 } from './media-reference/index.ts';
 import type {MediaAccess, MediaFile, MediaStatusResult} from './media-reference/index.ts';
+import type {MediaHashSource} from './media-reference/access.ts';
 
 /** This foundation does not register operations, import files or change the
  * project's format. Only reference-bearing rows can use it; there is no
@@ -46,6 +47,7 @@ export interface AssetReferenceReadOptions {
 export interface AssetReferenceHashOptions extends AssetReferenceReadOptions {
   readonly maxBytes?: number;
   readonly onBytes?: (bytes: number) => void;
+  readonly expectedSource?: MediaHashSource;
 }
 export interface PreparedAssetReference extends MediaFile {
   readonly assetId: string;
@@ -244,7 +246,7 @@ export function createProjectAssetReferenceServices(store: ProjectStore, {outsid
       return state.guarded(async () => {
         if (maxBytes !== undefined && basis.reference.sizeBytes > maxBytes) throw mediaReferenceError('MEDIA_REFERENCE_INVALID', {assetId, reason: 'size-limit'});
         const media = await admitted(basis, options, state);
-        const hash = await computeFullSha256(access(), basis.reference, {signal: options.signal, maxBytes,
+        const hash = await computeFullSha256(access(), basis.reference, {signal: options.signal, maxBytes, expectedSource: options.expectedSource,
           beforeEffect: () => state.permissionFence(media.file), onBytes: options.onBytes});
         state.permissionFence(media.file);
         return {...prepared(basis, {...media, reference: hash.reference}), sha256: hash.sha256};

@@ -51,12 +51,15 @@ export const compareSyncClip = (a: ChainSyncClip, b: ChainSyncClip) =>
   a.startFrame - b.startFrame || compareChainIds(a.id, b.id);
 const frame = (value: number) => Number.isSafeInteger(value) && value >= 0;
 const length = (value: number) => frame(value) && value > 0;
-const picture = (kind: ChainNode['kind']) => kind === 'image';
+/** Resolve a shot version or a direct media asset. Native callers supply stored media facts. */
+export type ChainSyncSourceIsStill = (sourceId: string, kind: ChainNode['kind']) => boolean;
+export const stillByNodeKind: ChainSyncSourceIsStill = (_sourceId, kind) => kind === 'image';
 
-export function validChainMedia(media: ChainSyncMedia, kind: ChainNode['kind']): boolean {
+export function validChainMedia(media: ChainSyncMedia, kind: ChainNode['kind'], isStill: ChainSyncSourceIsStill): boolean {
   const version = media.selectedVersion;
   return !!media.nodeId && length(media.durationFrames)
-    && (version === null ? kind === 'shot' : !!version.id && (picture(kind) ? version.sourceFrames === null : version.sourceFrames !== null && length(version.sourceFrames)));
+    && (version === null ? kind === 'shot' : !!version.id && (isStill(version.id, kind)
+      ? version.sourceFrames === null : version.sourceFrames !== null && length(version.sourceFrames)));
 }
 
 export function validChainClipFrames(clip: ChainSyncClip): boolean {
@@ -123,8 +126,9 @@ function followChainSyncVersion(
     warnings.push({code: 'SOURCE_TOO_SHORT', clipId: clip.id, nodeId: clip.nodeId, versionId: version.id, shortByFrames: needed - version.sourceFrames});
     return clip;
   }
-  return clip.versionId === version.id && clip.versionLocked === locked
-    ? clip : {...clip, versionId: version.id, versionLocked: locked};
+  const sourceInFrame = version.sourceFrames === null ? 0 : clip.sourceInFrame;
+  return clip.versionId === version.id && clip.versionLocked === locked && clip.sourceInFrame === sourceInFrame
+    ? clip : {...clip, versionId: version.id, versionLocked: locked, sourceInFrame};
 }
 
 /** Fit the full first source to the placeholder parts, keeping cuts that
@@ -161,7 +165,7 @@ export function followChainSyncGroup(
 export function planChainMainTrack(
   chain: readonly ChainNode[], media: readonly ChainSyncMedia[], previous: readonly ChainSyncClip[],
   newClipIds?: Readonly<Record<string, string>>,
-  {followVersions = true}: {readonly followVersions?: boolean} = {},
+  {followVersions = true, isStill = stillByNodeKind}: {readonly followVersions?: boolean; readonly isStill?: ChainSyncSourceIsStill} = {},
 ): MainTrackPlan {
   const index = indexChainSyncTrack(previous);
   if (!index.ok) return index;
@@ -179,7 +183,7 @@ export function planChainMainTrack(
     seen.add(node.id);
     const item = mediaById.get(node.id);
     if (!item) return {ok: false, code: 'MISSING_MEDIA', id: node.id};
-    if (!['shot', 'video', 'image'].includes(node.kind) || !validChainMedia(item, node.kind)) return {ok: false, code: 'INVALID_MEDIA', id: node.id};
+    if (!['shot', 'video', 'image'].includes(node.kind) || !validChainMedia(item, node.kind, isStill)) return {ok: false, code: 'INVALID_MEDIA', id: node.id};
     const old = index.groups.get(node.id);
     if (old) {
       const followed = followVersions

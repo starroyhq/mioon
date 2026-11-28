@@ -586,6 +586,8 @@ body:has(.agent-chat-dialog) [role="presentation"]:has(>[data-slot="tooltip-cont
 .workbench-toast { position: fixed; top: calc(var(--wb-topbar) + 48px); right: var(--wb-space-3); z-index: 110; display: flex; align-items: center; gap: var(--wb-space-2); width: max-content; max-width: min(calc(var(--wb-inspector-width) - var(--wb-space-6)), calc(var(--mioon-viewport-width, 100vw) - var(--wb-space-6))); max-height: calc(var(--mioon-viewport-height, 100dvh) - var(--wb-topbar) - var(--wb-space-6)); overflow: auto; padding: var(--wb-space-3); border: 1px solid var(--wb-line); border-radius: var(--wb-radius-panel); background: var(--wb-raised); color: var(--wb-text); box-shadow: var(--wb-shadow); font-size: var(--wb-text-label); line-height: 1.5; animation: workbench-toast-in .2s ease-out; }
 .workbench-toast > span { min-width: 0; overflow-wrap: anywhere; }
 .workbench-toast > .icon-button { flex: none; color: inherit; }
+.workbench-toast-action { flex: none; min-height: 24px; padding: 2px 8px; border: 1px solid color-mix(in srgb, var(--wb-text) 28%, transparent); border-radius: 5px; color: var(--wb-text); font-size: 11px; white-space: nowrap; }
+.workbench-toast-action:hover { background: color-mix(in srgb, var(--wb-text) 10%, transparent); }
 .workbench-toast.error { border-color: var(--wb-danger); }
 .workbench-toast.error > svg { color: var(--wb-danger); }
 .workbench-toast.warning { border-color: var(--wb-warning); }

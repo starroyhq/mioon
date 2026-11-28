@@ -25,17 +25,21 @@ const rootId = id(2), shotA = id(3), shotB = id(4), imageNode = id(5), freeImage
 const videoTrack = id(60), audioTrack = id(61);
 const assetA = id(10), assetB = id(11), imageAsset = id(12), audioAsset = id(13), freeImageAsset = id(14);
 const versionA = id(20), versionB = id(21), jobA = id(70), jobB = id(71);
+const stillVersionA = id(24), stillJobA = id(74);
 const clipA = id(30), clipB = id(31), clipImage = id(32), clipAudio = id(33), clipAudio2 = id(35), cueId = id(34);
 const groupA = id(40), groupB = id(41), groupImage = id(42);
 const timelineId = id(50);
 const sha = (letter: string): string => letter.repeat(64);
 
-function fixture(t: test.TestContext): ProjectStore {
+function fixture(t: test.TestContext, lockStillShot = false): ProjectStore {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-speed-'));
   const store = createProjectStore({projectId: id(1), projectFile: path.join(root, 'project.mioon'), targetFormat: FORMAT6_PROJECT_SCHEMA_VERSION, allowFormat6: true,
     locate: () => ({localDir: path.join(root, 'records'), cacheDir: path.join(root, 'cache'), tempDir: path.join(root, 'temp')})});
   t.after(() => {store.close(); rmSync(root, {recursive: true, force: true});});
   const projectId = store.projectId;
+  const appliedVersionA = lockStillShot ? stillVersionA : versionA;
+  const appliedAssetA = lockStillShot ? imageAsset : assetA;
+  const versionModeA = lockStillShot ? 'locked' : 'follow';
   const node = (nodeId: string, type: string, extra: Record<string, unknown> = {}) =>
     ({id: nodeId, projectId, type, position: {x: 0, y: 0}, createdAt: at, ...extra});
   const timeline = {
@@ -46,8 +50,8 @@ function fixture(t: test.TestContext): ProjectStore {
       {id: audioTrack, name: 'A1', kind: 'audio', orderIndex: 2, hidden: false, muted: false}],
     clips: [
       {id: clipA, trackId: videoTrack, name: 'Shot A', startFrame: 0, durationFrames: 60, sourceInFrame: 0,
-        rect: {x: 0, y: 0, width: 720, height: 1280}, gain: 1, assetId: assetA, versionId: versionA, shotId: shotA,
-        sourceState: 'ready', sequenceSource: {kind: 'shot', nodeId: shotA, segmentGroupId: groupA, versionMode: 'follow'}},
+        rect: {x: 0, y: 0, width: 720, height: 1280}, gain: 1, assetId: appliedAssetA, versionId: appliedVersionA, shotId: shotA,
+        sourceState: 'ready', sequenceSource: {kind: 'shot', nodeId: shotA, segmentGroupId: groupA, versionMode: versionModeA}},
       {id: clipB, trackId: videoTrack, name: 'Shot B', startFrame: 60, durationFrames: 30, sourceInFrame: 0,
         rect: {x: 0, y: 0, width: 720, height: 1280}, gain: 1, assetId: null, versionId: null, jobId: null,
         sourceState: 'placeholder', sequenceSource: {kind: 'shot', nodeId: shotB, segmentGroupId: groupB, versionMode: 'follow'}},
@@ -67,7 +71,7 @@ function fixture(t: test.TestContext): ProjectStore {
   const baseline = {version: 1,
     board: [{nodeId: shotA, kind: 'shot', selectedVersionId: versionA}, {nodeId: shotB, kind: 'shot', selectedVersionId: null},
       {nodeId: imageNode, kind: 'media', assetId: imageAsset}],
-    track: [{nodeId: shotA, segmentGroupId: groupA, clipId: clipA, kind: 'shot', versionMode: 'follow', appliedVersionId: versionA},
+    track: [{nodeId: shotA, segmentGroupId: groupA, clipId: clipA, kind: 'shot', versionMode: versionModeA, appliedVersionId: appliedVersionA},
       {nodeId: shotB, segmentGroupId: groupB, clipId: clipB, kind: 'shot', versionMode: 'follow', appliedVersionId: null},
       {nodeId: imageNode, segmentGroupId: groupImage, clipId: clipImage, kind: 'media', assetId: imageAsset}]};
   store.tx(() => {
@@ -78,6 +82,8 @@ function fixture(t: test.TestContext): ProjectStore {
     store.put('assets', {id: audioAsset, projectId, mimeType: 'audio/wav', duration: 1, sha256: sha('d')});
     store.put('assets', {id: freeImageAsset, projectId, mimeType: 'image/png', duration: null, sha256: sha('e')});
     store.put('versions', {id: versionA, projectId, jobId: jobA, shotId: shotA, number: 1, assetId: assetA, sha256: sha('a'), createdAt: at});
+    if (lockStillShot) store.put('versions', {id: stillVersionA, projectId, jobId: stillJobA, shotId: shotA,
+      number: 2, assetId: imageAsset, sha256: sha('c'), createdAt: at});
     store.put('versions', {id: versionB, projectId, jobId: jobB, shotId: shotB, number: 1, assetId: assetB, sha256: sha('b'), createdAt: at});
     store.put('shots', {id: shotA, projectId, orderIndex: 0, selectedVersionId: versionA, duration: 2, createdAt: at, updatedAt: at});
     store.put('shots', {id: shotB, projectId, orderIndex: 1, selectedVersionId: null, duration: 1, createdAt: at, updatedAt: at});
@@ -161,7 +167,8 @@ function sourceFrames(store: ProjectStore, clipId = clipA): Int32Array {
 test('identity and repeated identical speed edits are zero-write operations', t => {
   const store = fixture(t), api = editor(store);
   const before = state(store);
-  assert.deepEqual(api.preview(set(constant(1))), {ok: false, code: 'SEQUENCE_EDIT_NOOP', ids: [clipA]});
+  assert.partialDeepStrictEqual(api.preview(set(constant(1))), {ok: false, code: 'SEQUENCE_EDIT_NOOP', ids: [clipA],
+    messageKey: 'editUi.error.SEQUENCE_EDIT_NOOP'});
   assert.deepEqual(state(store), before);
   const speed = set(constant(3, 2));
   api.apply(speed);
@@ -370,25 +377,38 @@ test('static images and placeholders return their specific explicit failures', t
 
 test('ordinary splits preserve still-image source positions on both tracks and advance video', async t => {
   const cases = [
-    {name: 'main-track still', assetId: imageAsset, trackId: videoTrack, sourceAtCut: 0},
-    {name: 'auxiliary still', assetId: imageAsset, trackId: videoTrack2, sourceAtCut: 0},
-    {name: 'main-track video control', assetId: assetB, trackId: videoTrack, sourceAtCut: 45},
+    {name: 'main-track still', assetId: imageAsset, trackId: videoTrack, sourceAtCut: 0, shotBacked: false},
+    {name: 'auxiliary still', assetId: imageAsset, trackId: videoTrack2, sourceAtCut: 0, shotBacked: false},
+    {name: 'main-track video', assetId: assetB, trackId: videoTrack, sourceAtCut: 45, shotBacked: false},
+    {name: 'main-track shot locked to a PNG while the board selects video',
+      assetId: imageAsset, trackId: videoTrack, sourceAtCut: 0, shotBacked: true},
+    {name: 'main-track shot following a video', assetId: assetA, trackId: videoTrack, sourceAtCut: 45, shotBacked: true},
   ];
-  for (const {name, assetId, trackId, sourceAtCut} of cases) {
+  for (const {name, assetId, trackId, sourceAtCut, shotBacked} of cases) {
     await t.test(name, t => {
-      const store = fixture(t), api = editor(store), projectId = store.projectId;
+      const lockStillShot = shotBacked && assetId === imageAsset;
+      const store = fixture(t, lockStillShot), api = editor(store), projectId = store.projectId;
       const preview = (command: SequenceSyncCommand) => {
         const plan = api.service.preview({projectId, requestId: randomUUID(), intents: [sequenceSyncIntent(command)]});
         assert.ok('envelope' in plan, JSON.stringify(plan));
         return {projectId, envelope: plan.envelope, expectedPlanDigest: plan.planDigest};
       };
-      const insert = preview({kind: 'insert-asset', assetId, trackId: trackId === videoTrack ? null : trackId, startFrame: 0});
-      assert.equal((api.service.commit(insert) as SequenceEditReceipt).status, 'applied');
+      if (!shotBacked) {
+        const insert = preview({kind: 'insert-asset', assetId, trackId: trackId === videoTrack ? null : trackId, startFrame: 0});
+        assert.equal((api.service.commit(insert) as SequenceEditReceipt).status, 'applied');
+      }
+      // The preloaded shot cases have no preceding editor action to initialize history.
+      api.service.history({projectId});
       const before = state(store);
       const original = before.timeline.clips.find(clip => clip.trackId === trackId && clip.startFrame === 0 && clip.assetId === assetId);
       assert.ok(original);
-      assert.equal(original.durationFrames, 90);
+      assert.equal(original.durationFrames, shotBacked ? 60 : 90);
       assert.equal(original.sourceInFrame, 0);
+      if (shotBacked) {
+        assert.equal(original.id, clipA);
+        assert.equal(original.sequenceSource?.kind, 'shot');
+        assert.equal(original.versionId, lockStillShot ? stillVersionA : versionA);
+      }
 
       const rightClipId = randomUUID();
       const command = {kind: 'clip-split', clipId: original.id, offsetFrames: 45, rightClipId} as const;
@@ -410,8 +430,14 @@ test('ordinary splits preserve still-image source positions on both tracks and a
       const left = after.timeline.clips.find(clip => clip.id === original.id);
       const right = after.timeline.clips.find(clip => clip.id === rightClipId);
       assert.deepEqual(left, {...original, durationFrames: 45});
-      assert.deepEqual(right, {...original, id: rightClipId, startFrame: 45, durationFrames: 45, sourceInFrame: sourceAtCut,
-        ...(original.anchor ? {anchor: {clipId: original.anchor.clipId, offsetFrames: 45}} : {})});
+      const rightFrames = {id: rightClipId, startFrame: 45, durationFrames: original.durationFrames - 45, sourceInFrame: sourceAtCut};
+      if (shotBacked) {
+        assert.partialDeepStrictEqual(right, {...rightFrames, trackId, assetId, versionId: original.versionId,
+          sequenceSource: original.sequenceSource});
+      } else {
+        assert.deepEqual(right, {...original, ...rightFrames,
+          ...(original.anchor ? {anchor: {clipId: original.anchor.clipId, offsetFrames: 45}} : {})});
+      }
 
       assert.deepEqual(api.service.commit(split), receipt);
       assert.deepEqual(state(store), after, 'replaying the commit does not add history or mutate the split');

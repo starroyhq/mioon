@@ -23,7 +23,7 @@
 import {createHash, randomUUID} from 'node:crypto';
 import {AppError} from '@mioon/contracts';
 import type {
-  SequenceEditEnvelope, SequenceEditErrorCode, SequenceEditHistoryCommand, SequenceEditHistoryEntry, SequenceEditHistoryView,
+  SequenceEditEnvelope, SequenceEditErrorCode, SequenceEditFailureEvidence, SequenceEditHistoryCommand, SequenceEditHistoryEntry, SequenceEditHistoryView,
   SequenceEditPatch, SequenceEditReceipt, SequenceEditStateDelta,
 } from '@mioon/contracts/sequence-edit';
 import {
@@ -253,7 +253,7 @@ function evidence(entry: SequenceEditHistoryEntry, receipt: SequenceEditReceiptD
  * matches the intent). Only the immutable receipt is written; no history entry,
  * cursor revision or content stamp moves. */
 export function writeSequenceEditFailure(store: ProjectStore, envelope: SequenceEditEnvelope,
-  code: SequenceEditErrorCode): SequenceEditReceipt {
+  code: SequenceEditErrorCode, evidence?: SequenceEditFailureEvidence): SequenceEditReceipt {
   const {state, view} = prepareSequenceEditHistory(store, envelope.epoch);
   if (envelope.projectId !== store.projectId) contractInvalid('动作不属于这个项目。', {reason: 'PROJECT'});
   if (envelope.epoch !== state.epoch) contractInvalid('动作 epoch 与当前统一历史不一致。', {reason: 'EPOCH'});
@@ -264,7 +264,7 @@ export function writeSequenceEditFailure(store: ProjectStore, envelope: Sequence
   const receipt: SequenceEditReceipt = {
     version: 1, requestId: envelope.requestId, inputDigest: sequenceEditInputDigest(envelope), projectId: store.projectId,
     actionId: envelope.actionId, operation: sequenceEditEnvelopeOperationName(envelope), originSide: envelope.originSide,
-    status: 'not_applied', code, affected: {nodes: 0, edges: 0, mainTrackClips: 0, otherTrackItems: 0, subtitleCues: 0},
+    status: 'not_applied', code, ...(evidence ? {failure: evidence} : {}), affected: {nodes: 0, edges: 0, mainTrackClips: 0, otherTrackItems: 0, subtitleCues: 0},
     history: view, contentRevision: Number(content?.contentSequence ?? 0), timelineRevision,
     syncRevision: Number(sync?.revision ?? 1),
   };

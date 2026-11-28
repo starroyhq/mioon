@@ -7,6 +7,8 @@ import {isAppLibraryHeld} from './app-db/connection.ts';
 import {isProjectFileHeld} from './project-file/held-files.ts';
 import {isProjectStore, commitProjectAssetHash} from './project-file/store.ts';
 import type {ProjectStore} from './project-file/store.ts';
+import type {ContentStamp} from './project-file/content-stamp.ts';
+import type {VerifiedManagedSource} from './managed-media.ts';
 import {mediaReferenceSchema} from '../../contracts/src/media-reference.ts';
 import {IMAGE_EDIT_SOURCE_BOUNDS} from '../../contracts/src/image-edit-profiles.ts';
 import type {MediaReference} from '../../contracts/src/media-reference.ts';
@@ -18,6 +20,7 @@ import {createHash} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
 import type {MediaUnavailableReason} from '../../contracts/src/media-reference-errors.ts';
 import {computeFullSha256, isFileInDirectory, isInsideRealDirectory, isNotDownloaded, isProtectedName, mediaMtimeMs, mediaTypeOfName, referenceForFile, resolveReferencePath} from './media-reference/index.ts';
+import {sameMediaFile} from './media-reference/access.ts';
 import type {MediaAccess} from './media-reference/index.ts';
 import {registerProjectOutputStore} from './project-output-owner.ts';
 
@@ -25,6 +28,7 @@ export interface ProjectMediaRegistrationOptions {readonly outsidePaths?: Pick<O
 interface ProjectMediaRegistration {readonly owner: WeakRef<ProjectStore>; count: number; outsidePaths: Pick<OutsidePathConfirmationStore, 'list'>; references: ProjectAssetReferenceServices}
 const noOutsidePaths: Pick<OutsidePathConfirmationStore, 'list'> = {list: () => []};
 const admissions = new WeakMap<ProjectStore, Map<string, {raw: string; file: string; info: Stats}>>();
+const hashPreparations = new WeakMap<ProjectStore, Map<string, number>>();
 const sameStats = (a: Stats, b: Stats): boolean => (['dev', 'ino', 'size', 'mtimeMs', 'ctimeMs'] as const).every(key => a[key] === b[key]);
 
 const projects = new Map<string, ProjectMediaRegistration>();
@@ -124,40 +128,83 @@ export async function admitProjectAssetSource(root: string, assetId: string, opt
   return {...validatedProjectAssetSource(root, current), reference: admitted.reference};
 }
 
+interface ProjectAssetHashOptions {
+  signal?: AbortSignal; beforeEffect?: () => void; maxBytes?: number; onBytes?: (bytes: number) => void;
+}
+export function isProjectAssetHashPreparing(store: ProjectStore, assetId: string): boolean {
+  return hashPreparations.get(store)?.has(assetId) ?? false;
+}
+
 /** Prepare outside SQLite, then CAS the exact stored locator. Completing a
  * lazy full hash does not change referenceRevision or a cache fingerprint. */
-export async function prepareProjectAssetFullHash(root: string, assetId: string,
-  options: {signal?: AbortSignal; beforeEffect?: () => void; maxBytes?: number; onBytes?: (bytes: number) => void} = {}): Promise<Record<string, unknown>> {
+export async function prepareProjectAssetHash(root: string, assetId: string,
+  options: ProjectAssetHashOptions & {expectedContentStamp?: ContentStamp; retainSource?: boolean}): Promise<{
+    asset: Record<string, unknown>; contentStamp: ContentStamp | null; source?: VerifiedManagedSource;
+  }> {
   const store = registeredProjectStore(root), references = registeredProjectAssetReferences(root);
   if (!store || !references) throw new TypeError('Hash preparation requires the exact live project owner');
   if (store.db.isTransaction) throw new TypeError('Hash preparation must run outside SQLite transactions');
   const row = store.db.prepare("SELECT CASE WHEN typeof(data)='text' AND length(CAST(data AS BLOB)) BETWEEN 1 AND 16384 THEN data END AS data FROM assets WHERE id=? AND projectId=?").get(assetId, store.projectId);
   if (!row) throw mediaUnavailableError('MEDIA_MISSING', assetId, 'not-found');
   if (typeof row.data !== 'string') throw mediaUnavailableError('MEDIA_CHANGED', assetId, 'content');
-  const prepared = await references.prepareFullHash(assetId, options);
-  const beforeCommit = (): void => {
-    options.signal?.throwIfAborted(); options.beforeEffect?.();
-    if (registeredProjectStore(root) !== store) throw new TypeError('The project owner is no longer live');
-    let realFile: string, realProject: string;
-    try {realFile = realpathSync(prepared.file); realProject = realpathSync(store.projectDir);}
-    catch {throw mediaUnavailableError('MEDIA_MISSING', assetId, 'not-found');}
-    if (realFile !== prepared.file) throw mediaUnavailableError('MEDIA_CHANGED_DURING_READ', assetId);
-    if (!isInsideRealDirectory(realProject, realFile) && !projects.get(root)?.outsidePaths.list(store.projectId).some(grant => isFileInDirectory(grant.directory, realFile))) throw mediaUnavailableError('MEDIA_OUTSIDE_NOT_CONFIRMED', assetId);
-  };
-  beforeCommit();
-  return commitProjectAssetHash(store, {assetId, expectedRaw: row.data, reference: prepared.reference, sha256: prepared.sha256,
-    beforeEffect: beforeCommit, signal: options.signal});
+  const pending = hashPreparations.get(store) ?? new Map<string, number>();
+  hashPreparations.set(store, pending);
+  pending.set(assetId, (pending.get(assetId) ?? 0) + 1);
+  try {
+    // Use the same descriptor/path identity fence as the managed hash reader.
+    // The proof is retained for this check only and never replaces export verification.
+    const initial = options.retainSource ? await admitProjectAssetSource(root, assetId, options) : undefined;
+    const sourceStat = (file: string) => {
+      try {return lstatSync(file, {bigint: true});}
+      catch {throw mediaUnavailableError('MEDIA_CHANGED_DURING_READ', assetId);}
+    };
+    const expectedSource = initial ? {file: initial.file, stats: sourceStat(initial.file)} : undefined;
+    const prepared = await references.prepareFullHash(assetId, {...options, expectedSource});
+    const beforeCommit = (): void => {
+      options.signal?.throwIfAborted(); options.beforeEffect?.();
+      if (registeredProjectStore(root) !== store) throw new TypeError('The project owner is no longer live');
+      if (initial && expectedSource) {
+        const asset = store.get('assets', assetId);
+        if (!object(asset)) throw mediaUnavailableError('MEDIA_MISSING', assetId, 'not-found');
+        const current = validatedProjectAssetSource(root, asset, {maxBytes: options.maxBytes});
+        if (current.file !== initial.file || prepared.file !== initial.file || !sameStats(current.info, initial.info) ||
+          !sameMediaFile(sourceStat(current.file), expectedSource.stats)) {
+          throw mediaUnavailableError('MEDIA_CHANGED_DURING_READ', assetId);
+        }
+        return;
+      }
+      let realFile: string, realProject: string;
+      try {realFile = realpathSync(prepared.file); realProject = realpathSync(store.projectDir);}
+      catch {throw mediaUnavailableError('MEDIA_MISSING', assetId, 'not-found');}
+      if (realFile !== prepared.file) throw mediaUnavailableError('MEDIA_CHANGED_DURING_READ', assetId);
+      if (!isInsideRealDirectory(realProject, realFile) && !projects.get(root)?.outsidePaths.list(store.projectId).some(grant => isFileInDirectory(grant.directory, realFile))) throw mediaUnavailableError('MEDIA_OUTSIDE_NOT_CONFIRMED', assetId);
+    };
+    beforeCommit();
+    const committed = commitProjectAssetHash(store, {assetId, expectedRaw: row.data, reference: prepared.reference, sha256: prepared.sha256,
+      expectedContentStamp: options.expectedContentStamp, beforeEffect: beforeCommit, signal: options.signal});
+    return {...committed, ...(initial ? {source: {file: initial.file, info: initial.info,
+      sizeBytes: prepared.reference.sizeBytes, sha256: prepared.sha256}} : {})};
+  } finally {
+    const count = pending.get(assetId)!;
+    if (count === 1) pending.delete(assetId);
+    else pending.set(assetId, count - 1);
+  }
+}
+
+export async function prepareProjectAssetFullHash(root: string, assetId: string,
+  options: ProjectAssetHashOptions = {}): Promise<Record<string, unknown>> {
+  return (await prepareProjectAssetHash(root, assetId, options)).asset;
 }
 
 /** Existing producers use private staging, then register an ordinary project
  * file. Final locations remain their current output paths until S2; persisted
  * assets nevertheless have exactly one reference locator from S1 onward. */
-export async function referenceForPublishedMedia(store: ProjectStore, file: string, {sha256, signal, beforeEffect}: {sha256?: string; signal?: AbortSignal; beforeEffect?: () => void} = {}): Promise<{reference: MediaReference; referenceRevision: number; sha256: string; sizeBytes: number}> {
+export async function referenceForPublishedMedia(store: ProjectStore, file: string, {sha256, signal, beforeEffect, hashChunkBytes}: {sha256?: string; signal?: AbortSignal; beforeEffect?: () => void; hashChunkBytes?: number} = {}): Promise<{reference: MediaReference; referenceRevision: number; sha256: string; sizeBytes: number}> {
   if (!isProjectStore(store)) throw new TypeError('Published media requires the exact live owner');
   const access: MediaAccess = {projectDir: store.projectDir, projectFile: store.projectFile, mayReadOutside: () => false,
     isHeld: identity => isProjectFileHeld(identity) || isAppLibraryHeld(identity)};
   const media = await referenceForFile(access, file, {signal, beforeEffect});
-  const full = await computeFullSha256(access, {...media.reference, fullSha256: sha256 ?? media.reference.fullSha256}, {signal, beforeEffect});
+  const full = await computeFullSha256(access, {...media.reference, fullSha256: sha256 ?? media.reference.fullSha256}, {signal, beforeEffect, chunkBytes: hashChunkBytes});
   return {reference: full.reference, referenceRevision: 1, sha256: full.sha256, sizeBytes: full.reference.sizeBytes};
 }
 
