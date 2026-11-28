@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID,createHash} from 'node:crypto';
 import {writeFile,readFile,mkdtemp,rm,readdir} from 'node:fs/promises';
-import {renameSync,statSync,writeFileSync} from 'node:fs';
+import {existsSync,renameSync,statSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {selectedRangeFixture} from './fixtures/selected-range-http-fixture.ts';
@@ -74,7 +74,7 @@ test('output location is bound to the accepted export and rejects changed bytes,
   const before=f.store.get('exports',String(record.id));assert.equal(object(await f.services.call('export.cancel',identity)).status,object(before).status);
 });
 
-test('real project worker retains published files after cancellation and never deletes replacements', {timeout:120_000}, async t=>{
+test('real project worker cancels before export installation and preserves unrelated or already published files', {timeout:120_000}, async t=>{
   const base=await mkdtemp(path.join(tmpdir(),'mioon-export-cancel-worker-')),source=path.join(base,'source.mp4');
   t.after(()=>rm(base,{recursive:true,force:true}));
   await run('ffmpeg',['-hide_banner','-loglevel','error','-n','-f','lavfi','-i','color=c=blue:s=1080x1920:r=30:d=0.2','-an','-c:v','libx264','-preset','ultrafast','-threads','1','-pix_fmt','yuv420p',source],{timeout:30_000});
@@ -92,21 +92,23 @@ test('real project worker retains published files after cancellation and never d
       timeline=object(await services.call('timeline.clip.add',{projectId,expectedRevision:timeline.revision,requestId:randomUUID(),assetId:asset.id,trackId:track.id,startFrame:0,durationFrames:6}));
       const accepted=object(await services.call('timeline.render',{projectId,expectedRevision:timeline.revision,requestId:randomUUID(),purpose:'export'})),exportId=String(accepted.id);
       const receipt=store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(String(accepted.requestId));
-      clearHook=setProjectOutputPublicationTestHooks(store,{fault(point,proof){
+      clearHook=setProjectOutputPublicationTestHooks(store,{fault(point,proof,workingFile){
         if(point!=='after_final'||proof.targetKind!=='exports'||proof.owner.id!==exportId)return;
+        assert.ok(workingFile);
         const artifact=readOutputArtifact(store,proof.owner,'export',proof.owner.inputHash);assert.ok(artifact);
         outputFile=path.join(root,proof.relativePath);stageFile=outputArtifactStage(store,artifact);
-        const finalInfo=statSync(outputFile,{bigint:true}),stageInfo=statSync(stageFile,{bigint:true});
-        assert.equal(finalInfo.size,BigInt(proof.sizeBytes));
-        assert.notEqual(finalInfo.ino,stageInfo.ino,'exercise the exclusive copy');
+        assert.equal(existsSync(outputFile),false,'the verified export is still private');
+        const candidateInfo=statSync(workingFile,{bigint:true}),stageInfo=statSync(stageFile,{bigint:true});
+        assert.equal(candidateInfo.size,BigInt(proof.sizeBytes));
+        assert.notEqual(candidateInfo.ino,stageInfo.ino,'exercise the exclusive copy');
         assert.equal(store.get('assets',proof.assetId),null,'the complete file has not been registered');
-        if(mode==='replace-output'||mode==='replace-part'){
-          const replaced=mode==='replace-output'?outputFile:stageFile,original=replaced+'.original';
-          const inode=statSync(replaced,{bigint:true}).ino;
+        if(mode==='replace-output')writeFileSync(outputFile,replacement,{flag:'wx',mode:0o600});
+        if(mode==='replace-part'){
+          const original=stageFile+'.original',inode=stageInfo.ino;
           // Keep the original inode allocated so ext4 cannot reuse it.
-          renameSync(replaced,original);writeFileSync(replaced,replacement,{flag:'wx',mode:0o600});
+          renameSync(stageFile,original);writeFileSync(stageFile,replacement,{flag:'wx',mode:0o600});
           assert.equal(statSync(original,{bigint:true}).ino,inode);
-          assert.notEqual(statSync(replaced,{bigint:true}).ino,inode);
+          assert.notEqual(statSync(stageFile,{bigint:true}).ino,inode);
         }
         if(mode!=='published'){
           cancellation=services.call('export.cancel',{projectId,exportId});
@@ -117,7 +119,7 @@ test('real project worker retains published files after cancellation and never d
       }});
       worker=startWorker(store,services,new Map());await worker.tick();await worker.stop();worker=undefined;
       if(cancellation)await cancellation;
-      assert.equal(reached,true,'the real worker reached non-overwriting publication');
+      assert.equal(reached,true,'the real worker reached the verified private copy');
       const final=object(store.get('exports',exportId)),files=await readdir(path.join(root,'导出'));
       assert.deepEqual(store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(String(accepted.requestId)),receipt,'immutable acceptance remains exact');
       const storedAsset=object(store.get('assets',String(asset.id)));
@@ -126,7 +128,7 @@ test('real project worker retains published files after cancellation and never d
         assert.equal(final.status,'succeeded');assert.deepEqual(await services.call('export.cancel',{projectId,exportId}),publicValue(final));assert.deepEqual(store.get('exports',exportId),final);assert.ok((await readFile(outputFile)).length>0);
       }else{
         assert.equal(final.status,'failed');assert.equal(object(final.error).code,'EXPORT_CANCELLED');assert.equal(final.assetId,null);
-        assert.equal(files.includes(path.basename(outputFile)),true,'ordinary project outputs are retained after cancellation');
+        assert.deepEqual(files,mode==='replace-output'?[path.basename(outputFile)]:[]);
         if(mode==='replace-output')assert.deepEqual(await readFile(outputFile),replacement);
         if(mode==='replace-part')assert.deepEqual(await readFile(stageFile),replacement);
       }

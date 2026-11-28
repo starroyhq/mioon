@@ -9,7 +9,7 @@
 import {createHash, randomUUID} from 'node:crypto';
 import {AppError} from '../../contracts/src/app-error.ts';
 import {createFormat5SequenceEditService} from './format5-sequence-edit-service.ts';
-import {MioSequencePreviewRejection} from './format5-sequence-preview-errors.ts';
+import {MioSequencePreviewRejection, sequenceEditFailureEvidence} from './format5-sequence-preview-errors.ts';
 import {createSequenceEditing, readSequenceEditHistory} from './sequence-edit.ts';
 import {readSequenceEditHistoryEntry} from './format5-editor-history.ts';
 import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
@@ -252,7 +252,8 @@ export function previewMioSequenceAction(store: ProjectStore, projectId: string,
   else if (['connect', 'disconnect', 'insert', 'delete-node', 'board-root-create', 'board-shot-append', 'board-layout-move',
     'board-node-create', 'board-shot-update', 'board-node-update', 'board-restore', 'board-duplicate'].includes(action.kind)) request.intents = [boardIntent(action)];
   else if (action.kind === 'insert-asset') request.intents = [sequenceSyncIntent({kind: 'insert-asset',
-    assetId: action.assetId, trackId: action.trackId, startFrame: action.startFrame})];
+    assetId: action.assetId, trackId: action.trackId, startFrame: action.startFrame,
+    ...(action.assetRange === undefined ? {} : {assetRange: action.assetRange})})];
   else if (['reorder', 'remove', 'split', 'copy-move', 'copy-as-new-shot', 'set-mode', 'split-at-scenes'].includes(action.kind))
     request.intents = [trackCommand(store, action, requestId)];
   else if (action.kind === 'generate') request.generateIntent = {side: 'timeline', operation: {kind: 'generate-placeholder',
@@ -267,8 +268,10 @@ export function previewMioSequenceAction(store: ProjectStore, projectId: string,
       ...(action.modelEntryId ? {modelEntryId: action.modelEntryId} : {})}}};
   const result = createFormat5SequenceEditService(store).preview(request);
   if ('ok' in result) {
+    const details = sequenceEditFailureEvidence(result.code, result)
+      ?? {ids: result.ids, ...(result.reason ? {reason: result.reason} : {})};
     throw new MioSequencePreviewRejection(result.code, result.message ?? '格式 5 序列动作无法预览，请重新读取后再试。', 409,
-      {ids: result.ids, ...(result.reason ? {reason: result.reason} : {}),
+      {...details, ...(result.messageKey ? {messageKey: result.messageKey} : {}),
         ...(result.dialogueConflict ? {dialogueConflict: result.dialogueConflict} : {})});
   }
   const {warnings} = result;
@@ -279,10 +282,10 @@ export function previewMioSequenceAction(store: ProjectStore, projectId: string,
 }
 /** Commit exactly the previewed envelope; repeated commits replay the receipt. */
 export function commitMioSequenceAction(store: ProjectStore, plan: MioSequencePlan,
-  options: {readonly generationSubmit?: (input: any) => unknown} = {}): SequenceEditReceipt {
+  options: {readonly generationSubmit?: (input: any) => unknown; readonly locale?: AgentTaskLocale} = {}): SequenceEditReceipt {
   requireF5(store);
   const value = createFormat5SequenceEditService(store, options).commit({projectId: store.projectId,
-    envelope: plan.envelope, expectedPlanDigest: plan.planDigest}) as SequenceEditReceipt;
+    envelope: plan.envelope, expectedPlanDigest: plan.planDigest}, options.locale) as SequenceEditReceipt;
   return value;
 }
 export interface MioSequenceUndoPlan {

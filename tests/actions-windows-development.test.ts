@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {EventEmitter} from 'node:events';
 import {readFile} from 'node:fs/promises';
+import {runInNewContext} from 'node:vm';
+import {evaluateSource} from './helpers/eval-source.ts';
 
 const read = (file: string): Promise<string> => readFile(new URL(`../${file}`, import.meta.url), 'utf8');
 
@@ -84,6 +87,97 @@ test('Windows title bar screenshots are fixed scenarios captured by the packaged
   assert.match(main, /backendUrl: ready\?\.url/);
   assert.match(main, /force-device-scale-factor/);
   assert.doesNotMatch(main, /nativeTheme\.themeSource\s*=/);
+});
+
+async function projectOpenFixture({loseClickAcknowledgment = false} = {}) {
+  const origin = 'http://127.0.0.1:4318', projectId = '11111111-1111-4111-8111-111111111111';
+  const steps: string[] = [], attempts: string[] = [];
+  let elapsed = 0, timer = 0, accepted = 0, editorPolls = 0;
+  class Card extends EventTarget {
+    readonly isConnected = true;
+    readonly label: string;
+    readonly disabled: boolean;
+    constructor(label: string, disabled: boolean) {
+      super();
+      this.label = label;
+      this.disabled = disabled;
+    }
+    matches(selector: string) { return selector.includes(':disabled') && this.disabled; }
+    closest() { return null; }
+    click() {
+      attempts.push(this.label);
+      if (!this.disabled) { accepted++; this.dispatchEvent(new Event('click')); }
+    }
+  }
+  const ready = new Card('ready', false), disabled = new Card('disabled', true), current = new Card('current', false);
+  let active = ready;
+  const environment = {
+    HTMLElement: Card,
+    document: {
+      querySelector(selector: string) {
+        if (selector === '[data-testid="project-home"]') return {};
+        assert.ok(selector.includes(`[data-testid="pf-card-open-${projectId}"]`));
+        return active;
+      },
+    },
+    window: {},
+  };
+  const launcherEvents = new EventEmitter();
+  const launcherContents = Object.assign(launcherEvents, {
+    async executeJavaScript(script: string): Promise<unknown> {
+      const prior = accepted;
+      const result: unknown = runInNewContext(script, environment);
+      if (loseClickAcknowledgment && accepted > prior) throw new Error('Click result lost');
+      return result;
+    },
+    reload() { launcherEvents.emit('did-finish-load'); },
+  });
+  const launcher = {isDestroyed: () => false, show() {}, focus() {}, webContents: launcherContents};
+  const editor = {isDestroyed: () => false, webContents: {
+    getURL: () => `${origin}/?project=${projectId}`,
+    async executeJavaScript(script: string) {
+      assert.match(script, /data-testid="workbench"/);
+      return true;
+    },
+  }};
+  const BrowserWindowRuntime = {getAllWindows() {
+    if (!accepted || ++editorPolls < 3) return [];
+    return [editor];
+  }};
+  const schedule = (callback: () => void, delay: number) => {
+    if (delay === 100) {
+      elapsed += delay;
+      if (active === disabled) active = current;
+      queueMicrotask(callback);
+    }
+    return ++timer;
+  };
+  const path = 'apps/desktop/src/windows-project-open.ts', source = await read(path);
+  const start = source.indexOf('export const waitForWindowCondition');
+  assert.ok(start >= 0);
+  const open = evaluateSource<(window: typeof launcher, url: string, id: string, onStep: (step: string) => Promise<void>) => Promise<typeof editor>>(
+    source.slice(start).replace(/^export /gmu, '') + '\nreturn openRegisteredProject;',
+    ['assert', 'BrowserWindowRuntime', 'Date', 'setTimeout', 'clearTimeout'],
+    [assert, BrowserWindowRuntime, {now: () => elapsed}, schedule, () => {}], {loader: 'ts'});
+  const enter = () => open(launcher, origin, projectId, async step => {
+    steps.push(step);
+    if (step === 'list') active = loseClickAcknowledgment ? current : disabled;
+  });
+  return {enter, editor, attempts, steps, editorPolls: () => editorPolls};
+}
+
+test('Windows smoke waits for an enabled replacement and clicks once while native open is pending', async () => {
+  const fixture = await projectOpenFixture();
+  assert.equal(await fixture.enter(), fixture.editor);
+  assert.deepEqual(fixture.attempts, ['current']);
+  assert.deepEqual(fixture.steps.slice(-3), ['list', 'window', 'workbench']);
+  assert.ok(fixture.editorPolls() >= 3, 'the accepted click stays in flight during the earlier empty polls');
+});
+
+test('Windows smoke does not click twice when the renderer loses the click result', async () => {
+  const fixture = await projectOpenFixture({loseClickAcknowledgment: true});
+  await assert.rejects(fixture.enter(), {code: 'PROJECT_OPEN_CLICK_UNCONFIRMED'});
+  assert.deepEqual(fixture.attempts, ['current']);
 });
 
 test('missing Windows tools require the pinned publisher archive before extraction and executable probes', async () => {

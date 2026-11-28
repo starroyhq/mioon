@@ -376,6 +376,43 @@ test('actual CLI and MCP replace format-5 main-track and overlay media while pre
     assert.deepEqual(restored.nodes, current.nodes);
     assert.equal(restored.history.position, current.history.position);
   }
+
+  await t.test('saved ranges use the same public shape and commit through CLI and MCP', async () => {
+    const {tools} = await mcp.listTools();
+    const timelineTool = tools.find(tool => tool.name === 'sequence_timeline_edit');
+    assert.ok(timelineTool);
+    const cliSchema = await cli(env, 'schema', 'sequence', 'timeline', 'edit');
+    assert.deepEqual(timelineTool.inputSchema, cliSchema.inputSchema);
+    const insertSchema = (cliSchema.inputSchema.anyOf as Row[]).find(branch => JSON.stringify(branch.properties?.kind).includes('"insert-asset"'));
+    assert.ok(insertSchema?.properties.assetRange);
+    assert.deepEqual(insertSchema.properties.assetRange.required, ['inFrame', 'outFrame']);
+    assert.ok(!insertSchema.required.includes('assetRange'));
+
+    const saved = await cli(env, 'asset', 'range', 'set', '--input', JSON.stringify({projectId, assetId: replacement,
+      expectedRevision: 0, requestId: randomUUID(), inFrame: 17, outFrame: 31}));
+    assert.deepEqual(saved.range, {inFrame: 17, outFrame: 31});
+    const initial = await snapshot();
+    for (const [trackId, startFrame] of [[null, initial.timeline.durationFrames], [overlayTrack.id, 60]] as const) {
+      const action: Row = {projectId, kind: 'insert-asset', assetId: replacement, trackId, startFrame, assetRange: saved.range};
+      const current = await snapshot();
+      const plan: Row = trackId === null
+        ? await actions('timeline', action)
+        : await mcpAction(mcp, 'sequence_timeline_edit', action);
+      assert.deepEqual(await snapshot(), current);
+      const commitInput = {projectId, envelope: plan.envelope, expectedPlanDigest: plan.planDigest};
+      const receipt: Row = trackId === null ? await commit(env, projectId, plan) : await mcpAction(mcp, 'sequence_action_commit', commitInput);
+      assert.equal(receipt.status, 'applied');
+      const applied = await snapshot();
+      const added = (applied.timeline.clips as Row[]).filter(clip => !(current.timeline.clips as Row[]).some(previous => previous.id === clip.id));
+      assert.equal(added.length, 1);
+      assert.deepEqual([added[0]!.trackId, added[0]!.startFrame, added[0]!.sourceInFrame, added[0]!.durationFrames],
+        [trackId ?? applied.timeline.mainTrack.trackId, startFrame, 17, 14]);
+      assert.equal(applied.history.position, current.history.position + 1);
+      const replayed = trackId === null ? await mcpAction(mcp, 'sequence_action_commit', commitInput) : await commit(env, projectId, plan);
+      assert.deepEqual(replayed, receipt);
+      assert.deepEqual(await snapshot(), applied);
+    }
+  });
 });
 
 test('replace-source pins a main-track shot to a matching version of that shot', async t => {

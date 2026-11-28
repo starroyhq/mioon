@@ -8,6 +8,7 @@ import {
 } from './dialogue-panel-state.ts';
 import type {DialogueLineView} from './dialogue-panel-state.ts';
 import type {SequenceGenerationDialogueView} from '../../../packages/contracts/src/sequence-inspection.ts';
+import {isSequenceEditNoop} from './edit-ui/lost-response.ts';
 import './shot-dialogue.css';
 
 /** DL-a shot properties dialogue panel (design 21-06).
@@ -35,7 +36,6 @@ const ERROR_KEYS: Readonly<Record<string, string>> = {
   SEQUENCE_EDIT_DIALOGUE_CONFLICT: 'dialogue.ui.error.conflict',
   SEQUENCE_EDIT_REVISION_CONFLICT: 'dialogue.ui.error.stale',
   SEQUENCE_EDIT_HISTORY_CONFLICT: 'dialogue.ui.error.stale',
-  SEQUENCE_EDIT_NOOP: 'dialogue.ui.error.noop',
   SEQUENCE_EDIT_CONTRACT_INVALID: 'dialogue.ui.error.unsupported',
 };
 
@@ -86,12 +86,14 @@ export default function ShotDialogue({shot = null, subjectNames = {}, projectId,
       const preview = await rpc('sequence.preview', {projectId,
         requestId: `shot-dialogue-${newDialogueLineId()}`,
         dialogueIntent: {side: 'board', operation: {kind: 'dialogue', edits}}}) as PreviewResponse;
+      if (isSequenceEditNoop(preview)) return;
       if (preview?.ok === false || preview?.envelope === undefined) {
         setErrorKey(ERROR_KEYS[String(preview?.code)] ?? 'dialogue.ui.error.generic');
         return;
       }
       const committed = await rpc('sequence.commit', {projectId, envelope: preview.envelope,
         expectedPlanDigest: preview.planDigest}) as CommitResponse;
+      if (isSequenceEditNoop(committed)) return;
       if (committed?.ok === false) {
         setErrorKey(ERROR_KEYS[String(committed.code)] ?? 'dialogue.ui.error.generic');
         return;
@@ -99,7 +101,7 @@ export default function ShotDialogue({shot = null, subjectNames = {}, projectId,
       if (!mounted.current) return;
       onApplied?.();
     } catch (exception) {
-      if (mounted.current) setErrorKey(ERROR_KEYS[String((exception as {code?: string}).code)] ?? 'dialogue.ui.error.generic');
+      if (mounted.current && !isSequenceEditNoop(exception)) setErrorKey(ERROR_KEYS[String((exception as {code?: string}).code)] ?? 'dialogue.ui.error.generic');
     } finally {
       if (mounted.current) setBusy(false);
     }

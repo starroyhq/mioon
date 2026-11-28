@@ -327,6 +327,7 @@ napi_value initialize(napi_env env,napi_value exports){
     {"createManagedDirectory",nullptr,createManagedDirectory,nullptr,nullptr,nullptr,napi_default,nullptr},
     {"syncManagedDirectory",nullptr,syncManagedDirectory,nullptr,nullptr,nullptr,napi_default,nullptr},
     {"renameManaged",nullptr,renameManaged,nullptr,nullptr,nullptr,napi_default,nullptr},
+    {"renameProjectOutputNoReplace",nullptr,renameProjectOutputNoReplace,nullptr,nullptr,nullptr,napi_default,nullptr},
     {"removeManaged",nullptr,removeManaged,nullptr,nullptr,nullptr,napi_default,nullptr},
     {"projectVolumeFacts",nullptr,projectVolumeFacts,nullptr,nullptr,nullptr,napi_default,nullptr}
   };

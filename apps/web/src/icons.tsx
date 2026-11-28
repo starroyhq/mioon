@@ -1,8 +1,8 @@
 import React from 'react';
 import type { ComponentType, ReactNode, SVGProps } from 'react';
 import {
-  AlertTriangle, BookOpen, Box, Check, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Clock, Columns2, Download, Expand,
-  FileText, Film, Folder, GripVertical, Hand, Image, Info, Layers, LayoutGrid, Link2, LocateFixed, Lock, LockOpen,
+  AlertTriangle, BookOpen, Box, Check, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, CircleX, Clock, Columns2, Download, Expand,
+  FileOutput, FileText, Film, Folder, GripVertical, Hand, Image, Info, Layers, LayoutGrid, Link2, LocateFixed, Lock, LockOpen,
   Magnet, Minus, Music, Pause, Pencil, Play, Plus, Redo2, RefreshCw, Scissors, Search, Shield, SlidersVertical,
   Sparkles, Square, Terminal, Type, Undo2, Upload, Volume2, WORKBENCH_ICON_STROKE_WIDTH, Wrench, X, Zap,
 } from '@mioon/ui/components/workbench-icons';
@@ -59,6 +59,8 @@ const lucideIcons: Record<string, LucideLike> = {
   book: BookOpen,
   note: FileText,
   box: Box,
+  fcpExport: FileOutput,
+  circleX: CircleX,
   terminal: Terminal,
   wrench: Wrench,
 };

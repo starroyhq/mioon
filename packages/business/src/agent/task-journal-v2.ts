@@ -9,11 +9,14 @@ import type {TaskContextHistoryInput,TaskContextHistoryRun} from './task-context
 import type {FrozenMioRules} from './mio-rules.ts';
 import type {AgentTaskConversationPolicy,AgentTaskConversationPolicySetInput,AgentTaskPolicyModes,AgentTaskPolicyUpdate} from '../../../contracts/src/agent-tasks-v2.ts';
 import type {AgentTaskRun,AgentTaskStep,AgentTaskChange,AgentTaskEvent,AgentTaskSnapshot,AgentTaskStatus,AgentTaskStepStatus,AgentTaskJson,AgentTaskReceipt,AgentTaskPolicy,AgentTaskTarget,AgentTaskClaim,AgentTaskEditingInput,AgentTaskDiagnostic,AgentTaskConversation,AgentTaskConversationPage,AgentTaskHistoryPage,AgentTaskNote,AgentTaskSkippedTarget} from '../../../contracts/src/agent-tasks-v2.ts';
+import type {AgentTaskEditingClaimGroup,AgentTaskEditingLiveness,AgentTaskEditingResolveBatchInput,AgentTaskEditingResolveBatchReceipt} from '../../../contracts/src/agent-tasks-v2.ts';
 
 export type AgentTaskChangeInput=Omit<AgentTaskChange,'id'|'runId'|'stepId'|'createdAt'|'status'|'modifiedAfter'|'undoDisposition'>;
 export interface AgentTaskStepInput extends Pick<AgentTaskStep,'kind'> {request?:AgentTaskJson;data?:AgentTaskJson;toolCall?:AgentTaskStep['toolCall'];targets?:AgentTaskTarget[];tier?:AgentTaskStep['tier']}
 export interface AgentTaskControlRecord {requestId:string;runId:string;expectedRevision:number;action:string;stepId?:string;changeId?:string;resolution?:string;text?:string;undoChangeIds?:string[]}
 export interface AgentTaskJournalOptions {policyStore?:AgentPolicyStore;safetyStepLimit?:number}
+export type EditingOwnerLiveness = (projectId: string, ownerId: string) => AgentTaskEditingLiveness;
+export type EditingOwnerAdmission = () => 'native-live' | 'native-closed' | void;
 /** Current journal port; the real project and app policy adapters own storage. */
 export function createAgentTaskJournal(store:Store,{policyStore=testProjectAppLibrary(store)?.agentPolicy,safetyStepLimit}:AgentTaskJournalOptions={}):AgentTaskJournal{
  assertProjectStore(store);return createMioProjectJournal(store,policyStore,safetyStepLimit);
@@ -21,7 +24,11 @@ export function createAgentTaskJournal(store:Store,{policyStore=testProjectAppLi
 export interface AgentTaskJournal {
 "expireClaims": (maxAgeMs?: number) => number;
 "markClaimsUncertain": (projectId?: string, ownerId?: string) => void;
-"edit": (input: AgentTaskEditingInput) => { requestId: string; projectId: string; ownerId: string; generation: number; sequence: number; claims: AgentTaskClaim[]; };
+"edit": (input: AgentTaskEditingInput, assertOwner?: EditingOwnerAdmission) => { requestId: string; projectId: string; ownerId: string; generation: number; sequence: number; claims: AgentTaskClaim[]; };
+"editingOwnerVersion": (projectId: string, ownerId: string) => {generation: number; sequence: number} | null;
+"editingClaimGroups": (projectId: string, liveness: EditingOwnerLiveness) => AgentTaskEditingClaimGroup[];
+"resolveEditingBatch": (input: AgentTaskEditingResolveBatchInput, liveness: EditingOwnerLiveness) => AgentTaskEditingResolveBatchReceipt;
+"lookupEditingBatch": (projectId: string, requestId: string) => AgentTaskEditingResolveBatchReceipt | null;
 "conversationPolicy": (projectId: string, conversationId: string) => AgentTaskConversationPolicy;
 "setConversationPolicy": (projectId: string, conversationId: string, request: AgentTaskConversationPolicySetInput) => AgentTaskConversationPolicy;
 "effectiveModes": (projectId: string, conversationId?: string) => AgentTaskPolicyModes;

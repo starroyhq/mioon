@@ -4,11 +4,13 @@ import {isDeepStrictEqual} from 'node:util';
 import type {ProjectStore} from '../project-file/store.ts';
 import {createMioRecords} from './mio-records.ts';
 import type {MioBeginRequest} from './mio-records.ts';
-import type {MioRequest, MioEntry} from '../../../contracts/src/mio-records.ts';
+import type {MioRequest, MioEntry, MioClaim, MioEditOwner} from '../../../contracts/src/mio-records.ts';
 import {mioEntrySchema} from '../../../contracts/src/mio-records.ts';
-import type {AgentTaskJournal, AgentTaskStepInput, AgentTaskControlRecord, AgentTaskChangeInput} from './task-journal-v2.ts';
+import type {AgentTaskJournal, AgentTaskStepInput, AgentTaskControlRecord, AgentTaskChangeInput, EditingOwnerAdmission, EditingOwnerLiveness} from './task-journal-v2.ts';
 import type {AgentTaskRun, AgentTaskStep, AgentTaskJson, AgentTaskPolicy, AgentTaskEvent, AgentTaskSnapshot, AgentTaskNote, AgentTaskSkippedTarget, AgentTaskTarget, AgentTaskChange, AgentTaskReceipt, AgentTaskConversation, AgentTaskHistoryPage, AgentTaskConversationPage, AgentTaskStatus, AgentTaskStepStatus, AgentTaskClaim, AgentTaskEditingInput, AgentTaskPolicyModes, AgentTaskConversationPolicy, AgentTaskConversationPolicySetInput} from '../../../contracts/src/agent-tasks-v2.ts';
+import type {AgentTaskEditingClaimGroup, AgentTaskEditingLiveness, AgentTaskEditingResolveBatchInput, AgentTaskEditingResolveBatchReceipt} from '../../../contracts/src/agent-tasks-v2.ts';
 import {agentTaskConversationPolicySchema, agentTaskPolicyModesSchema, agentTaskQuestionSchema, agentTaskAnswerSchema, agentTaskStepErrorSchema, DEFAULT_AGENT_TASK_POLICY} from '../../../contracts/src/agent-tasks-v2.ts';
+import {agentTaskEditingResolveBatchSchema, agentTaskEditingResolveBatchReceiptSchema} from '../../../contracts/src/agent-tasks-v2.ts';
 import type {TaskContextHistoryRun, TaskContextHistoryInput} from './task-context-v2.ts';
 import type {TaskRunRecordTarget, TaskRunRecordBackground, TaskRunRecordChange} from './task-run-record-v2.ts';
 import {projectAgentTaskChangeDisplay} from './task-display-v2.ts';
@@ -207,18 +209,21 @@ export function createMioJournal(store: ProjectStore, options: MioJournalOptions
       ...(text === undefined ? {} : {text})};
   }
   const allRuns = (): AgentTaskRun[] => db.prepare('SELECT id FROM mio_runs WHERE projectId=? ORDER BY rowid').all(projectId).map(row => run(String(row.id)));
-  function background(runId: string): Array<{kind: string; id: string; status: string; stepId: string}> {
+  function background(runId: string): Array<{kind: string; id: string; status: string; stepId: string; operation: string}> {
     records.run(runId);
-    return db.prepare('SELECT kind,jobId,stepId FROM mio_job_origins WHERE runId=? AND projectId=? ORDER BY rowid').all(runId, projectId).map(row => {
+    return db.prepare('SELECT kind,jobId,stepId,operation FROM mio_job_origins WHERE runId=? AND projectId=? ORDER BY rowid').all(runId, projectId).map(row => {
       const kind = String(row.kind), table = {job: 'jobs', export: 'exports', image: 'image_tasks', frame: 'frame_tasks', scene: 'scene_tasks'}[kind];
       if (!table) return fail('AGENT_TASK_STORAGE_CORRUPT');
       const record = db.prepare(`SELECT * FROM ${table} WHERE id=? AND projectId=?`).get(String(row.jobId), projectId);
       const data = record && typeof record.data === 'string' ? decode<Record<string, unknown>>(record.data) : record;
-      return {kind, id: String(row.jobId), stepId: String(row.stepId), status: typeof data?.status === 'string' ? data.status : typeof data?.state === 'string' ? data.state : 'unknown'};
+      return {kind, id: String(row.jobId), stepId: String(row.stepId), operation: String(row.operation), status: typeof data?.status === 'string' ? data.status : typeof data?.state === 'string' ? data.state : 'unknown'};
     });
   }
   function hasPendingBackground(id: string): boolean {
-    return background(id).some(item => !({job: ['succeeded', 'failed', 'cancelled'], export: ['succeeded', 'failed', 'cancelled'], image: ['succeeded', 'failed', 'cancelled_before_dispatch'], frame: ['succeeded', 'failed', 'cancelled_before_start'], scene: ['succeeded', 'undone', 'failed', 'local_result_error', 'interrupted', 'cancelled', 'cancelled_before_start']}[item.kind] ?? []).includes(item.status));
+    return background(id).some(item => {
+      if(item.kind === 'export' && item.operation === 'export.fcpxml.start') return !['done', 'failed', 'cancelled'].includes(item.status);
+      return !({job: ['succeeded', 'failed', 'cancelled'], export: ['succeeded', 'failed', 'cancelled'], image: ['succeeded', 'failed', 'cancelled_before_dispatch'], frame: ['succeeded', 'failed', 'cancelled_before_start'], scene: ['succeeded', 'undone', 'failed', 'local_result_error', 'interrupted', 'cancelled', 'cancelled_before_start']}[item.kind] ?? []).includes(item.status);
+    });
   }
   function snapshot(id: string): AgentTaskSnapshot {
     const value = run(id), execution = content(id, 'host_state').filter(item => item.value.type === 'run_state' && item.value.status !== 'reverted').at(-1);
@@ -620,8 +625,85 @@ export function createMioJournal(store: ProjectStore, options: MioJournalOptions
     const view = conversationPolicyView(id, conversationId); db.prepare('INSERT INTO mio_conversation_policy_requests(requestId,projectId,conversationId,revision,inputHash,response) VALUES(?,?,?,?,?,?)').run(request.requestId, projectId, conversationId, revision + 1, inputHash, encode(view)); return view;
   }); }
   function targetRevision(id: string, kind: string, targetId: string): number { own(id); return readMioTargetRevision(db, id, kind, targetId) ?? 0; }
+  function editingClaim({kind, targetId, revision, ...claim}: MioClaim): AgentTaskClaim {
+    return {...claim, target: {kind, id: targetId, revision}};
+  }
   function claims(id: string, ownerId?: string): AgentTaskClaim[] {
-    own(id); return records.claims(ownerId).map(({kind, targetId, revision, ...claim}) => ({...claim, target: {kind, id: targetId, revision}})).sort((a, b) => a.id.localeCompare(b.id));
+    own(id); return records.claims(ownerId).map(editingClaim).sort((a, b) => a.id.localeCompare(b.id));
+  }
+  function editingClaimSnapshot(claim: MioClaim, owner?: MioEditOwner): string {
+    return hash({claim, generation: owner?.generation ?? null, sequence: owner?.sequence ?? null});
+  }
+  function editingOwnerVersion(id: string, ownerId: string): {generation: number; sequence: number} | null {
+    own(id);
+    const owner = records.editOwner(ownerId);
+    return owner ? {generation: owner.generation, sequence: owner.sequence} : null;
+  }
+  function editingClaimGroups(id: string, liveness: EditingOwnerLiveness): AgentTaskEditingClaimGroup[] {
+    own(id);
+    const groups: AgentTaskEditingClaimGroup[] = [];
+    const owners = new Map<string, {owner?: MioEditOwner; liveness: AgentTaskEditingLiveness}>();
+    for (const item of records.claims()) {
+      let info = owners.get(item.ownerId);
+      if (!info) {
+        const owner = records.editOwner(item.ownerId);
+        info = {owner, liveness: owner ? liveness(projectId, item.ownerId) : 'uncertain'};
+        owners.set(item.ownerId, info);
+      }
+      let group = groups.at(-1);
+      if (group?.kind !== item.kind || group.id !== item.targetId) {
+        group = {projectId, kind: item.kind, id: item.targetId, owners: []};
+        groups.push(group);
+      }
+      group.owners.push({claim: editingClaim(item), generation: info.owner?.generation ?? null, sequence: info.owner?.sequence ?? null,
+        claimSnapshot: editingClaimSnapshot(item, info.owner), liveness: info.liveness});
+    }
+    return groups;
+  }
+  function editingBatchReceipt(requestId: string, data: AgentTaskJson | undefined): AgentTaskEditingResolveBatchReceipt | null {
+    // Both operations use the existing receipt ledger; legacy results contain
+    // claims rather than released claim IDs.
+    if (!object(data) || !Object.hasOwn(data, 'releasedClaimIds')) return null;
+    const parsed = agentTaskEditingResolveBatchReceiptSchema.safeParse(data);
+    return parsed.success && parsed.data.projectId === projectId && parsed.data.requestId === requestId ? parsed.data : fail('AGENT_TASK_STORAGE_CORRUPT');
+  }
+  function lookupEditingBatch(id: string, requestId: string): AgentTaskEditingResolveBatchReceipt | null {
+    own(id);
+    return editingBatchReceipt(requestId, records.editReceipt(requestId)?.data);
+  }
+  function resolveEditingBatch(request: AgentTaskEditingResolveBatchInput, liveness: EditingOwnerLiveness): AgentTaskEditingResolveBatchReceipt {
+    const parsed = agentTaskEditingResolveBatchSchema.safeParse(request);
+    if (!parsed.success) fail('AGENT_TASK_INVALID');
+    const input = parsed.data;
+    own(input.projectId);
+    const selected = [...input.claims].sort((a, b) => a.claimId.localeCompare(b.claimId));
+    const digest = hash({operation: 'resolve-editing-batch', projectId, claims: selected});
+    return transact(() => {
+      const saved = records.editReceipt(input.requestId);
+      if (saved) {
+        const receipt = editingBatchReceipt(input.requestId, saved.data);
+        if (!receipt || saved.digest !== digest) fail('AGENT_TASK_REQUEST_CONFLICT');
+        return receipt;
+      }
+      const retiredOwners = new Map<string, MioEditOwner>();
+      for (const selection of selected) {
+        const claim = records.claimById(selection.claimId);
+        if (!claim || claim.ownerId !== selection.ownerId) fail('AGENT_TASK_EDIT_BATCH_CONFLICT');
+        const knownOwner = retiredOwners.get(claim.ownerId);
+        const owner = knownOwner ?? records.editOwner(claim.ownerId);
+        if (!owner || owner.generation !== selection.generation || owner.sequence !== selection.sequence ||
+            selection.claimSnapshot !== editingClaimSnapshot(claim, owner) ||
+            (!knownOwner && liveness(projectId, claim.ownerId) !== 'retained')) fail('AGENT_TASK_EDIT_BATCH_CONFLICT');
+        retiredOwners.set(claim.ownerId, owner);
+      }
+      for (const selection of selected) records.removeClaim(selection.claimId, selection.ownerId);
+      // A proven retired owner cannot send another edit. This durable high-water
+      // mark fences delayed packets and preserves unselected claims for a new read.
+      for (const ownerId of retiredOwners.keys()) records.saveEditOwner(ownerId, Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER);
+      const result = {projectId, requestId: input.requestId, releasedClaimIds: selected.map(item => item.claimId)};
+      records.saveEditReceipt({requestId: input.requestId, ownerId: selected[0]!.ownerId, digest, data: json(result)});
+      return result;
+    });
   }
   function assertTargets(id: string, targets: AgentTaskTarget[]): void {
     own(id); const saved = records.claims(); for (const target of targets) { if (targetRevision(id, target.kind, target.id) !== target.revision) fail('AGENT_TASK_TARGET_CHANGED'); if (saved.some(item => item.kind === target.kind && item.targetId === target.id)) fail('AGENT_TASK_TARGET_CLAIMED'); }
@@ -644,12 +726,20 @@ export function createMioJournal(store: ProjectStore, options: MioJournalOptions
   function expireClaims(maxAgeMs = 30000): number { return transact(() => {
     let count = 0; const before = new Date(Date.now() - maxAgeMs).toISOString(); for (const {projectId: _, ...item} of records.claims()) if (item.state === 'active' && item.updatedAt < before) { records.saveClaim({...item, state: 'uncertain'}); count++; } return count;
   }); }
-  function edit(input: AgentTaskEditingInput): {requestId: string; projectId: string; ownerId: string; generation: number; sequence: number; claims: AgentTaskClaim[]} { return transact(() => {
+  function edit(input: AgentTaskEditingInput, assertOwner?: EditingOwnerAdmission): ReturnType<AgentTaskJournal['edit']> { return transact(() => {
     own(input.projectId); const digest = hash(input), saved = records.editReceipt(input.requestId);
-    if (saved) { if (saved.digest !== digest) fail('AGENT_TASK_REQUEST_CONFLICT'); return saved.data as unknown as ReturnType<typeof edit>; }
+    if (saved) { if (saved.digest !== digest || editingBatchReceipt(input.requestId, saved.data)) fail('AGENT_TASK_REQUEST_CONFLICT'); return saved.data as unknown as ReturnType<AgentTaskJournal['edit']>; }
+    const admission = assertOwner?.();
     const owner = records.editOwner(input.ownerId);
     if (owner && (owner.generation > input.generation || owner.generation === input.generation && owner.sequence >= input.sequence)) fail('AGENT_TASK_EDIT_OWNER_STALE');
-    if (owner && input.generation > owner.generation && !['resolve', 'restore'].includes(input.action)) fail('AGENT_TASK_EDIT_OWNER_UNCERTAIN');
+    // The final release can reach the host just after native destruction.
+    // It still belongs to the existing controller's generation.
+    if (admission === 'native-closed' && (input.action !== 'release' || owner?.generation !== input.generation)) fail('AGENT_TASK_EDIT_OWNER_UNCERTAIN');
+    if (owner && input.generation > owner.generation && !['resolve', 'restore'].includes(input.action)) {
+      // A native renderer reload keeps the window identity. A new controller
+      // can claim from an empty owner ledger after the last clean release.
+      if (admission !== 'native-live' || input.action !== 'claim' || records.claims(input.ownerId).length) fail('AGENT_TASK_EDIT_OWNER_UNCERTAIN');
+    }
     if (input.action === 'claim' && records.claims(input.ownerId).some(item => item.state === 'uncertain')) fail('AGENT_TASK_EDIT_OWNER_UNCERTAIN');
     if (input.action === 'restore') {
       const retained = records.claims(input.ownerId), requested = new Map(input.targets.map(target => [`${target.kind}:${target.id}`, target]));
@@ -670,9 +760,12 @@ export function createMioJournal(store: ProjectStore, options: MioJournalOptions
   function markChangeSupersededInside(id: string): AgentTaskChange { inside(); const value = change(id); if (!value.reversible || value.status !== 'applied') fail('AGENT_TASK_NOT_REVERSIBLE'); return saveChange({...value, status: 'superseded'}); }
   function markChangeRetainedInside(id: string, reason: string): AgentTaskChange { inside(); const value = change(id); if (!value.reversible || value.status !== 'applied' || value.operation !== 'shot.create') fail('AGENT_TASK_NOT_REVERSIBLE'); return saveChange({...value, reversible: false, summary: `${value.summary ?? value.operation}（${reason}）`}); }
   return {
-    expireClaims, markClaimsUncertain, edit, conversationPolicy: project(conversationPolicy), setConversationPolicy, effectiveModes, sentConversationModesMatch, conversationPolicies: () => true,
+    expireClaims, markClaimsUncertain, edit, editingOwnerVersion, editingClaimGroups, resolveEditingBatch, lookupEditingBatch, conversationPolicy: project(conversationPolicy), setConversationPolicy, effectiveModes, sentConversationModesMatch, conversationPolicies: () => true,
     lookupRequest: (id, requestId) => project(() => { own(id); const row = db.prepare('SELECT id FROM mio_runs WHERE projectId=? AND requestId=?').get(id, requestId); return row ? snapshot(String(row.id)) : null; })(),
-    lookupEdit: requestId => records.editReceipt(requestId)?.data ?? null,
+    lookupEdit: requestId => {
+      const data = records.editReceipt(requestId)?.data;
+      return editingBatchReceipt(requestId, data) ? null : data ?? null;
+    },
     create, conversation: project(conversation), conversationSummary: project(conversationSummary), contextRuns: project(contextRuns), modelContextRuns: project(modelContextRuns), requestConversationId: project(requestConversationId), snapshot: project(snapshot), hasPendingBackground, history: project(history),
     latestDiagnostic: profile => project(() => { const value = allRuns().filter(item => item.diagnostic?.profile === profile).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).at(0); return value ? snapshot(value.id) : null; })(),
     list: (id, {excludeDiagnostics = false} = {}) => project(() => { own(id); return allRuns().filter(item => !excludeDiagnostics || !item.diagnostic).reverse().slice(0, 100); })(),

@@ -28,7 +28,7 @@ import {
   FileText as FileTextBase, Terminal as TerminalBase, Wrench as WrenchBase, Cpu as CpuBase, Keyboard as KeyboardBase,
   PanelLeftClose as PanelLeftCloseBase, PanelRightClose as PanelRightCloseBase,
   PanelLeftOpen as PanelLeftOpenBase, PanelRightOpen as PanelRightOpenBase,
-  Inbox as InboxBase, FileX as FileXBase, File as FileBase, FileDown as FileDownBase,
+  Inbox as InboxBase, FileX as FileXBase, File as FileBase, FileDown as FileDownBase, FileOutput as FileOutputBase,
   Bookmark as BookmarkBase, BookmarkPlus as BookmarkPlusBase, History as HistoryBase,
   Calendar as CalendarBase, Captions as CaptionsBase,
 } from 'lucide-react';
@@ -190,6 +190,7 @@ export const Inbox = withDefaultStroke(InboxBase);
 export const FileX = withDefaultStroke(FileXBase);
 export const File = withDefaultStroke(FileBase);
 export const FileDown = withDefaultStroke(FileDownBase);
+export const FileOutput = withDefaultStroke(FileOutputBase);
 export const Bookmark = withDefaultStroke(BookmarkBase);
 export const BookmarkPlus = withDefaultStroke(BookmarkPlusBase);
 export const History = withDefaultStroke(HistoryBase);
