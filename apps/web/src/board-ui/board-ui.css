@@ -6,6 +6,8 @@
 .board-ui-inspector {border:1px solid var(--board-line);border-radius:10px;background:var(--board-panel);overflow:auto;}
 .board-ui-static button {font:inherit;color:inherit;cursor:pointer;}
 .board-ui-static .react-flow__node-board-card {border:0;border-radius:8px;background:transparent;box-shadow:none;}
+.board-ui-static .react-flow__node-board-card:focus-visible {outline:none;}
+.board-ui-static .react-flow__node-board-card:focus-visible > .board-ui-card {outline:1.5px solid var(--wb-accent-line,#fff);outline-offset:2px;}
 .board-ui-card {position:relative;width:240px;background:var(--board-surface);border:1px solid var(--board-line);border-radius:8px;}
 .board-ui-card.is-selected {outline:2px solid var(--wb-accent-line,#fff);outline-offset:0;}
 .board-ui-card header {height:36px;display:flex;align-items:center;gap:8px;padding:0 10px;}

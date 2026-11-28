@@ -714,7 +714,7 @@ body:has(.agent-chat-dialog) [role="presentation"]:has(>[data-slot="tooltip-cont
 .shell-redesign.mode-canvas .canvas-controls { left: calc(var(--dock-assets) + 18px); bottom: 12px; }
 .shell-redesign.dock-narrow.mode-canvas .canvas-controls { left: 12px; bottom: 12px; }
 
-.status-dot.neutral{background:var(--wb-muted)}.dock-resize:focus-visible{outline:none;background:transparent}.dock-resize:focus-visible>span{opacity:1;background:var(--wb-accent)}
+.status-dot.neutral{background:var(--wb-muted)}.dock-resize:focus-visible{outline:none;background:transparent}.dock-resize:focus-visible>span{opacity:1;background:var(--wb-accent)}.react-flow__node:focus-visible>.canvas-node{outline:1.5px solid var(--wb-accent-line);outline-offset:2px}
 
 /* Native controls share one row with the workbench controls, including the
    compact dock layout whose older rules place actions on a second row. */

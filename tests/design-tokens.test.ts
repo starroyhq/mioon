@@ -98,18 +98,33 @@ test('icons use unified 1.5px stroke width via workbench-icons without bare Unic
   const walk = (dir: URL): URL[] => readdirSync(dir, { withFileTypes: true }).flatMap(entry =>
     entry.isDirectory() ? walk(new URL(`${entry.name}/`, dir)) : /\.(?:tsx|css)$/.test(entry.name) ? [new URL(entry.name, dir)] : [],
   );
-  const forbidden = /[▱⌄⌃▸▾ⓘ⋯]/u;
+  const forbidden = /[▱⌄⌃▸▾ⓘ⋯↗]/u;
   for (const file of walk(new URL('apps/web/src/', root))) {
     const body = readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
     assert.doesNotMatch(body, forbidden, `${file.pathname} still uses a bare Unicode icon glyph`);
   }
+  const editUiCatalog = readFileSync(new URL('packages/i18n/src/catalogs/edit-ui.ts', root), 'utf8');
+  assert.doesNotMatch(editUiCatalog, /↗/u);
+  const localRecords = readFileSync(new URL('apps/web/src/LocalRecordsPanel.tsx', root), 'utf8');
+  assert.match(localRecords, /<FileText\b/);
+  assert.doesNotMatch(localRecords, /<svg\b/);
+  const taskPopover = readFileSync(new URL('apps/web/src/TaskPopover.tsx', root), 'utf8');
+  assert.match(taskPopover, /<MoreHorizontal\b/);
+  assert.doesNotMatch(taskPopover, />…</);
+  const mioFollow = readFileSync(new URL('apps/web/src/MioFollowLayer.tsx', root), 'utf8');
+  assert.doesNotMatch(mioFollow, /strokeWidth="1\.6"/);
 });
 
 test('single global 1.5px focus-visible ring uses inset offset in tight containers without competing resets', () => {
   const styles = readFileSync(new URL('apps/web/src/styles.css', root), 'utf8');
   const light = readFileSync(new URL('packages/ui/src/styles/light.css', root), 'utf8');
+  const boardCss = readFileSync(new URL('apps/web/src/board-ui/board-ui.css', root), 'utf8');
+  const appSource = readFileSync(new URL('apps/web/src/App.tsx', root), 'utf8');
   assert.match(controls, /outline:\s*1\.5px solid var\(--wb-accent-line\);[\s\S]*?outline-offset:\s*1px;/);
-  assert.match(controls, /\.topbar,[\s\S]*?outline:\s*1\.5px solid var\(--wb-accent-line\);[\s\S]*?outline-offset:\s*-2px;/);
+  assert.match(controls, /\.topbar,[\s\S]*?\.timeline-scroll,[\s\S]*?\.mio-log,[\s\S]*?outline:\s*1\.5px solid var\(--wb-accent-line\);[\s\S]*?outline-offset:\s*-2px;/);
+  assert.match(controls, /\.timeline-ruler,/);
+  assert.match(boardCss, /\.react-flow__node-board-card:focus-visible\s*>\s*\.board-ui-card\s*\{\s*outline:\s*1\.5px solid var\(--wb-accent-line/);
+  assert.match(appSource, /ref=\{fileInput\}\s+className="sr-only"\s+tabIndex=\{-1\}/);
   assert.doesNotMatch(styles, /button:focus-visible,a:focus-visible\{outline:2px/);
   assert.doesNotMatch(light, /:focus-visible\s*\{[\s\S]*?outline:\s*2px/);
 });

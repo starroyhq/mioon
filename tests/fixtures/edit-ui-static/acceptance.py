@@ -26,19 +26,19 @@ EXPECTED_APPLIED_VERSION = '44444444-4444-4444-8444-000000000001'
 EXPECTED_BOARD_VERSION = '44444444-4444-4444-8444-000000000002'
 
 LOCALES = {
-    'zh-Hans': {'shotTitle': '镜头 02 · 窗口剪影', 'follow': '跟随画板 · V2', 'locked': '锁定 · V1', 'reveal': '在画板中查看 ↗',
+    'zh-Hans': {'shotTitle': '镜头 02 · 窗口剪影', 'follow': '跟随画板 · V2', 'locked': '锁定 · V1', 'reveal': '在画板中查看',
                 'main': '主轨', 'mainMarker': 'V1 · 主轨', 'detached': '未挂靠',
                 'followSuffix': '· V2', 'lockedSuffix': '· 锁定 V1', 'placeholderSuffix': '· 待生成（占位 4 秒）',
                 'dialog': '复制成新镜头再挪？', 'notice': '已从主轨移除 02 窗口剪影'},
-    'zh-Hant': {'shotTitle': '鏡頭 02 · 窗口剪影', 'follow': '跟隨畫板 · V2', 'locked': '鎖定 · V1', 'reveal': '在畫板中查看 ↗',
+    'zh-Hant': {'shotTitle': '鏡頭 02 · 窗口剪影', 'follow': '跟隨畫板 · V2', 'locked': '鎖定 · V1', 'reveal': '在畫板中查看',
                 'main': '主軌', 'mainMarker': 'V1 · 主軌', 'detached': '未掛靠',
                 'followSuffix': '· V2', 'lockedSuffix': '· 鎖定 V1', 'placeholderSuffix': '· 待生成（佔位 4 秒）',
                 'dialog': '複製成新鏡頭再挪？', 'notice': '已從主軌移除 02 窗口剪影'},
-    'en': {'shotTitle': 'Shot 02 · 窗口剪影', 'follow': 'Follow board · V2', 'locked': 'Locked · V1', 'reveal': 'View on board ↗',
+    'en': {'shotTitle': 'Shot 02 · 窗口剪影', 'follow': 'Follow board · V2', 'locked': 'Locked · V1', 'reveal': 'View on board',
            'main': 'Main track', 'mainMarker': 'V1 · Main track', 'detached': 'Not anchored',
            'followSuffix': '· V2', 'lockedSuffix': '· Locked V1', 'placeholderSuffix': '· Not generated (4 s placeholder)',
            'dialog': 'Copy as a new shot and move?', 'notice': 'Removed 02 窗口剪影 from the main track'},
-    'ja': {'shotTitle': 'ショット 02 · 窗口剪影', 'follow': 'ボードに追従 · V2', 'locked': 'ロック · V1', 'reveal': 'ボードで表示 ↗',
+    'ja': {'shotTitle': 'ショット 02 · 窗口剪影', 'follow': 'ボードに追従 · V2', 'locked': 'ロック · V1', 'reveal': 'ボードで表示',
            'main': 'メイントラック', 'mainMarker': 'V1 · メイントラック', 'detached': '未接続',
            'followSuffix': '· V2', 'lockedSuffix': '· ロック V1', 'placeholderSuffix': '· 未生成（4 秒のプレースホルダー）',
            'dialog': '新しいショットとして複製して移動しますか？', 'notice': 'メイントラックから02 窗口剪影を削除しました'},

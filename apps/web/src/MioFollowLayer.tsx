@@ -285,7 +285,7 @@ export default function MioFollowLayer({ focus, mode, enabled, reduceMotion, onR
           <stop offset="50%" className="mio-follow-pointer-middle" />
           <stop offset="100%" className="mio-follow-pointer-dark" />
         </linearGradient></defs>
-        <path d={CURSOR_PATH} fill={`url(#${gradient})`} stroke="white" strokeWidth="1.6" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+        <path d={CURSOR_PATH} fill={`url(#${gradient})`} stroke="white" strokeWidth="1.5" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
       </svg>
       <div ref={label} className="mio-follow-cursor-label">
         <span className="mio-follow-bubble" data-testid="mio-follow-bubble">{focus.text}</span>

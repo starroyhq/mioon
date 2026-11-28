@@ -3,6 +3,7 @@ import {WorkbenchTooltip} from './WorkspaceControls.tsx';
 import React, {useEffect, useRef, useSyncExternalStore} from 'react';
 import {Dialog} from '@mioon/ui/components/dialog';
 import {WorkbenchAlert, WorkbenchBadge, WorkbenchButton, WorkbenchDialogContent} from '@mioon/ui/components/workbench-controls';
+import {FileText} from '@mioon/ui/components/workbench-icons';
 import {useI18n} from './i18n/I18nProvider.tsx';
 import {createLocalRecordsClient} from './local-records-client.ts';
 import {createLocalRecordsController} from './local-records-state.ts';
@@ -35,7 +36,7 @@ export function LocalRecordsView({active,state,controller}:{readonly active:bool
     {!state.loading&&!state.readError&&state.list&&(state.list.records.length===0?<p role="status">{t('localRecords.empty')}</p>:<>
       <p className="local-records-summary" data-text-selectable>{t('localRecords.summary',{count:state.list.records.length,size:total})}</p>
       <ul className="local-records-list">{state.list.records.map(item=><li key={item.projectId} data-project-id={item.projectId}>
-        <div className="local-records-row"><span className="local-records-file" aria-hidden="true"><svg viewBox="0 0 20 24" fill="none"><path d="M2 1h10l6 6v16H2zM12 1v6h6M5 12h10M5 16h10" stroke="currentColor"/></svg></span>
+        <div className="local-records-row"><span className="local-records-file" aria-hidden="true"><FileText size={20} aria-hidden="true"/></span>
           <div className="local-records-identity"><strong data-text-selectable>{item.name??t('localRecords.unknownName')}</strong><code data-text-selectable title={item.projectFile??undefined}>{item.projectFile??t('localRecords.noLocation')}</code>
             {(item.hasSuperJournal||item.hasUnfinishedTasks)&&<div className="local-records-badges">{item.hasSuperJournal&&<WorkbenchBadge tone="warning">{t('localRecords.journalTag')}</WorkbenchBadge>}{item.hasUnfinishedTasks&&<WorkbenchBadge tone="warning">{t('localRecords.tasksTag')}</WorkbenchBadge>}</div>}
           </div><span className="local-records-size">{size(item.sizeBytes)}</span><WorkbenchButton type="button" variant="danger-ghost" disabled={!active||state.loading||state.deleting||item.hasSuperJournal||item.hasUnfinishedTasks} aria-label={t('localRecords.confirmTitle',{name:item.name??t('localRecords.unknownName')})} onClick={()=>controller.select(item.projectId)}>{t('localRecords.delete')}</WorkbenchButton>

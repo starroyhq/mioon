@@ -1,6 +1,7 @@
 import React from 'react';
 import './edit-ui.css';
 import {Button} from '@mioon/ui/components/button';
+import {ArrowUpRight} from '@mioon/ui/components/workbench-icons';
 import Icon from '../icons.tsx';
 import {useI18n} from '../i18n/I18nProvider.tsx';
 import {WorkbenchSelect} from '../WorkspaceControls.tsx';
@@ -21,7 +22,7 @@ export default function ShotVersionBar({sequence}: {readonly sequence: EditUiIns
       <Icon name="film" size={13} />
       <strong className="edit-ui-shot-name" data-testid="edit-ui-shot-name">{t('editUi.shot.title', {number: sequence.shotNumber, name: sequence.shotName})}</strong>
       {sequence.onRevealShot && <Button type="button" variant="outline" size="sm" className="edit-ui-shot-reveal" data-testid="edit-ui-shot-reveal"
-        onClick={() => sequence.onRevealShot?.()}>{t('editUi.shot.reveal')}</Button>}
+        onClick={() => sequence.onRevealShot?.()}><span>{t('editUi.shot.reveal')}</span><ArrowUpRight size={13} aria-hidden="true" /></Button>}
     </div>
     <div className="edit-ui-version-row">
       <span className="edit-ui-version-label">{t('editUi.version.label')}</span>
