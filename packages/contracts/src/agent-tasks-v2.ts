@@ -108,8 +108,45 @@ export type AgentTaskSendInput=z.infer<typeof agentTaskSendSchema>;
 export type AgentTaskControlInput=z.infer<typeof agentTaskControlSchema>;
 export type AgentTaskControlAction=AgentTaskControlInput['action'];
 
-export const agentTaskEditingSchema=z.object({requestId,action:z.enum(['claim','restore','release','heartbeat','resolve']),projectId:id,ownerId:requestId,generation:revision,sequence:revision,targets:z.array(z.object({kind:z.string().min(1).max(80),id:z.string().min(1).max(200),revision}).strict()).min(1).max(100)}).strict();
+const editingTargetIdentity=z.object({kind:z.string().min(1).max(80),id:z.string().min(1).max(200)}).strict();
+const editingRequestIdentity=z.object({requestId,projectId:id,ownerId:requestId,generation:revision,sequence:revision}).strict();
+// Keep the parsed key order used by existing editing request digests.
+export const agentTaskEditingSchema=z.object({
+  requestId,action:z.enum(['claim','restore','release','heartbeat','resolve']),projectId:id,ownerId:requestId,generation:revision,sequence:revision,
+  targets:z.array(editingTargetIdentity.extend({revision})).min(1).max(100),
+}).strict();
 export type AgentTaskEditingInput=z.infer<typeof agentTaskEditingSchema>;
+const clipEditingGroups=new Set(['timeline_clip_audio','timeline_clip_visual','timeline_clip_timing']);
+export function agentTaskEditingTargetRevisionKind(kind:string):string{
+  return clipEditingGroups.has(kind)?'timeline_clip':kind;
+}
+/** A whole clip overlaps its groups. Distinct groups on the same clip can be edited separately. */
+export function agentTaskEditingTargetsOverlap(a:{kind:string;id:string},b:{kind:string;id:string}):boolean{
+  return a.id===b.id&&(a.kind===b.kind||a.kind==='timeline_clip'&&clipEditingGroups.has(b.kind)||b.kind==='timeline_clip'&&clipEditingGroups.has(a.kind));
+}
+const editingWrite=editingTargetIdentity.extend({state:z.enum(['committing','outcome_unknown']),runId:id,stepId:id});
+export type AgentTaskEditingWrite=z.infer<typeof editingWrite>;
+export const agentTaskEditingWritesSchema=z.object({writes:z.array(editingWrite)}).strict();
+const json:z.ZodType<AgentTaskJson>=z.lazy(()=>z.union([z.null(),z.boolean(),z.number().finite(),z.string(),z.array(json),z.record(json)]));
+export const agentTaskEditingConflictDetailsSchema=z.discriminatedUnion('reason',[
+  z.object({reason:z.literal('revision_changed'),targets:z.array(editingTargetIdentity.extend({
+    expectedRevision:revision,currentRevision:revision,currentValues:z.record(json).nullable().optional(),
+  })).min(1).max(100),omittedTargets:revision.optional()}).strict(),
+  z.object({reason:z.literal('mio_committing'),writes:z.array(editingWrite).min(1)}).strict(),
+  z.object({reason:z.literal('outcome_unknown'),writes:z.array(editingWrite).min(1)}).strict(),
+]);
+export type AgentTaskEditingConflictDetails=z.infer<typeof agentTaskEditingConflictDetailsSchema>;
+export const AGENT_TASK_EDITING_CONFLICT_CODES=Object.freeze({
+  revision_changed:'AGENT_TASK_TARGET_CHANGED',
+  mio_committing:'AGENT_TASK_MIO_COMMITTING',
+  outcome_unknown:'AGENT_TASK_UNKNOWN_RESULT',
+} as const);
+const editingRejected=z.object({
+  code:z.enum(['AGENT_TASK_TARGET_CHANGED','AGENT_TASK_MIO_COMMITTING','AGENT_TASK_UNKNOWN_RESULT']),
+  details:agentTaskEditingConflictDetailsSchema,
+}).strict().refine(error=>error.code===AGENT_TASK_EDITING_CONFLICT_CODES[error.details.reason]);
+export const agentTaskEditingRejectedReceiptSchema=editingRequestIdentity.extend({error:editingRejected});
+export type AgentTaskEditingRejectedReceipt=z.infer<typeof agentTaskEditingRejectedReceiptSchema>;
 export const agentTaskEditingLivenessSchema=z.enum(['in_use','retained','uncertain']);
 export type AgentTaskEditingLiveness=z.infer<typeof agentTaskEditingLivenessSchema>;
 const editingClaimSnapshot=z.string().regex(/^[a-f0-9]{64}$/u);
@@ -121,7 +158,6 @@ export const agentTaskEditingResolveBatchSchema=z.object({
 export type AgentTaskEditingResolveBatchInput=z.infer<typeof agentTaskEditingResolveBatchSchema>;
 export const agentTaskEditingResolveBatchReceiptSchema=z.object({projectId:id,requestId,releasedClaimIds:z.array(id).min(1).max(100)}).strict();
 export type AgentTaskEditingResolveBatchReceipt=z.infer<typeof agentTaskEditingResolveBatchReceiptSchema>;
-const json:z.ZodType<AgentTaskJson>=z.lazy(()=>z.union([z.null(),z.boolean(),z.number().finite(),z.string(),z.array(json),z.record(json)]));
 const error=z.object({code:z.string(),message:z.string()}).strict();
 export const agentTaskStepErrorSchema=error.extend({diagnostic:agentFailureDiagnosticSchema.optional()});
 const displayValue=z.union([z.number().finite(),z.string().max(240),z.boolean(),z.null()]);
@@ -133,12 +169,41 @@ const editingClaim=z.object({
 }).strict();
 export const agentTaskEditingClaimOwnerSchema=z.object({
   claim:editingClaim,generation:revision.nullable(),sequence:revision.nullable(),claimSnapshot:editingClaimSnapshot,liveness:agentTaskEditingLivenessSchema,
+  locator:editingTargetIdentity.optional(),canEnd:z.boolean().optional(),
 }).strict();
 export type AgentTaskEditingClaimOwner=z.infer<typeof agentTaskEditingClaimOwnerSchema>;
 export const agentTaskEditingClaimGroupSchema=z.object({
   projectId:id,kind:z.string(),id:z.string(),owners:z.array(agentTaskEditingClaimOwnerSchema).min(1),
+  locator:editingTargetIdentity.optional(),canEnd:z.boolean().optional(),
 }).strict();
 export type AgentTaskEditingClaimGroup=z.infer<typeof agentTaskEditingClaimGroupSchema>;
+const editingClaimOwnerWithStatus=agentTaskEditingClaimOwnerSchema.required({locator:true,canEnd:true}).refine(owner=>
+  owner.locator.kind===owner.claim.target.kind&&owner.locator.id===owner.claim.target.id&&
+  (!owner.canEnd||owner.liveness==='retained'&&owner.generation!==null&&owner.sequence!==null));
+const editingClaimGroupWithStatus=agentTaskEditingClaimGroupSchema.required({locator:true,canEnd:true}).extend({
+  owners:z.array(editingClaimOwnerWithStatus).min(1),
+}).refine(group=>group.locator.kind===group.kind&&group.locator.id===group.id&&
+  group.canEnd===group.owners.some(owner=>owner.canEnd)&&
+  group.owners.every(owner=>owner.claim.projectId===group.projectId&&owner.locator.id===group.id&&
+    agentTaskEditingTargetRevisionKind(owner.locator.kind)===group.kind));
+export function agentTaskEditingRetainedCounts(groups:readonly AgentTaskEditingClaimGroup[]) {
+  let endableClaimCount=0,endableGroupCount=0;
+  for(const group of groups){
+    const endable=group.owners.filter(owner=>owner.canEnd===true).length;
+    endableClaimCount+=endable;
+    if(endable)endableGroupCount++;
+  }
+  return {endableClaimCount,endableGroupCount};
+}
+/** The extended host status is required for new actions. Legacy readers can
+ * continue parsing groups without treating absent authority as permission. */
+export const agentTaskEditingRetainedResponseSchema=z.object({
+  groups:z.array(editingClaimGroupWithStatus),endableClaimCount:revision,endableGroupCount:revision,
+}).strict().refine(({groups,endableClaimCount,endableGroupCount})=>{
+  const counts=agentTaskEditingRetainedCounts(groups);
+  return counts.endableClaimCount===endableClaimCount&&counts.endableGroupCount===endableGroupCount;
+});
+export type AgentTaskEditingRetainedResponse=z.infer<typeof agentTaskEditingRetainedResponseSchema>;
 export const agentTaskNoteSchema:z.ZodType<AgentTaskNote>=z.object({requestId,text:agentTaskTextSchema,createdAt:z.string().datetime(),modelStepId:id.optional()}).strict();
 export const agentTaskSkippedTargetSchema:z.ZodType<AgentTaskSkippedTarget>=z.object({target:agentTaskTargetSchema,stepId:id,createdAt:z.string().datetime()}).strict();
 export const agentTaskRunSchema:z.ZodType<AgentTaskRun>=z.object({id,projectId:id,conversationId:id.optional(),requestId,text:z.string(),notes:z.array(agentTaskNoteSchema).optional(),skippedTargets:z.array(agentTaskSkippedTargetSchema).optional(),status:z.enum(AGENT_TASK_STATUSES),revision,stepLimit:revision,budget:revision,stepsUsed:revision,configuration:json,settingsRevision:revision.optional(),settingsBinding:agentSettingsBindingSchema.optional(),context:z.array(json).optional(),attachments:z.array(id).max(20).optional(),diagnostic:agentTaskDiagnosticSchema.optional(),createdAt:z.string(),updatedAt:z.string(),pauseReason:z.string().optional(),error:error.optional()}).strict();

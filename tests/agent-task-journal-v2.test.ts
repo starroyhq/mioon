@@ -24,6 +24,7 @@ import {randomUUID} from 'node:crypto';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
 import type {AgentTaskEditingClaimOwner, AgentTaskEditingLiveness} from '../packages/contracts/src/agent-tasks-v2.ts';
+import {agentTaskEditingClaimGroupSchema, agentTaskEditingRetainedCounts, agentTaskEditingRetainedResponseSchema} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {beginFixtureModelStep,beginFixtureToolStep} from './helpers/mio-model-fixture.ts';
 function fixture(safetyStepLimit?:number){const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-task-v2-')),store=openStore(root),projectId=store.projectId;store.put('projects',{id:projectId,name:'Task fixture',revision:1,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});return {root,store,projectId,journal:createAgentTaskJournal(store,{safetyStepLimit}),close(){store.close();rmSync(root,{recursive:true,force:true});}};}
 function start(f:ReturnType<typeof fixture>){return f.journal.create({requestId:randomUUID(),projectId:f.projectId,text:'测试',configuration:{protocol:'responses'}});}
@@ -162,12 +163,13 @@ function selectedClaim(owner: AgentTaskEditingClaimOwner) {
 test('retained editing read groups target kind and ID, with one authoritative status per owner', () => {
   const f = fixture();
   try {
-    const id = randomUUID(), retired = randomUUID(), live = randomUUID(), legacy = randomUUID();
-    const shot = {kind: 'shot', id, revision: 0}, asset = {...shot, kind: 'asset'};
+    const id = randomUUID(), retired = randomUUID(), otherRetired = randomUUID(), live = randomUUID(), legacy = randomUUID();
+    const shot = {kind: 'shot', id, revision: 0}, asset = {...shot, kind: 'asset'}, node = {...shot, kind: 'node'};
     const {journal, projectId} = f;
     const edit = (ownerId: string, targets: typeof shot[]) => journal.edit({requestId: randomUUID(), projectId, ownerId, generation: 2, sequence: 1, action: 'claim', targets});
     edit(retired, [shot, asset]);
-    edit(live, [shot]);
+    edit(otherRetired, [shot]);
+    edit(live, [node, shot]);
     journal.claim({projectId, ownerId: legacy, targets: [shot]});
     const seen: string[] = [];
     const groups = journal.editingClaimGroups(projectId, (project, owner) => {
@@ -175,18 +177,37 @@ test('retained editing read groups target kind and ID, with one authoritative st
       seen.push(owner);
       return owner === live ? 'in_use' : 'retained';
     });
-    assert.deepEqual(seen.sort(), [retired, live].sort());
-    assert.deepEqual(groups.map(group => [group.projectId, group.kind, group.id]), [[projectId, 'asset', id], [projectId, 'shot', id]]);
-    assert.equal(groups[0]!.owners[0]!.liveness, 'retained');
-    const owners = new Map(groups[1]!.owners.map(owner => [owner.claim.ownerId, owner]));
-    assert.equal(owners.size, 3);
+    assert.deepEqual(seen.sort(), [retired, otherRetired, live].sort());
+    const status = agentTaskEditingRetainedResponseSchema.parse({groups, ...agentTaskEditingRetainedCounts(groups)});
+    assert.deepEqual(status.groups.map(group => [group.projectId, group.locator, group.canEnd]), [
+      [projectId, {kind: 'asset', id}, true], [projectId, {kind: 'node', id}, false], [projectId, {kind: 'shot', id}, true],
+    ]);
+    assert.equal(status.endableClaimCount, 3);
+    assert.equal(status.endableGroupCount, 2);
+    const owners = new Map(status.groups[2]!.owners.map(owner => [owner.claim.ownerId, owner]));
+    assert.equal(owners.size, 4);
     assert.equal(owners.get(retired)!.liveness, 'retained');
+    assert.equal(owners.get(retired)!.canEnd, true);
     assert.equal(owners.get(live)!.liveness, 'in_use');
+    assert.equal(owners.get(live)!.canEnd, false);
+    assert.deepEqual(owners.get(live)!.locator, {kind: 'shot', id});
     assert.equal(owners.get(live)!.generation, 2);
     assert.equal(owners.get(live)!.sequence, 1);
     assert.equal(owners.get(legacy)!.liveness, 'uncertain');
     assert.equal(owners.get(legacy)!.generation, null);
     assert.equal(owners.get(legacy)!.sequence, null);
+    assert.equal(owners.get(legacy)!.canEnd, false);
+    assert.equal(agentTaskEditingRetainedResponseSchema.safeParse({...status, endableClaimCount: 4}).success, false);
+    const legacyGroups = groups.map(({locator: _locator, canEnd: _canEnd, owners, ...group}) => ({
+      ...group, owners: owners.map(({locator: _ownerLocator, canEnd: _ownerCanEnd, ...owner}) => owner),
+    }));
+    assert.equal(agentTaskEditingClaimGroupSchema.array().safeParse(legacyGroups).success, true);
+    assert.equal(agentTaskEditingRetainedResponseSchema.safeParse({...status, groups: legacyGroups}).success, false);
+    const currentlyEndable = status.groups[2]!.owners.filter(owner => owner.canEnd).map(selectedClaim);
+    journal.resolveEditingBatch({projectId, requestId: randomUUID(), claims: currentlyEndable},
+      (_project, owner) => owner === retired || owner === otherRetired ? 'retained' : 'in_use');
+    assert.deepEqual(journal.claims(projectId).filter(claim => claim.target.kind === 'shot').map(claim => claim.ownerId).sort(),
+      [legacy, live].sort());
     assert.throws(() => journal.editingClaimGroups(randomUUID(), () => 'retained'), {code: 'AGENT_TASK_NOT_FOUND'});
   } finally { f.close(); }
 });

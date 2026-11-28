@@ -9,7 +9,7 @@ import type {TaskContextHistoryInput,TaskContextHistoryRun} from './task-context
 import type {FrozenMioRules} from './mio-rules.ts';
 import type {AgentTaskConversationPolicy,AgentTaskConversationPolicySetInput,AgentTaskPolicyModes,AgentTaskPolicyUpdate} from '../../../contracts/src/agent-tasks-v2.ts';
 import type {AgentTaskRun,AgentTaskStep,AgentTaskChange,AgentTaskEvent,AgentTaskSnapshot,AgentTaskStatus,AgentTaskStepStatus,AgentTaskJson,AgentTaskReceipt,AgentTaskPolicy,AgentTaskTarget,AgentTaskClaim,AgentTaskEditingInput,AgentTaskDiagnostic,AgentTaskConversation,AgentTaskConversationPage,AgentTaskHistoryPage,AgentTaskNote,AgentTaskSkippedTarget} from '../../../contracts/src/agent-tasks-v2.ts';
-import type {AgentTaskEditingClaimGroup,AgentTaskEditingLiveness,AgentTaskEditingResolveBatchInput,AgentTaskEditingResolveBatchReceipt} from '../../../contracts/src/agent-tasks-v2.ts';
+import type {AgentTaskEditingClaimGroup,AgentTaskEditingLiveness,AgentTaskEditingResolveBatchInput,AgentTaskEditingResolveBatchReceipt,AgentTaskEditingWrite} from '../../../contracts/src/agent-tasks-v2.ts';
 
 export type AgentTaskChangeInput=Omit<AgentTaskChange,'id'|'runId'|'stepId'|'createdAt'|'status'|'modifiedAfter'|'undoDisposition'>;
 export interface AgentTaskStepInput extends Pick<AgentTaskStep,'kind'> {request?:AgentTaskJson;data?:AgentTaskJson;toolCall?:AgentTaskStep['toolCall'];targets?:AgentTaskTarget[];tier?:AgentTaskStep['tier']}
@@ -25,6 +25,7 @@ export interface AgentTaskJournal {
 "expireClaims": (maxAgeMs?: number) => number;
 "markClaimsUncertain": (projectId?: string, ownerId?: string) => void;
 "edit": (input: AgentTaskEditingInput, assertOwner?: EditingOwnerAdmission) => { requestId: string; projectId: string; ownerId: string; generation: number; sequence: number; claims: AgentTaskClaim[]; };
+"editingWrites": (projectId: string) => AgentTaskEditingWrite[];
 "editingOwnerVersion": (projectId: string, ownerId: string) => {generation: number; sequence: number} | null;
 "editingClaimGroups": (projectId: string, liveness: EditingOwnerLiveness) => AgentTaskEditingClaimGroup[];
 "resolveEditingBatch": (input: AgentTaskEditingResolveBatchInput, liveness: EditingOwnerLiveness) => AgentTaskEditingResolveBatchReceipt;
@@ -78,8 +79,8 @@ export interface AgentTaskJournal {
 "lookupPolicy": (requestId: string) => AgentTaskPolicy | null;
 "targetRevision": (projectId: string, kind: string, id: string) => number;
 "revisionSnapshot": (projectId: string) => AgentTaskTarget[];
-"assertTargets": (projectId: string, targets: AgentTaskTarget[]) => void;
-"conflictingTargets": (projectId: string, targets: AgentTaskTarget[]) => AgentTaskTarget[];
+"assertTargets": (projectId: string, targets: AgentTaskTarget[], writeTargets?: readonly AgentTaskTarget[]) => void;
+"conflictingTargets": (projectId: string, targets: AgentTaskTarget[], writeTargets?: readonly AgentTaskTarget[]) => AgentTaskTarget[];
 "claims": (projectId: string, ownerId?: string) => AgentTaskClaim[];
 "claim": (input: { projectId: string; ownerId: string; targets: AgentTaskTarget[]; }) => AgentTaskClaim[];
 "releaseClaims": (projectId: string, ownerId: string, targets?: AgentTaskTarget[]) => void;

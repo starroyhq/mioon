@@ -108,6 +108,47 @@ test('the normal preclaim and editor-session boundary reuse the native owner and
   } finally { f.cleanup(); }
 });
 
+test('first-input claims for one visible revision reuse the mounted window owner', async () => {
+  const f = await fixture({desktopWindowId: crypto.randomUUID()});
+  try {
+    const held = Promise.withResolvers<protection.AgentEditingObservation>();
+    f.setRead(() => held.promise);
+    const first = f.boundary.acquireAgentEditingTargetAtRevision(f.projectId, f.target);
+    const second = f.boundary.acquireAgentEditingTargetAtRevision(f.projectId, {...f.target});
+    assert.equal(first, second);
+    const changed = await f.boundary.acquireAgentEditingTargetAtRevision(f.projectId, {...f.target, revision: f.target.revision + 1});
+    assert.equal(changed.status, 'rejected');
+    assert.equal(f.writes.length, 0);
+    held.resolve(f.observation);
+    assert.equal((await first).status, 'acquired');
+    assert.equal(f.writes.length, 1);
+    assert.equal(f.writes[0]?.targets[0]?.revision, f.target.revision);
+    assert.equal(f.controller.canEdit(), true);
+  } finally { f.cleanup(); }
+});
+
+test('registry evidence is clean only for a verified local claim and an observed clean draft boundary', async () => {
+  const f = await fixture({desktopWindowId: crypto.randomUUID()});
+  try {
+    assert.equal(await f.controller.acquire(), true);
+    const [claim] = f.controller.getState().claims;
+    assert.ok(claim);
+    const owner = {claim, locator: {kind: claim.target.kind, id: claim.target.id}, canEnd: false, liveness: 'in_use' as const,
+      generation: 1, sequence: 1, claimSnapshot: '0'.repeat(64)};
+    const evidence = f.boundary.agentRetainedEditingEvidence(f.projectId);
+    assert.equal(evidence.ownsWindow(claim.ownerId), true);
+    assert.equal(evidence.ownsWindow(crypto.randomUUID()), false);
+    assert.equal(evidence.readDraft?.(owner), 'clean');
+    assert.equal(evidence.readDraft?.({...owner, claim: {...claim, id: crypto.randomUUID()}}), 'unconfirmed');
+    f.setClean(false);
+    assert.equal(evidence.readDraft?.(owner), 'unconfirmed', 'A blocked release alone is not evidence of unsaved content');
+    assert.equal(f.boundary.agentRetainedEditingEvidence(f.projectId, () => 'unsaved').readDraft?.(owner), 'unsaved');
+    f.setClean(true);
+    f.unmount();
+    assert.equal(evidence.readDraft?.(owner), 'unconfirmed');
+  } finally { f.cleanup(); }
+});
+
 test('normal pagehide dispatches one keepalive release while dirty or unknown claims stay fenced', async () => {
   const f = await fixture();
   try {

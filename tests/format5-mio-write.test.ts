@@ -28,6 +28,7 @@ import {authorizeTestScope, createTestAuthorizations} from './helpers/agent-auth
 import {defaultTestAgentConfiguration} from './helpers/agent-preset-configurations.ts';
 import {putTestAgentConfiguration, testAgentExecution} from './helpers/agent-settings-fixture.ts';
 import {mioTestPolicy} from './helpers/mio-runtime-fixture.ts';
+import {beginFixtureToolStep, mioFixtureConfiguration} from './helpers/mio-model-fixture.ts';
 import {call, output} from './helpers/agent-task-runtime-fixture.ts';
 import {createTestAgentSettings} from './helpers/secret-codec.ts';
 import {createHash, randomUUID} from 'node:crypto';
@@ -406,6 +407,115 @@ test('FR-A clip properties are opened as a Mio action through the same envelope'
   const undone=applyMioSequenceUndo(store,prepareMioSequenceUndo(store,projectId,req(7),receipt.actionId));
   assert.equal(undone.status,'applied');
   assert.equal((store.get('timelines',timelineId) as any).clips.find((clip: any)=>clip.id===clipA).name,'A');
+});
+
+test('Mio sequence write set includes moved neighbours, projected cues and the inverse patch', async t => {
+  const store=fixture(t), journal=createMioJournal(store,mioTestPolicy);
+  const tools=createAgentTaskTools({store,journal,services:{generationAvailability:{mockAllowed:true}} as never});
+  t.after(()=>tools.dispose());
+  const setup=(action:Parameters<typeof previewMioSequenceAction>[3])=>
+    commitMioSequenceAction(store,previewMioSequenceAction(store,projectId,randomUUID(),action));
+  assert.equal(setup({kind:'dialogue',shotId:shotA,edits:[{kind:'add',text:'保留这行字幕'}]}).status,'applied');
+  assert.equal(setup({kind:'separate-sound',clipId:clipA}).status,'applied');
+  const timeline=()=>(store.get('timelines',timelineId) as {clips:{id:string;startFrame:number;trackId:string}[];
+    subtitles:{cues:{id:string;startFrame:number}[]}});
+  const cueId=timeline().subtitles.cues[0]!.id;
+  const soundId=timeline().clips.find(clip=>clip.trackId===audio)!.id;
+  const before=timeline();
+  const move=tools.prepare({projectId,operation:'mioon_sequence_edit',input:{kind:'reorder',clipId:clipA,beforeClipId:imageClip}});
+  assert.ok(move.targets.some(target=>target.kind==='timeline_clip'&&target.id===clipB));
+  assert.ok(move.writeTargets?.some(target=>target.kind==='timeline_clip_timing'&&target.id===soundId));
+  assert.ok(move.writeTargets?.some(target=>target.kind==='timeline_subtitle'&&target.id===cueId));
+  assert.ok(!move.writeTargets?.some(target=>target.kind==='timeline_clip_timing'&&target.id===imageClip));
+  const claim=(ownerId:string,kind:string,id:string)=>journal.claim({projectId,ownerId,targets:[
+    {kind,id,revision:journal.targetRevision(projectId,kind,id)}]});
+  const perform=(prepared:typeof move)=>{
+    const stepId=randomUUID();
+    return tools.execute(prepared,{runId:randomUUID(),stepId,requestId:stepId,
+      beforeEffect(){journal.assertTargets(projectId,prepared.targets,prepared.writeTargets);},recordInside(){}});
+  };
+  claim('subtitle-window','timeline_subtitle',cueId);
+  await assert.rejects(perform(move),{code:'AGENT_TASK_TARGET_CLAIMED'});
+  assert.deepEqual(timeline(),before);
+  journal.releaseClaims(projectId,'subtitle-window');
+  claim('sound-window','timeline_clip_timing',soundId);
+  await assert.rejects(perform(move),{code:'AGENT_TASK_TARGET_CLAIMED'});
+  journal.releaseClaims(projectId,'sound-window');
+  // Audio editing on the same clip does not block a timing-only reorder.
+  claim('sound-window','timeline_clip_audio',soundId);
+  assert.equal((await perform(move)).recorded,false);
+  journal.releaseClaims(projectId,'sound-window');
+  const after=timeline();
+  assert.ok(after.clips.find(clip=>clip.id===soundId)!.startFrame>before.clips.find(clip=>clip.id===soundId)!.startFrame);
+  assert.ok(after.subtitles.cues.find(cue=>cue.id===cueId)!.startFrame>before.subtitles.cues.find(cue=>cue.id===cueId)!.startFrame);
+  const undo=tools.prepare({projectId,operation:'mioon_sequence_undo',input:{}});
+  assert.ok(undo.targets.some(target=>target.kind==='timeline_clip'&&target.id===soundId));
+  assert.ok(undo.writeTargets?.some(target=>target.kind==='timeline_subtitle'&&target.id===cueId));
+  claim('subtitle-window','timeline_subtitle',cueId);
+  await assert.rejects(perform(undo),{code:'AGENT_TASK_TARGET_CLAIMED'});
+  assert.deepEqual(timeline(),after);
+  journal.releaseClaims(projectId,'subtitle-window');
+  await perform(undo);
+  assert.equal(timeline().clips.find(clip=>clip.id===soundId)!.startFrame,before.clips.find(clip=>clip.id===soundId)!.startFrame);
+  assert.equal(timeline().subtitles.cues.find(cue=>cue.id===cueId)!.startFrame,before.subtitles.cues.find(cue=>cue.id===cueId)!.startFrame);
+});
+
+test('Mio generation freezes the existing placeholder it may adopt', t => {
+  const store=fixture(t),journal=createMioJournal(store,mioTestPolicy);
+  const tools=createAgentTaskTools({store,journal,services:{generationAvailability:{mockAllowed:true}} as never});
+  t.after(()=>tools.dispose());
+  const submit=(shotId:string)=>tools.prepare({projectId,operation:'mioon_generation_submit',
+    input:{shotId,expectedRevision:1,providerId:'mock',model:'mock-motion-v1'}});
+  const forPlaceholder=submit(shotB);
+  assert.deepEqual(forPlaceholder.targets.filter(target=>target.kind==='timeline_clip'),[
+    {kind:'timeline_clip',id:clipB,revision:journal.targetRevision(projectId,'timeline_clip',clipB)},
+  ]);
+  assert.ok(!submit(shotA).targets.some(target=>target.kind==='timeline_clip'));
+});
+
+test('Mio sequence receipt recovery uses only the retained step request', async t => {
+  const store=fixture(t), journal=createMioJournal(store,mioTestPolicy);
+  const tools=createAgentTaskTools({store,journal,services:{generationAvailability:{mockAllowed:true}} as never});
+  t.after(()=>tools.dispose());
+  const run=journal.create({requestId:randomUUID(),projectId,text:'Sequence receipt fixture',
+    configuration:mioFixtureConfiguration}).run;
+  const input={kind:'clip-properties',edits:[{clipId:clipA,patch:{gain:0.5,transform:null}}]};
+  const call={id:randomUUID(),name:'mioon_sequence_clip_edit',arguments:input};
+  const step=beginFixtureToolStep(journal,run.id,{tier:'local_reversible',toolCall:call});
+  const requester={runId:run.id,stepId:step.id};
+  const prepared=tools.prepare({projectId,operation:call.name,input,canvasRequester:requester});
+  assert.deepEqual(prepared.writeTargets?.map(({kind,id})=>({kind,id})),[{kind:'timeline_clip_audio',id:clipA}]);
+  assert.ok(prepared.sequence&&'envelope' in prepared.sequence.plan);
+  assert.equal(prepared.sequence.plan.envelope.requestId,step.id);
+  journal.updateStep(run.id,step.id,{targets:prepared.targets,data:{sequenceRequestId:step.id}});
+  const existing=store.get('timelines',timelineId);
+  journal.claim({projectId,ownerId:'gain-window',targets:[
+    {kind:'timeline_clip_audio',id:clipA,revision:journal.targetRevision(projectId,'timeline_clip_audio',clipA)},
+  ]});
+  journal.markDispatch(run.id,step.id);
+  // Even if a planner includes the explicit clip only as a read dependency,
+  // the observed audio write must conflict before the transaction commits.
+  const incomplete={...prepared,writeTargets:[]};
+  await assert.rejects(tools.execute(incomplete,{...requester,requestId:step.id,
+    beforeEffect(){journal.assertTargets(projectId,incomplete.targets,incomplete.writeTargets);},recordInside(){}}),
+  {code:'AGENT_TASK_TARGET_CLAIMED'});
+  assert.deepEqual(store.get('timelines',timelineId),existing);
+  journal.releaseClaims(projectId,'gain-window');
+  await tools.execute(prepared,{...requester,requestId:step.id,beforeEffect(){},recordInside(){}});
+  journal.updateStep(run.id,step.id,{status:'unknown'});
+  const lookup={projectId,...requester,requestId:step.id};
+  const receipt=tools.recoverSequenceUnknown(lookup);
+  assert.ok(receipt?.outcome==='applied');
+  assert.equal((receipt.result as {status:string}).status,'applied');
+  assert.equal(tools.recoverSequenceUnknown({...lookup,requestId:randomUUID()}),null);
+  const second=beginFixtureToolStep(journal,run.id,{tier:'local_reversible',toolCall:{...call,id:randomUUID()}});
+  journal.markDispatch(run.id,second.id);
+  journal.updateStep(run.id,second.id,{status:'unknown'});
+  const missing={projectId,runId:run.id,stepId:second.id,requestId:second.id};
+  assert.equal(tools.recoverSequenceUnknown(missing),null);
+  journal.updateStep(run.id,second.id,{data:{sequenceRequestId:second.id}});
+  assert.deepEqual(tools.recoverSequenceUnknown(missing),{outcome:'not_applied',reason:'atomic_receipt_absent'});
+  assert.deepEqual(tools.recoverSequenceUnknown(lookup),receipt);
 });
 
 test('Mio waits for approval to copy a clip as a new shot and compensates it in one step', async t => {

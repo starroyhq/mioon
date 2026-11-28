@@ -7,8 +7,9 @@ import Icon from './icons.tsx';
 import { useI18n } from './i18n/I18nProvider.tsx';
 import { message } from '../../../packages/i18n/src/index.ts';
 import type { AgentTaskTarget } from '../../../packages/contracts/src/agent-tasks-v2.ts';
-import { createAgentEditingProtection, agentEditingOwnerIdentity, agentEditingOwnerInWindow } from './agent-editing-protection.ts';
-import type { AgentEditingState } from './agent-editing-protection.ts';
+import { createAgentEditingProtection, agentEditingOwnerIdentity, agentEditingOwnerInWindow, agentEditingTargetRevision } from './agent-editing-protection.ts';
+import type { AgentEditingClaimResult, AgentEditingState } from './agent-editing-protection.ts';
+import type { RetainedEditingLocalEvidence } from './agent-retained-editing.ts';
 import type { NativeCloseSourceRegistry } from './native-close-sources.ts';
 import type { AgentEditingProof } from './agent-editing-proof.ts';
 import { useWorkspaceVisibility } from './workspace-visibility.tsx';
@@ -33,6 +34,7 @@ interface EditingOwner {
   departed: Set<EditingParticipant>;
   acquiring?: Promise<boolean>;
   reading?: Promise<boolean>;
+  exactAcquire?: {revision: number; pending: Promise<AgentEditingClaimResult>};
   holdKey?: string;
 }
 const owners = new Map<string, EditingOwner>();
@@ -58,6 +60,7 @@ function refreshOwner(entry: EditingOwner): Promise<boolean> {
   return entry.reading ??= entry.controller.refresh().finally(() => { entry.reading = undefined; });
 }
 function acquireOwner(entry: EditingOwner): Promise<boolean> {
+  if (entry.exactAcquire) return entry.exactAcquire.pending.then(result => result.status === 'acquired');
   if (entry.controller.canEdit()) return Promise.resolve(true);
   return entry.acquiring ??= (async () => {
     if (entry.reading) await entry.reading;
@@ -68,10 +71,10 @@ const targetOwner = (projectId: string, kind: string, id: string) => owners.get(
 export function agentEditingOwnedByThisWindow(ownerId: string): boolean { return agentEditingOwnerInWindow(ownerId, nativeWindowOwner ? 'desktop' : 'normal', agentEditingWindowOwner()); }
 export function invalidateAgentEditingOwner(projectId: string, ownerId: string): void { for (const entry of owners.values()) if (entry.projectId === projectId && entry.ownerId === ownerId) entry.controller.invalidate(); }
 export function agentEditingTargetActive(projectId: string, kind: string, id: string): boolean { return targetOwner(projectId, kind, id)?.controller.canEdit() ?? false; }
-export function agentEditingProof(projectId:string,kind:string,id:string):AgentEditingProof|null {const entry=targetOwner(projectId,kind,id),state=entry?.controller.getState(),claim=state?.claims.find(value=>value.target.kind===kind&&value.target.id===id);return entry?.controller.canEdit()&&claim&&typeof state?.timelineRevision==='number'?{ownerId:claim.ownerId,kind,id,revision:state.targets?.find(target=>target.kind===kind&&target.id===id)?.revision??0,timelineRevision:state.timelineRevision}:null;}
+export function agentEditingProof(projectId:string,kind:string,id:string):AgentEditingProof|null {const entry=targetOwner(projectId,kind,id),state=entry?.controller.getState(),claim=state?.claims.find(value=>value.target.kind===kind&&value.target.id===id);return entry?.controller.canEdit()&&claim&&typeof state?.timelineRevision==='number'?{ownerId:claim.ownerId,kind,id,revision:agentEditingTargetRevision(state.targets ?? [], {kind,id}),timelineRevision:state.timelineRevision}:null;}
 export async function refreshAgentEditingTargets(projectId: string): Promise<void> {
   await Promise.allSettled([...owners.values()].filter(entry => entry.projectId === projectId &&
-    (entry.participants.size || entry.acquiring || entry.controller.getState().phase !== 'idle')).map(refreshOwner));
+    (entry.participants.size || entry.acquiring || entry.exactAcquire || entry.controller.getState().phase !== 'idle')).map(refreshOwner));
 }
 export function subscribeAgentEditingChanges(listener:()=>void):()=>void{closeListeners.add(listener);return()=>{closeListeners.delete(listener);};}
 function editingCloseIdentity(id: string, state: AgentEditingState): readonly unknown[] {
@@ -93,12 +96,51 @@ export function watchAgentEditingClose(registry: NativeCloseSourceRegistry): () 
 export async function acquireAgentEditingTarget(projectId: string, target: AgentTaskTarget): Promise<boolean> {
   try { return await acquireOwner(protection(projectId, [target])); } catch { return false; }
 }
+/** The caller keeps the first input in its draft until this exact revision is admitted. */
+export function acquireAgentEditingTargetAtRevision(projectId: string, target: AgentTaskTarget): Promise<AgentEditingClaimResult> {
+  const visible = {...target};
+  const entry = protection(projectId, [visible]);
+  if (entry.exactAcquire) return entry.exactAcquire.revision === visible.revision ? entry.exactAcquire.pending :
+    Promise.resolve({status: 'rejected', code: 'AGENT_TASK_EDIT_OWNER_UNCERTAIN'});
+  const pending = (async () => {
+    await entry.acquiring;
+    await entry.reading;
+    return entry.controller.acquireAtRevision([visible]);
+  })().finally(() => {entry.exactAcquire = undefined;});
+  entry.exactAcquire = {revision: visible.revision, pending};
+  return pending;
+}
+/** A lost POST is only settled by reading its original receipt. */
+export async function reconcileAgentEditingTargetClaim(projectId: string, target: AgentTaskTarget, requestId: string): Promise<AgentEditingClaimResult> {
+  const visible = {...target};
+  const entry = targetOwner(projectId, visible.kind, visible.id);
+  if (!entry) return {status: 'rejected', code: 'AGENT_TASK_EDIT_OWNER_UNCERTAIN'};
+  await entry.exactAcquire?.pending;
+  await entry.reading;
+  return entry.controller.reconcileClaimAtRevision([visible], requestId);
+}
 function ownerCanRelease(entry: EditingOwner): boolean {
   try {
     // Unmount is not a discard acknowledgment. A detached dirty or pending
     // editor must still prohibit a later pagehide or sibling's release.
     return !entry.departed.size && !(entry.holdKey && holds.get(entry.holdKey)?.count) && [...entry.participants].every(participant => participant.canRelease());
   } catch { return false; }
+}
+/** Draft state stays in this renderer. The existing release guard can certify
+ * a clean participant, but a blocked release may also mean a pending request. */
+export function agentRetainedEditingEvidence(projectId: string, readDraft?: RetainedEditingLocalEvidence['readDraft']): RetainedEditingLocalEvidence {
+  return {
+    ownsWindow: agentEditingOwnedByThisWindow,
+    readDraft(owner) {
+      const supplied = readDraft?.(owner);
+      if (supplied !== undefined) return supplied;
+      const {id, ownerId} = owner.claim;
+      const entry = [...owners.values()].find(entry => entry.projectId === projectId && entry.ownerId === ownerId);
+      return entry?.controller.canEdit() && entry.controller.getState().claims.some(claim => claim.id === id) &&
+        entry.participants.size && [...entry.participants].every(participant => participant.clean) && ownerCanRelease(entry)
+        ? 'clean' : 'unconfirmed';
+    },
+  };
 }
 const hasVisibleParticipant = (entry: EditingOwner) => [...entry.participants].some(participant => participant.visible);
 function deferRelease(entry: EditingOwner, allowed: () => boolean): void {
@@ -107,6 +149,7 @@ function deferRelease(entry: EditingOwner, allowed: () => boolean): void {
   setTimeout(() => {
     void (async () => {
       await entry.acquiring;
+      await entry.exactAcquire?.pending;
       await entry.reading;
       if (entry.controller.canEdit() && allowed() && ownerCanRelease(entry)) await entry.controller.release();
     })().catch(() => {});

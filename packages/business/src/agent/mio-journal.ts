@@ -2,15 +2,18 @@ import {agentSettingsBindingSchema} from '../../../contracts/src/agent-connectio
 import {createHash, randomUUID} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import type {ProjectStore} from '../project-file/store.ts';
+import {supportsSequenceCoEditing} from './co-editing-writes.ts';
+import {createCoEditingCurrentValueReader} from './co-editing-current-values.ts';
 import {createMioRecords} from './mio-records.ts';
 import type {MioBeginRequest} from './mio-records.ts';
 import type {MioRequest, MioEntry, MioClaim, MioEditOwner} from '../../../contracts/src/mio-records.ts';
 import {mioEntrySchema} from '../../../contracts/src/mio-records.ts';
 import type {AgentTaskJournal, AgentTaskStepInput, AgentTaskControlRecord, AgentTaskChangeInput, EditingOwnerAdmission, EditingOwnerLiveness} from './task-journal-v2.ts';
 import type {AgentTaskRun, AgentTaskStep, AgentTaskJson, AgentTaskPolicy, AgentTaskEvent, AgentTaskSnapshot, AgentTaskNote, AgentTaskSkippedTarget, AgentTaskTarget, AgentTaskChange, AgentTaskReceipt, AgentTaskConversation, AgentTaskHistoryPage, AgentTaskConversationPage, AgentTaskStatus, AgentTaskStepStatus, AgentTaskClaim, AgentTaskEditingInput, AgentTaskPolicyModes, AgentTaskConversationPolicy, AgentTaskConversationPolicySetInput} from '../../../contracts/src/agent-tasks-v2.ts';
-import type {AgentTaskEditingClaimGroup, AgentTaskEditingLiveness, AgentTaskEditingResolveBatchInput, AgentTaskEditingResolveBatchReceipt} from '../../../contracts/src/agent-tasks-v2.ts';
+import type {AgentTaskEditingClaimGroup, AgentTaskEditingLiveness, AgentTaskEditingResolveBatchInput, AgentTaskEditingResolveBatchReceipt, AgentTaskEditingConflictDetails, AgentTaskEditingRejectedReceipt, AgentTaskEditingWrite} from '../../../contracts/src/agent-tasks-v2.ts';
 import {agentTaskConversationPolicySchema, agentTaskPolicyModesSchema, agentTaskQuestionSchema, agentTaskAnswerSchema, agentTaskStepErrorSchema, DEFAULT_AGENT_TASK_POLICY} from '../../../contracts/src/agent-tasks-v2.ts';
-import {agentTaskEditingResolveBatchSchema, agentTaskEditingResolveBatchReceiptSchema} from '../../../contracts/src/agent-tasks-v2.ts';
+import {agentTaskEditingResolveBatchSchema, agentTaskEditingResolveBatchReceiptSchema, agentTaskEditingRejectedReceiptSchema,
+  agentTaskEditingTargetRevisionKind, agentTaskEditingTargetsOverlap, agentTaskTargetSchema, AGENT_TASK_EDITING_CONFLICT_CODES} from '../../../contracts/src/agent-tasks-v2.ts';
 import type {TaskContextHistoryRun, TaskContextHistoryInput} from './task-context-v2.ts';
 import type {TaskRunRecordTarget, TaskRunRecordBackground, TaskRunRecordChange} from './task-run-record-v2.ts';
 import {projectAgentTaskChangeDisplay} from './task-display-v2.ts';
@@ -52,6 +55,7 @@ const decode = <T>(value: unknown): T => JSON.parse(String(value)) as T;
  * separate journal until its host switches to the project kernel. */
 export function createMioJournal(store: ProjectStore, options: MioJournalOptions): AgentTaskJournal {
   const {db, projectId} = store, records = createMioRecords(store);
+  const coEditing = supportsSequenceCoEditing(store);
   const safetyStepLimit = options.safetyStepLimit ?? MIO_SAFETY_STEP_LIMIT;
   if (!Number.isSafeInteger(safetyStepLimit) || safetyStepLimit < 1 || safetyStepLimit > MIO_SAFETY_STEP_LIMIT) fail('AGENT_TASK_INVALID');
   const assembly = options.assembly ?? createMioAssembly(records);
@@ -624,7 +628,7 @@ export function createMioJournal(store: ProjectStore, options: MioJournalOptions
     db.prepare('INSERT INTO mio_conversation_policies(conversationId,projectId,revision,data) VALUES(?,?,?,?) ON CONFLICT(conversationId) DO UPDATE SET revision=excluded.revision,data=excluded.data').run(conversationId, projectId, revision + 1, encode({conversationId, projectId, revision: revision + 1, modes, updatedAt: at}));
     const view = conversationPolicyView(id, conversationId); db.prepare('INSERT INTO mio_conversation_policy_requests(requestId,projectId,conversationId,revision,inputHash,response) VALUES(?,?,?,?,?,?)').run(request.requestId, projectId, conversationId, revision + 1, inputHash, encode(view)); return view;
   }); }
-  function targetRevision(id: string, kind: string, targetId: string): number { own(id); return readMioTargetRevision(db, id, kind, targetId) ?? 0; }
+  function targetRevision(id: string, kind: string, targetId: string): number { own(id); return readMioTargetRevision(db, id, agentTaskEditingTargetRevisionKind(kind), targetId) ?? 0; }
   function editingClaim({kind, targetId, revision, ...claim}: MioClaim): AgentTaskClaim {
     return {...claim, target: {kind, id: targetId, revision}};
   }
@@ -641,7 +645,7 @@ export function createMioJournal(store: ProjectStore, options: MioJournalOptions
   }
   function editingClaimGroups(id: string, liveness: EditingOwnerLiveness): AgentTaskEditingClaimGroup[] {
     own(id);
-    const groups: AgentTaskEditingClaimGroup[] = [];
+    const groups = new Map<string, AgentTaskEditingClaimGroup>();
     const owners = new Map<string, {owner?: MioEditOwner; liveness: AgentTaskEditingLiveness}>();
     for (const item of records.claims()) {
       let info = owners.get(item.ownerId);
@@ -650,15 +654,19 @@ export function createMioJournal(store: ProjectStore, options: MioJournalOptions
         info = {owner, liveness: owner ? liveness(projectId, item.ownerId) : 'uncertain'};
         owners.set(item.ownerId, info);
       }
-      let group = groups.at(-1);
-      if (group?.kind !== item.kind || group.id !== item.targetId) {
-        group = {projectId, kind: item.kind, id: item.targetId, owners: []};
-        groups.push(group);
+      const kind = agentTaskEditingTargetRevisionKind(item.kind), key = encode([kind, item.targetId]);
+      let group = groups.get(key);
+      if (!group) {
+        group = {projectId, kind, id: item.targetId, locator: {kind, id: item.targetId}, canEnd: false, owners: []};
+        groups.set(key, group);
       }
+      const canEnd = info.owner !== undefined && info.liveness === 'retained';
+      if (canEnd) group.canEnd = true;
       group.owners.push({claim: editingClaim(item), generation: info.owner?.generation ?? null, sequence: info.owner?.sequence ?? null,
-        claimSnapshot: editingClaimSnapshot(item, info.owner), liveness: info.liveness});
+        claimSnapshot: editingClaimSnapshot(item, info.owner), liveness: info.liveness,
+        locator: {kind: item.kind, id: item.targetId}, canEnd});
     }
-    return groups;
+    return [...groups.values()];
   }
   function editingBatchReceipt(requestId: string, data: AgentTaskJson | undefined): AgentTaskEditingResolveBatchReceipt | null {
     // Both operations use the existing receipt ledger; legacy results contain
@@ -705,17 +713,114 @@ export function createMioJournal(store: ProjectStore, options: MioJournalOptions
       return result;
     });
   }
-  function assertTargets(id: string, targets: AgentTaskTarget[]): void {
-    own(id); const saved = records.claims(); for (const target of targets) { if (targetRevision(id, target.kind, target.id) !== target.revision) fail('AGENT_TASK_TARGET_CHANGED'); if (saved.some(item => item.kind === target.kind && item.targetId === target.id)) fail('AGENT_TASK_TARGET_CLAIMED'); }
+  function editingWrites(id: string): AgentTaskEditingWrite[] {
+    own(id);
+    if (!coEditing) return [];
+    const pending = db.prepare(`SELECT runId,id,status,
+      COALESCE(json_extract(data,'$.data.editingWriteTargets'),json_extract(data,'$.controls.targets')) AS targets
+      FROM mio_steps WHERE projectId=? AND kind='tool' AND tier IN ('local_reversible','local_irreversible','paid')
+      AND status IN ('dispatch_started','unknown') ORDER BY runId,position`).all(projectId);
+    return pending.flatMap(row => {
+      if (typeof row.targets !== 'string') return [];
+      const parsed = agentTaskTargetSchema.array().safeParse(decode(row.targets));
+      if (!parsed.success) return fail('AGENT_TASK_STORAGE_CORRUPT');
+      const state = row.status === 'unknown' ? 'outcome_unknown' as const : 'committing' as const;
+      return parsed.data.map(({kind, id}) => ({kind, id, state, runId: String(row.runId), stepId: String(row.id)}));
+    });
   }
-  function conflictingTargets(id: string, targets: AgentTaskTarget[]): AgentTaskTarget[] { own(id); const saved = records.claims(); return targets.filter(target => targetRevision(id, target.kind, target.id) !== target.revision || saved.some(item => item.kind === target.kind && item.targetId === target.id)); }
-  function claim(input: {projectId: string; ownerId: string; targets: AgentTaskTarget[]}): AgentTaskClaim[] { return transact(() => {
-    own(input.projectId); for (const target of input.targets) {
+  const claimTargets = () => records.claims().map(({kind, targetId}) => ({kind, id: targetId}));
+  function assertTargets(id: string, targets: AgentTaskTarget[], writes: readonly AgentTaskTarget[] = targets): void {
+    own(id);
+    const saved = claimTargets();
+    // Legacy callers historically check revision then claim in target order.
+    if (!coEditing) {
+      for (const target of targets) {
+        if (targetRevision(id, target.kind, target.id) !== target.revision) fail('AGENT_TASK_TARGET_CHANGED');
+        if (saved.some(item => item.kind === target.kind && item.id === target.id)) fail('AGENT_TASK_TARGET_CLAIMED');
+      }
+      return;
+    }
+    if (targets.some(target => targetRevision(id, target.kind, target.id) !== target.revision)) fail('AGENT_TASK_TARGET_CHANGED');
+    if (writes.some(target => saved.some(item => agentTaskEditingTargetsOverlap(item, target)))) fail('AGENT_TASK_TARGET_CLAIMED');
+  }
+  function conflictingTargets(id: string, targets: AgentTaskTarget[], writes: readonly AgentTaskTarget[] = targets): AgentTaskTarget[] {
+    own(id);
+    const saved = claimTargets();
+    if (!coEditing) return targets.filter(target => targetRevision(id, target.kind, target.id) !== target.revision ||
+      saved.some(item => item.kind === target.kind && item.id === target.id));
+    const conflicted = targets.filter(target => targetRevision(id, target.kind, target.id) !== target.revision);
+    for (const target of writes) {
+      if (!saved.some(item => agentTaskEditingTargetsOverlap(item, target))) continue;
+      const objectTarget = targets.find(item => item.kind === agentTaskEditingTargetRevisionKind(target.kind) && item.id === target.id) ?? target;
+      if (!conflicted.some(item => item.kind === objectTarget.kind && item.id === objectTarget.id)) conflicted.push(objectTarget);
+    }
+    return conflicted;
+  }
+  function claimConflict(input: {ownerId: string; targets: AgentTaskTarget[]}): AgentTaskEditingConflictDetails | undefined {
+    const pending = editingWrites(projectId).filter(write => input.targets.some(target => agentTaskEditingTargetsOverlap(write, target)));
+    if (pending.length) {
+      const unknown = pending.filter(write => write.state === 'outcome_unknown');
+      const relevant = unknown.length ? unknown : pending;
+      // One original writer per disputed target is enough to explain this
+      // admission. The status read still lists all unresolved writers.
+      const writes = new Set(input.targets.flatMap(target => {
+        const writer = relevant.find(write => agentTaskEditingTargetsOverlap(write, target));
+        return writer ? [writer] : [];
+      }));
+      return unknown.length ? {reason: 'outcome_unknown', writes: [...writes]} : {reason: 'mio_committing', writes: [...writes]};
+    }
+    const old = records.claims(input.ownerId);
+    const targets = input.targets.flatMap(({kind, id, revision}) => {
+      const currentRevision = targetRevision(projectId, kind, id);
+      const prior = old.find(item => item.kind === kind && item.targetId === id);
+      const expectedRevision = currentRevision === revision && prior ? prior.revision : revision;
+      if (currentRevision === expectedRevision) return [];
+      return [{kind, id, expectedRevision, currentRevision, currentValues: null as Record<string, AgentTaskJson> | null}];
+    });
+    if (!targets.length) return;
+    // Leave at least 2 KiB of the existing 64 KiB receipt for its identity
+    // and error wrapper. Keep complete values or leave them unavailable.
+    const limit = 62 * 1024, reason = 'revision_changed' as const;
+    let omittedTargets = 0;
+    const details = {reason, targets};
+    let bytes = Buffer.byteLength(encode(details)) + 64;
+    while (bytes > limit && targets.length > 1) {
+      targets.pop();
+      omittedTargets++;
+      bytes = Buffer.byteLength(encode(details)) + 64;
+    }
+    const currentValue = createCoEditingCurrentValueReader(store);
+    for (const target of targets) {
+      const values = currentValue(target);
+      if (!values) continue;
+      const added = Buffer.byteLength(encode(values)) - 4;
+      if (bytes + added > limit) continue;
+      target.currentValues = values;
+      bytes += added;
+    }
+    return omittedTargets ? {...details, omittedTargets} : details;
+  }
+  const editingRejection = (details: AgentTaskEditingConflictDetails) => ({code: AGENT_TASK_EDITING_CONFLICT_CODES[details.reason], details});
+  function throwEditingRejection(error: AgentTaskEditingRejectedReceipt['error']): never {
+    throw Object.assign(new Error(error.code), error);
+  }
+  type ClaimInput = {projectId: string; ownerId: string; targets: AgentTaskTarget[]};
+  function saveClaims(input: ClaimInput): void {
+    for (const target of input.targets) {
       if (targetRevision(projectId, target.kind, target.id) !== target.revision) fail('AGENT_TASK_TARGET_CHANGED');
       const old = records.claims(input.ownerId).find(item => item.kind === target.kind && item.targetId === target.id);
       if (old && old.revision !== target.revision) fail('AGENT_TASK_TARGET_CHANGED'); if (old?.state === 'uncertain') fail('AGENT_TASK_EDIT_OWNER_UNCERTAIN');
       const at = date(); records.saveClaim({id: old?.id ?? randomUUID(), ownerId: input.ownerId, kind: target.kind, targetId: target.id, revision: target.revision, state: 'active', createdAt: old?.createdAt ?? at, updatedAt: at});
-    } return claims(projectId, input.ownerId);
+    }
+  }
+  function claim(input: ClaimInput): AgentTaskClaim[] { return transact(() => {
+    own(input.projectId);
+    if (coEditing) {
+      const conflict = claimConflict(input);
+      if (conflict) throwEditingRejection(editingRejection(conflict));
+    }
+    saveClaims(input);
+    return claims(projectId, input.ownerId);
   }); }
   function releaseClaims(id: string, ownerId: string, targets?: AgentTaskTarget[]): void { transact(() => {
     own(id); for (const item of records.claims(ownerId)) if (!targets || targets.some(target => target.kind === item.kind && target.id === item.targetId)) records.removeClaim(item.id, ownerId);
@@ -726,32 +831,51 @@ export function createMioJournal(store: ProjectStore, options: MioJournalOptions
   function expireClaims(maxAgeMs = 30000): number { return transact(() => {
     let count = 0; const before = new Date(Date.now() - maxAgeMs).toISOString(); for (const {projectId: _, ...item} of records.claims()) if (item.state === 'active' && item.updatedAt < before) { records.saveClaim({...item, state: 'uncertain'}); count++; } return count;
   }); }
-  function edit(input: AgentTaskEditingInput, assertOwner?: EditingOwnerAdmission): ReturnType<AgentTaskJournal['edit']> { return transact(() => {
-    own(input.projectId); const digest = hash(input), saved = records.editReceipt(input.requestId);
-    if (saved) { if (saved.digest !== digest || editingBatchReceipt(input.requestId, saved.data)) fail('AGENT_TASK_REQUEST_CONFLICT'); return saved.data as unknown as ReturnType<AgentTaskJournal['edit']>; }
-    const admission = assertOwner?.();
-    const owner = records.editOwner(input.ownerId);
-    if (owner && (owner.generation > input.generation || owner.generation === input.generation && owner.sequence >= input.sequence)) fail('AGENT_TASK_EDIT_OWNER_STALE');
-    // The final release can reach the host just after native destruction.
-    // It still belongs to the existing controller's generation.
-    if (admission === 'native-closed' && (input.action !== 'release' || owner?.generation !== input.generation)) fail('AGENT_TASK_EDIT_OWNER_UNCERTAIN');
-    if (owner && input.generation > owner.generation && !['resolve', 'restore'].includes(input.action)) {
-      // A native renderer reload keeps the window identity. A new controller
-      // can claim from an empty owner ledger after the last clean release.
-      if (admission !== 'native-live' || input.action !== 'claim' || records.claims(input.ownerId).length) fail('AGENT_TASK_EDIT_OWNER_UNCERTAIN');
-    }
-    if (input.action === 'claim' && records.claims(input.ownerId).some(item => item.state === 'uncertain')) fail('AGENT_TASK_EDIT_OWNER_UNCERTAIN');
-    if (input.action === 'restore') {
-      const retained = records.claims(input.ownerId), requested = new Map(input.targets.map(target => [`${target.kind}:${target.id}`, target]));
-      if (!owner || !retained.length || requested.size !== input.targets.length || requested.size !== retained.length) fail('AGENT_TASK_EDIT_OWNER_UNCERTAIN');
-      for (const {projectId: _, ...item} of retained) { const target = requested.get(`${item.kind}:${item.targetId}`); if (!target || target.revision !== item.revision || targetRevision(projectId, item.kind, item.targetId) !== item.revision) fail('AGENT_TASK_TARGET_CHANGED'); records.saveClaim({...item, state: 'active', updatedAt: date()}); }
-    } else if (input.action === 'claim') claim(input);
-    else if (input.action === 'release' || input.action === 'resolve') releaseClaims(projectId, input.ownerId, input.targets);
-    else for (const {projectId: _, ...item} of records.claims(input.ownerId)) records.saveClaim({...item, updatedAt: date()});
-    records.saveEditOwner(input.ownerId, input.generation, input.sequence);
-    const result = {requestId: input.requestId, projectId, ownerId: input.ownerId, generation: input.generation, sequence: input.sequence, claims: claims(projectId, input.ownerId)};
-    records.saveEditReceipt({requestId: input.requestId, ownerId: input.ownerId, digest, data: json(result)}); return result;
-  }); }
+  function edit(input: AgentTaskEditingInput, assertOwner?: EditingOwnerAdmission): ReturnType<AgentTaskJournal['edit']> {
+    const result = transact((): ReturnType<AgentTaskJournal['edit']> | AgentTaskEditingRejectedReceipt => {
+      own(input.projectId); const digest = hash(input), saved = records.editReceipt(input.requestId);
+      if (saved) {
+        if (saved.digest !== digest || editingBatchReceipt(input.requestId, saved.data)) fail('AGENT_TASK_REQUEST_CONFLICT');
+        const rejected = agentTaskEditingRejectedReceiptSchema.safeParse(saved.data);
+        return rejected.success ? rejected.data : saved.data as unknown as ReturnType<AgentTaskJournal['edit']>;
+      }
+      const admission = assertOwner?.();
+      const owner = records.editOwner(input.ownerId);
+      if (owner && (owner.generation > input.generation || owner.generation === input.generation && owner.sequence >= input.sequence)) fail('AGENT_TASK_EDIT_OWNER_STALE');
+      // The final release can reach the host just after native destruction.
+      // It still belongs to the existing controller's generation.
+      if (admission === 'native-closed' && (input.action !== 'release' || owner?.generation !== input.generation)) fail('AGENT_TASK_EDIT_OWNER_UNCERTAIN');
+      if (owner && input.generation > owner.generation && !['resolve', 'restore'].includes(input.action)) {
+        // A native renderer reload keeps the window identity. A new controller
+        // can claim from an empty owner ledger after the last clean release.
+        if (admission !== 'native-live' || input.action !== 'claim' || records.claims(input.ownerId).length) fail('AGENT_TASK_EDIT_OWNER_UNCERTAIN');
+      }
+      if (input.action === 'claim' && records.claims(input.ownerId).some(item => item.state === 'uncertain')) fail('AGENT_TASK_EDIT_OWNER_UNCERTAIN');
+      const identity = {requestId: input.requestId, projectId, ownerId: input.ownerId, generation: input.generation, sequence: input.sequence};
+      if (coEditing && (input.action === 'claim' || input.action === 'restore')) {
+        const conflict = claimConflict(input);
+        if (conflict) {
+          // A lost response can be recovered by the same request ID. No owner
+          // version or claim advances for a rejected admission.
+          const rejection = {...identity, error: editingRejection(conflict)};
+          records.saveEditReceipt({requestId: input.requestId, ownerId: input.ownerId, digest, data: json(rejection)});
+          return rejection;
+        }
+      }
+      if (input.action === 'restore') {
+        const retained = records.claims(input.ownerId), requested = new Map(input.targets.map(target => [`${target.kind}:${target.id}`, target]));
+        if (!owner || !retained.length || requested.size !== input.targets.length || requested.size !== retained.length) fail('AGENT_TASK_EDIT_OWNER_UNCERTAIN');
+        for (const {projectId: _, ...item} of retained) { const target = requested.get(`${item.kind}:${item.targetId}`); if (!target || target.revision !== item.revision || targetRevision(projectId, item.kind, item.targetId) !== item.revision) fail('AGENT_TASK_TARGET_CHANGED'); records.saveClaim({...item, state: 'active', updatedAt: date()}); }
+      } else if (input.action === 'claim') saveClaims(input);
+      else if (input.action === 'release' || input.action === 'resolve') releaseClaims(projectId, input.ownerId, input.targets);
+      else for (const {projectId: _, ...item} of records.claims(input.ownerId)) records.saveClaim({...item, updatedAt: date()});
+      records.saveEditOwner(input.ownerId, input.generation, input.sequence);
+      const receipt = {...identity, claims: claims(projectId, input.ownerId)};
+      records.saveEditReceipt({requestId: input.requestId, ownerId: input.ownerId, digest, data: json(receipt)}); return receipt;
+    });
+    if ('error' in result) throwEditingRejection(result.error);
+    return result;
+  }
   function change(id: string): AgentTaskChange {
     const row = db.prepare('SELECT runId FROM mio_changes WHERE id=? AND projectId=?').get(id, projectId); if (!row) fail('AGENT_TASK_NOT_FOUND'); const value = records.changes(String(row.runId)).find(item => item.id === id); return value ?? fail('AGENT_TASK_NOT_FOUND');
   }
@@ -760,7 +884,7 @@ export function createMioJournal(store: ProjectStore, options: MioJournalOptions
   function markChangeSupersededInside(id: string): AgentTaskChange { inside(); const value = change(id); if (!value.reversible || value.status !== 'applied') fail('AGENT_TASK_NOT_REVERSIBLE'); return saveChange({...value, status: 'superseded'}); }
   function markChangeRetainedInside(id: string, reason: string): AgentTaskChange { inside(); const value = change(id); if (!value.reversible || value.status !== 'applied' || value.operation !== 'shot.create') fail('AGENT_TASK_NOT_REVERSIBLE'); return saveChange({...value, reversible: false, summary: `${value.summary ?? value.operation}（${reason}）`}); }
   return {
-    expireClaims, markClaimsUncertain, edit, editingOwnerVersion, editingClaimGroups, resolveEditingBatch, lookupEditingBatch, conversationPolicy: project(conversationPolicy), setConversationPolicy, effectiveModes, sentConversationModesMatch, conversationPolicies: () => true,
+    expireClaims, markClaimsUncertain, edit, editingWrites, editingOwnerVersion, editingClaimGroups, resolveEditingBatch, lookupEditingBatch, conversationPolicy: project(conversationPolicy), setConversationPolicy, effectiveModes, sentConversationModesMatch, conversationPolicies: () => true,
     lookupRequest: (id, requestId) => project(() => { own(id); const row = db.prepare('SELECT id FROM mio_runs WHERE projectId=? AND requestId=?').get(id, requestId); return row ? snapshot(String(row.id)) : null; })(),
     lookupEdit: requestId => {
       const data = records.editReceipt(requestId)?.data;

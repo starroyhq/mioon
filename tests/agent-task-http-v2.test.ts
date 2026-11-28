@@ -19,11 +19,13 @@ import {startServer} from './helpers/test-server.ts';
 import {AGENT_CREDENTIAL_ACQUIRE} from '../packages/business/src/agent/settings.ts';
 import {createTestAgentSettings} from './helpers/secret-codec.ts';
 import {deriveAgentEndpoint} from '../packages/contracts/src/agent-protocol.ts';
-import type {AgentTaskSnapshot,AgentTaskPolicy,AgentTaskJson,AgentTaskHistoryPage,AgentTaskConversationPage} from '../packages/contracts/src/agent-tasks-v2.ts';
+import type {AgentTaskSnapshot,AgentTaskPolicy,AgentTaskJson,AgentTaskHistoryPage,AgentTaskConversationPage,AgentTaskToolCall} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {agentTaskSnapshotSchema,agentTaskHistoryPageSchema,agentTaskConversationPageSchema,agentTaskConnectionTestResponseSchema,agentTaskConversationPolicySchema,AGENT_TASK_POLICY_PRESETS} from '../packages/contracts/src/agent-tasks-v2.ts';
-import {agentTaskEditingClaimGroupSchema} from '../packages/contracts/src/agent-tasks-v2.ts';
+import {agentTaskEditingRejectedReceiptSchema,agentTaskEditingRetainedResponseSchema} from '../packages/contracts/src/agent-tasks-v2.ts';
+import {agentTaskEditingConflictDetailsSchema,agentTaskTargetSchema} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type {TaskGateway} from '../packages/business/src/agent/task-gateway-v2.ts';
 import type {AgentConfiguration} from '../packages/business/src/agent/config.ts';
+import {FORMAT5_PROJECT_SCHEMA_VERSION,type ProjectFileFormat} from '../packages/business/src/project-file/schema/databases.ts';
 import {agentTaskToolNamesForGroup} from '../packages/business/src/agent/task-tool-groups-v2.ts';
 import type {AgentTaskLoadableToolGroupId} from '../packages/business/src/agent/task-tool-groups-v2.ts';
 
@@ -37,13 +39,17 @@ test('authenticated project editing groups preserve unknown owners and the batch
  assert.equal((await f.request(read,'GET',undefined,false)).status,401);
  assert.equal((await f.request(read,'POST',{})).status,405);
  assert.equal((await f.request(`${read}?projectId=${f.projectId}`)).status,400);
+ assert.equal((await f.request(`${read}?ownerId=${ownerId}`)).status,400);
  assert.equal((await f.request('/api/agent/tasks/v2/editing/retained')).status,404);
  const listed=await f.request(read);assert.equal(listed.status,200);assert.ok(object(listed.data));
- const groups=agentTaskEditingClaimGroupSchema.array().parse(listed.data.groups);
+ const {groups,endableClaimCount,endableGroupCount}=agentTaskEditingRetainedResponseSchema.parse(listed.data);
  assert.equal(groups.length,1);
+ assert.equal(endableClaimCount,0);assert.equal(endableGroupCount,0);
  const [group]=groups;assert.equal(group.projectId,f.projectId);assert.equal(group.kind,target.kind);assert.equal(group.id,target.id);
+ assert.equal(group.canEnd,false);assert.deepEqual(group.locator,{kind:target.kind,id:target.id});
  const [owner]=group.owners;
  assert.equal(owner.claim.ownerId,ownerId);assert.equal(owner.claim.state,'active');assert.equal(owner.liveness,'uncertain');
+ assert.equal(owner.canEnd,false);assert.deepEqual(owner.locator,group.locator);
  const input={projectId:f.projectId,requestId:randomUUID(),claims:[{
   claimId:owner.claim.id,ownerId,generation:owner.generation,sequence:owner.sequence,claimSnapshot:owner.claimSnapshot,
  }]};
@@ -56,6 +62,62 @@ test('authenticated project editing groups preserve unknown owners and the batch
  assert.deepEqual(await f.request(`${batch}?requestId=${input.requestId}`),{status:200,data:{receipt:null},error:undefined});
  assert.deepEqual(await f.request(`${batch}?requestId=${oldInput.requestId}`),{status:200,data:{receipt:null},error:undefined});
  assert.deepEqual(await f.request(read),listed);
+});
+
+test('format 5 project editing exposes write status and preserves a stale claim rejection over HTTP',async t=>{
+ let write = true;
+ const f=await fixture(t,'chat_completions',async function*(request):ReturnType<TaskGateway>{
+  request.beforeSubmit?.();
+  if(!write){
+   yield {type:'done',output:{text:'Renamed',toolCalls:[],providerOutput:{role:'assistant',content:'Renamed'}}};
+   return;
+  }
+  const body=JSON.parse(request.body) as {tools?:Array<{function?:{name?:string}}>};
+  const renameVisible=body.tools?.some(tool=>tool.function?.name==='mioon_project_rename');
+  const call:AgentTaskToolCall=renameVisible
+   ?{id:'co_editing_rename',name:'mioon_project_rename',arguments:{expectedRevision:1,name:'Mio saved name'}}
+   :{id:'co_editing_load',name:'mioon_tools_load',arguments:{names:['mioon_project_rename']}};
+  if(renameVisible)write=false;
+  yield {type:'done',output:{text:'',toolCalls:[call],providerOutput:{role:'assistant',content:null,
+   tool_calls:[{id:call.id,type:'function',function:{name:call.name,arguments:JSON.stringify(call.arguments)}}]}}};
+ },[],undefined,FORMAT5_PROJECT_SCHEMA_VERSION);
+ const editing=`${f.prefix}/editing`,writes=`${editing}/writes`;
+ assert.equal((await f.request(writes,'GET',undefined,false)).status,401);
+ assert.equal((await f.request(writes,'POST',{})).status,405);
+ assert.equal((await f.request(writes+'?unexpected=1')).status,400);
+ assert.equal((await f.request('/api/agent/tasks/v2/editing/writes')).status,404);
+ assert.deepEqual(await f.request(writes),{status:200,data:{writes:[]},error:undefined});
+ const original=await f.request(`${editing}?projectId=${f.projectId}`);
+ assert.equal(original.status,200);assert.ok(object(original.data)&&Array.isArray(original.data.targets));
+ const target=agentTaskTargetSchema.array().parse(original.data.targets).find(value=>value.kind==='project'&&value.id===f.projectId);
+ assert.ok(target);
+ await f.authorize();
+ const sent=await f.request(f.prefix,'POST',{requestId:randomUUID(),text:'Rename this project',
+  expectedSettingsRevision:testAgentExecution(await f.settings.get()).revision});
+ assert.equal(sent.status,200);
+ const ended=await f.settle(agentTaskSnapshotSchema.parse(sent.data).run.id);
+ assert.equal(ended.run.status,'completed');
+ const input={projectId:f.projectId,requestId:randomUUID(),ownerId:randomUUID(),action:'claim',generation:1,sequence:1,targets:[target]};
+ const denied=await f.request(editing,'POST',input);
+ assert.equal(denied.status,409);assert.ok(object(denied.error));
+ assert.equal(denied.error.code,'AGENT_TASK_TARGET_CHANGED');
+ const conflict=agentTaskEditingConflictDetailsSchema.parse(denied.error.details);
+ assert.equal(conflict.reason,'revision_changed');
+ const [details]=conflict.targets;
+ assert.ok(details);
+ assert.deepEqual({kind:details.kind,id:details.id,expectedRevision:details.expectedRevision},
+  {kind:target.kind,id:target.id,expectedRevision:target.revision});
+ assert.ok(details.currentRevision>target.revision);
+ assert.equal(details.currentValues?.name,'Mio saved name');
+ const lookup=await f.request(`${editing}?projectId=${f.projectId}&ownerId=${input.ownerId}&requestId=${input.requestId}`);
+ assert.equal(lookup.status,200);assert.ok(object(lookup.data));
+ assert.deepEqual(lookup.data.claims,[]);
+ assert.deepEqual(agentTaskEditingRejectedReceiptSchema.parse(lookup.data.receipt).error,
+  {code:denied.error.code,details:denied.error.details});
+ const later=await f.request('/api/rpc','POST',{operation:'project.rename',
+  input:{projectId:f.projectId,expectedRevision:2,requestId:randomUUID(),name:'Later saved name'}});
+ assert.equal(later.status,200);
+ assert.deepEqual(await f.request(editing,'POST',input),denied);
 });
 
 test('continued policy has a specific fixed HTTP error without exposing internal markers or consuming a receipt',async t=>{
@@ -105,7 +167,7 @@ async function cliSnapshot(url:string,token:string,projectId:string,runId:string
  await new Promise<void>((resolve,reject)=>{const timer=setTimeout(()=>{child.kill('SIGKILL');reject(Error('Synthetic CLI status timed out'));},15000);child.once('error',error=>{clearTimeout(timer);reject(error);});child.once('close',code=>{clearTimeout(timer);if(code===0)resolve();else reject(Error('Synthetic CLI status failed'));});});
  assert.equal(stdout.includes(token),false);assert.equal(stderr.includes(token),false);const value:unknown=JSON.parse(stdout);assert.ok(object(value)&&value.ok===true);return command==='history'?agentTaskHistoryPageSchema.parse(value.data):command==='conversation'?agentTaskConversationPageSchema.parse(value.data):agentTaskSnapshotSchema.parse(value.data);
 }
-async function fixture(t:TestContext,protocol:AgentConfiguration['protocol']='chat_completions',customGateway?:TaskGateway,groups:readonly AgentTaskLoadableToolGroupId[]=customGateway?[]:['canvas'],beforeCredential?:(count:number)=>Promise<void>){
+async function fixture(t:TestContext,protocol:AgentConfiguration['protocol']='chat_completions',customGateway?:TaskGateway,groups:readonly AgentTaskLoadableToolGroupId[]=customGateway?[]:['canvas'],beforeCredential?:(count:number)=>Promise<void>,projectFormatForTest?:ProjectFileFormat){
  const root=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-task-http-v2-'));
  const settings=await createTestAgentSettings({persistence:{load:async()=>null,save:async()=>{}}});const initial=await settings.get();
  await putTestAgentConfiguration(settings,{expectedRevision:initial.revision,configuration:{...DEFAULT_AGENT_CONFIGURATION,protocol,...(protocol==='chat_completions'?{model:'gpt-5.4-mini'}:{})},secret:{action:'replace',storage:'persistent',value:'SYNTHETIC_TASK_HTTP_KEY'}});
@@ -134,7 +196,7 @@ async function fixture(t:TestContext,protocol:AgentConfiguration['protocol']='ch
   yield*(customGateway??gateway)(request);
  };
  let inspect!:InspectProject;
- const server=await startServer({dataDir:root,port:0,agentSettings:settings,taskGatewayV2:scripted,inspectProject:received=>{inspect=received;}});
+ const server=await startServer({dataDir:root,port:0,agentSettings:settings,taskGatewayV2:scripted,...(projectFormatForTest===undefined?{}:{projectFormatForTest}),inspectProject:received=>{inspect=received;}});
  t.after(async()=>{await server.close();await settings.close();await rm(root,{recursive:true,force:true});});
  async function request(route:string,method='GET',input?:unknown,authorized=true){
   const response=await fetch(server.url+route,{method,headers:{...(authorized?{Authorization:`Bearer ${server.token}`} : {}),...(input!==undefined?{'Content-Type':'application/json'}:{})},...(input!==undefined?{body:JSON.stringify(input)}:{})});

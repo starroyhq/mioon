@@ -12,6 +12,7 @@ import {mioTable} from './mio-table-layout.ts';
 import {readMioRunUsage} from './mio-run-usage.ts';
 import {isProjectStore} from '../project-file/store.ts';
 import {isFormat5Project} from '../sequence-edit.ts';
+import {coEditingWriteTargets,supportsSequenceCoEditing} from './co-editing-writes.ts';
 import {MioSequencePreviewRejection,SequenceEditCommitRejection,sequenceEditFailureEvidence} from '../format5-sequence-preview-errors.ts';
 import {assertProjectStore} from '../store-runtime.ts';
 import {translateSequenceEditDiagnostic} from '../../../i18n/src/index.ts';
@@ -230,6 +231,7 @@ const goalRepairInstructions:Record<AgentTaskLocale,string>={
  * step did not run and the run goes on. Other paths keep the pause wording. */
 export function agentTaskFailure(value:string,{handedBack=false,undo=false,policyOnContinuation=false}:{handedBack?:boolean;undo?:boolean;policyOnContinuation?:boolean}={}):Error&{code:string;status:number;handedBack?:true;policyOnContinuation?:true}{
   if(['AGENT_CHAT_RESPONSES_REQUIRED','AGENT_CHAT_RESPONSES_ITEM_UNSUPPORTED','AGENT_CHAT_OUTPUT_LIMIT','AGENT_CHAT_RESPONSES_INCOMPLETE'].includes(value))return agentChatError(value);
+  if(value==='AGENT_TASK_MIO_COMMITTING')return Object.assign(new Error('Mio 正在提交此目标，请等提交结束。'),{code:value,status:409});
   if(value==='AGENT_TASK_EDIT_BATCH_CONFLICT')return Object.assign(new Error('所选编辑占用已有变化，请刷新后重新选择。'),{code:value,status:409});
   if(policyOnContinuation&&value==='AGENT_TASK_INVALID')return Object.assign(new Error('policy 只能在新对话的第一轮携带；继续对话时请省略 policy。'),{code:value,status:400,policyOnContinuation:true as const});
   const handedBackMessages:Record<string,string>={AGENT_TASK_TARGET_CHANGED:'该目标已被手动修改，这一步没有执行，Mio 会按当前内容重新规划。',AGENT_TASK_TARGET_CLAIMED:'该目标正在手动编辑，这一步没有执行，Mio 会重新规划。'};
@@ -293,6 +295,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
   // Format-5 requests use the compact `_mio_step` declaration and the grouped
   // loader description; formats 3/4 keep their reviewed bytes unchanged.
   const format5=isFormat5Project(store);
+  const coEditing=supportsSequenceCoEditing(store);
   const sourceJournal:AgentTaskJournal=injectedJournal??createMioProjectJournal(store,policyStore);
   const instanceId=randomUUID(),active=new Map<string,Active>();let closed=false,storageFaulted=false,storageFailureCode='AGENT_TASK_STORAGE_UNAVAILABLE';
   let rules=injectedRules;
@@ -333,6 +336,12 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     return (step.targets??[]).map(target=>{const saved=executed.find(item=>item.kind===target.kind&&item.id===target.id);return saved?{...target,revision:saved.revision}:target;});
   }
   const dispatchTargets=(step:AgentTaskStep):AgentTaskTarget[]=>record(step.data)&&Array.isArray(step.data.dispatchApprovalTargets)?step.data.dispatchApprovalTargets as unknown as AgentTaskTarget[]:acceptedTargets(step);
+  const savedWriteTargets=(step:AgentTaskStep):AgentTaskTarget[]|undefined=>{
+    if(!coEditing||!record(step.data)||step.data.editingWriteTargets===undefined)return;
+    const parsed=agentTaskTargetSchema.array().safeParse(step.data.editingWriteTargets);
+    if(!parsed.success)throw agentTaskFailure('AGENT_TASK_STORAGE_UNAVAILABLE');
+    return parsed.data;
+  };
   function referencedTargets(step:AgentTaskStep):AgentTaskTarget[] {
     const saved=record(step.data)?step.data.referencedTargets:undefined;
     if(saved!==undefined&&!Array.isArray(saved))throw agentTaskFailure('AGENT_TASK_STORAGE_UNAVAILABLE');
@@ -342,7 +351,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     const explicit=step.toolCall?agentTaskExplicitTargets(step.toolCall.name,step.toolCall.arguments,journal.run(step.runId).projectId).map(target=>({...target,revision:0})):[];
     return [...dispatchTargets(step),...references.map(value=>{const parsed=agentTaskTargetSchema.safeParse(value);if(!parsed.success)throw agentTaskFailure('AGENT_TASK_STORAGE_UNAVAILABLE');return parsed.data;}),...explicit];
   }
-  const approvalDigest=(step:AgentTaskStep):string=>createHash('sha256').update(JSON.stringify({call:step.toolCall,targets:step.targets,tier:step.tier,...(record(step.data)&&Array.isArray(step.data.dispatchApprovalTargets)?{dispatchTargets:step.data.dispatchApprovalTargets}:{}),...(record(step.data)&&step.data.rulesProposal!==undefined?{rulesProposal:step.data.rulesProposal}:{}),...(record(step.data)&&step.data.projectFileImport!==undefined?{projectFileImport:step.data.projectFileImport}:{}),...(record(step.data)&&typeof step.data.canvasCopyProof==='string'?{canvasCopyProof:step.data.canvasCopyProof}:{}),...(record(step.data)&&typeof step.data.canvasProof==='string'?{canvasProof:step.data.canvasProof,canvasArchiveImpact:step.data.canvasArchiveImpact}:{})})).digest('hex');
+  const approvalDigest=(step:AgentTaskStep):string=>createHash('sha256').update(JSON.stringify({call:step.toolCall,targets:step.targets,tier:step.tier,...(savedWriteTargets(step)===undefined?{}:{editingWriteTargets:savedWriteTargets(step)}),...(record(step.data)&&Array.isArray(step.data.dispatchApprovalTargets)?{dispatchTargets:step.data.dispatchApprovalTargets}:{}),...(record(step.data)&&step.data.rulesProposal!==undefined?{rulesProposal:step.data.rulesProposal}:{}),...(record(step.data)&&step.data.projectFileImport!==undefined?{projectFileImport:step.data.projectFileImport}:{}),...(record(step.data)&&typeof step.data.canvasCopyProof==='string'?{canvasCopyProof:step.data.canvasCopyProof}:{}),...(record(step.data)&&typeof step.data.canvasProof==='string'?{canvasProof:step.data.canvasProof,canvasArchiveImpact:step.data.canvasArchiveImpact}:{})})).digest('hex');
   const approved=(step:AgentTaskStep):boolean=>record(step.data)&&step.data.approvalDigest===approvalDigest(step);
   /** The user's answer becomes the question's tool result. It is input, never an approval. */
   function answerResult(step:AgentTaskStep,request:{choices:number[];text?:string}):AgentTaskJson{
@@ -423,9 +432,9 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     const run=fence(binding.runId,true);
     if(run.projectId!==binding.projectId||step.runId!==run.id)throw agentTaskFailure('AGENT_TASK_NOT_FOUND');
     assertNotSkipped(run,referencedTargets(step));
-    try{journal.assertTargets(run.projectId,dispatchTargets(step));}catch(error){
+    try{journal.assertTargets(run.projectId,dispatchTargets(step),savedWriteTargets(step));}catch(error){
       const failure=code(error);if(failure==='AGENT_TASK_TARGET_CHANGED'||failure==='AGENT_TASK_TARGET_CLAIMED'){
-        const invalidate=()=>{rememberConflict(run.id,step.id,journal.conflictingTargets(run.projectId,dispatchTargets(step)));const current=journal.step(step.id);journal.updateStep(run.id,step.id,{data:{...(record(current.data)?current.data:{}),backgroundInvalidated:true}});pause(run.id,failure==='AGENT_TASK_TARGET_CHANGED'?'conflict':'editing');};
+        const invalidate=()=>{rememberConflict(run.id,step.id,journal.conflictingTargets(run.projectId,dispatchTargets(step),savedWriteTargets(step)));const current=journal.step(step.id);journal.updateStep(run.id,step.id,{data:{...(record(current.data)?current.data:{}),backgroundInvalidated:true}});pause(run.id,failure==='AGENT_TASK_TARGET_CHANGED'?'conflict':'editing');};
         if(store.db.isTransaction)invalidate();else store.tx(invalidate);
       }throw error;
     }
@@ -442,7 +451,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     if(prepared.canvasCopy&&(!record(step.data)||step.data.canvasCopyProof!==prepared.canvasCopy.proof))throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');
     if(prepared.canvas&&(!record(step.data)||step.data.canvasProof!==prepared.canvas.proof))throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');
     if((prepared.forceApproval||journal.effectiveModes(run.projectId,run.conversationId)[prepared.risk]==='confirm'||step.status==='awaiting_approval')&&!approved(step))throw agentTaskFailure('AGENT_TASK_APPROVAL_REQUIRED');
-    journal.assertTargets(run.projectId,prepared.targets);
+    journal.assertTargets(run.projectId,prepared.targets,coEditing?coEditingWriteTargets(prepared):undefined);
   }
   function pause(runId:string,reason:string):void {const run=journal.run(runId);if(!terminal(run)||run.status==='completed'&&journal.hasPendingBackground(runId))changeStatus(runId,'paused',reason);}
   function targetBaseline(step:AgentTaskStep):AgentTaskTarget[]{return record(step.data)&&Array.isArray(step.data.baseline)?step.data.baseline as unknown as AgentTaskTarget[]:[];}
@@ -556,6 +565,12 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         conflicts=[...step.targets.filter(target=>!prepared!.targets.some(item=>item.kind===target.kind&&item.id===target.id&&item.revision===target.revision)),...prepared.targets.filter(target=>!step!.targets!.some(item=>item.kind===target.kind&&item.id===target.id))];
         throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');
       }
+      const writes=coEditing?coEditingWriteTargets(prepared):undefined;
+      const retainedWrites=savedWriteTargets(step);
+      if(retainedWrites!==undefined&&!isDeepStrictEqual(retainedWrites,writes)){
+        conflicts=prepared.targets;
+        throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');
+      }
       const canvas=prepared.canvas;
       if(prepared.canvasCopy&&record(step.data)&&typeof step.data.canvasCopyProof==='string'&&step.data.canvasCopyProof!==prepared.canvasCopy.proof){
         conflicts=prepared.referencedTargets??prepared.targets;
@@ -568,9 +583,9 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       const canvasEvidence=canvas?{canvasProof:canvas.proof,...(canvas.input.operation==='archive'?{canvasArchiveImpact:json({
         ...canvas.impact,shotIds:canvas.impact.shots.map(shot=>shot.id),selected:canvas.input.targets,
       })}:{})}:{};
-      step=journal.updateStep(runId,step.id,{targets:prepared.targets,tier:prepared.risk,data:{...(record(step.data)?step.data:{}),referencedTargets:json(prepared.referencedTargets??prepared.targets),...(prepared.proposal===undefined?{}:{rulesProposal:prepared.proposal}),...(prepared.projectFileImport===undefined?{}:{projectFileImport:json(prepared.projectFileImport)}),...(prepared.canvasCopy?{canvasCopyProof:prepared.canvasCopy.proof}:{}),...canvasEvidence}});
+      step=journal.updateStep(runId,step.id,{targets:prepared.targets,tier:prepared.risk,data:{...(record(step.data)?step.data:{}),referencedTargets:json(prepared.referencedTargets??prepared.targets),...(writes===undefined?{}:{editingWriteTargets:json(writes)}),...(coEditing&&prepared.sequence?{sequenceRequestId:step.id}:{}),...(prepared.proposal===undefined?{}:{rulesProposal:prepared.proposal}),...(prepared.projectFileImport===undefined?{}:{projectFileImport:json(prepared.projectFileImport)}),...(prepared.canvasCopy?{canvasCopyProof:prepared.canvasCopy.proof}:{}),...canvasEvidence}});
       conflicts=modelConflictingTargets(prepared,source);if(conflicts.length)throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');
-      journal.assertTargets(run.projectId,prepared.targets);
+      journal.assertTargets(run.projectId,prepared.targets,writes);
       const serviceIssue=toolset().generationServiceIssue(prepared);
       if(serviceIssue)return recordGenerationServiceDenial(run,step,source,serviceIssue);
       // C3: a question waits for the user's answer; nothing is dispatched.
@@ -584,8 +599,11 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       if((prepared.forceApproval||reconfirmAspect||journal.effectiveModes(run.projectId,run.conversationId)[prepared.risk]==='confirm'||step.status==='awaiting_approval')&&!approved(step)){
         journal.updateStep(runId,step.id,{status:'awaiting_approval',...(prepared.proposal===undefined?{}:{result:{rulesProposal:prepared.proposal}})});changeStatus(runId,'awaiting_approval');return null;
       }
-      toolFence(runId,step.id,prepared);journal.markDispatch(runId,step.id);
       const stepId=step.id,accepted=prepared;
+      const dispatch=()=>{toolFence(runId,stepId,accepted);journal.markDispatch(runId,stepId);};
+      // Publish the durable dispatch state in the same transaction that sees
+      // current user claims. Subsequent claim transactions see this step.
+      if(coEditing&&accepted.risk!=='read_only'&&!store.db.isTransaction)store.tx(dispatch);else dispatch();
       const outcome=await toolset().execute(accepted,{runId,stepId,requestId:stepId,signal,beforeEffect:()=>toolFence(runId,stepId,accepted),
         recordInside:(result,changes)=>{
           journal.completeStepInside(runId,stepId,{result,changes});
@@ -615,10 +633,10 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       // This includes a pending approval re-entered after a pause or restart.
       // A partly committed (completed) step keeps the conflict pause below.
       if((failure==='AGENT_TASK_TARGET_CHANGED'||failure==='AGENT_TASK_TARGET_CLAIMED')&&['intent','awaiting_approval','dispatch_started'].includes(journal.step(step.id).status))
-        return handBackConflict(runId,step.id,failure,conflicts.length?conflicts:journal.conflictingTargets(run.projectId,journal.step(step.id).targets??prepared?.targets??[]));
+        return handBackConflict(runId,step.id,failure,conflicts.length?conflicts:journal.conflictingTargets(run.projectId,journal.step(step.id).targets??prepared?.targets??[],savedWriteTargets(journal.step(step.id))));
       if(['AGENT_TASK_TARGET_CHANGED','AGENT_TASK_TARGET_CLAIMED','AGENT_TASK_APPROVAL_REQUIRED','AGENT_TASK_PAUSED','AGENT_TASK_ABORTED','ABORT_ERR'].includes(failure)){
         if(journal.step(step.id).status==='dispatch_started')journal.dispatchPrevented(runId,step.id,failure==='AGENT_TASK_APPROVAL_REQUIRED'?'awaiting_approval':'intent');
-        if(failure==='AGENT_TASK_TARGET_CHANGED'||failure==='AGENT_TASK_TARGET_CLAIMED')rememberConflict(runId,step.id,conflicts.length?conflicts:journal.conflictingTargets(run.projectId,journal.step(step.id).targets??prepared?.targets??[]));
+        if(failure==='AGENT_TASK_TARGET_CHANGED'||failure==='AGENT_TASK_TARGET_CLAIMED')rememberConflict(runId,step.id,conflicts.length?conflicts:journal.conflictingTargets(run.projectId,journal.step(step.id).targets??prepared?.targets??[],savedWriteTargets(journal.step(step.id))));
         if(failure==='AGENT_TASK_APPROVAL_REQUIRED'){journal.updateStep(runId,step.id,{status:'awaiting_approval'});changeStatus(runId,'awaiting_approval');}
         else pause(runId,failure==='AGENT_TASK_TARGET_CLAIMED'?'editing':failure==='AGENT_TASK_TARGET_CHANGED'?'conflict':'user');return null;
       }
@@ -1057,7 +1075,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       else if(request.action==='stop'){if(!terminal(run)||run.status==='completed'&&journal.hasPendingBackground(runId)){changeStatus(runId,'stopped');for(const step of journal.snapshot(runId).steps)if(step.status==='dispatch_started')journal.updateStep(runId,step.id,{status:'unknown'});}}
       else if(request.action==='approve'||request.action==='deny'){
         if(run.status!=='awaiting_approval'||!request.stepId)throw agentTaskFailure('AGENT_TASK_INVALID');const step=journal.step(request.stepId),background=step.status==='completed'&&record(step.data)&&step.data.backgroundApprovalRequired===true;if(step.runId!==runId||step.status!=='awaiting_approval'&&!background)throw agentTaskFailure('AGENT_TASK_INVALID');
-        if(request.action==='approve'){authorize(run);assertNotSkipped(run,referencedTargets(step));journal.assertTargets(projectId,background?dispatchTargets(step):step.targets??[]);}
+        if(request.action==='approve'){authorize(run);assertNotSkipped(run,referencedTargets(step));journal.assertTargets(projectId,background?dispatchTargets(step):step.targets??[],savedWriteTargets(step));}
         if(background){journal.updateStep(runId,step.id,{data:{...(record(step.data)?step.data:{}),backgroundApprovalRequired:false,...(request.action==='approve'?{approvalDigest:approvalDigest(step)}:{backgroundDenied:true})}});if(request.action==='deny')cancelBackgroundSteps.push(step.id);}
         else journal.updateStep(runId,step.id,{status:request.action==='approve'?'intent':'rejected',data:{...(record(step.data)?step.data:{}),...(request.action==='approve'?{approvalDigest:approvalDigest(step),...(isProjectStore(store)&&step.toolCall?.name==='mioon_project_rules_set'?{rulesApprovalReceiptId:request.requestId}:{})}:{})},...(request.action==='deny'?{result:{error:{code:'USER_REJECTED',message:'用户拒绝了此操作。'}}}:{})});
         if(request.action==='deny'){
@@ -1083,6 +1101,20 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
             if(sourceId){const source=journal.step(sourceId);if(source.runId!==runId||source.kind!=='model'||source.status!=='completed')throw agentTaskFailure('AGENT_TASK_STATE_CONFLICT');journal.updateStep(runId,source.id,{data:{...(record(source.data)?source.data:{}),toolsInvalidated:true}});}
           }else throw agentTaskFailure('AGENT_TASK_UNKNOWN_RESULT');
         }else if(step.kind==='model'&&request.resolution==='discard')journal.updateStep(runId,step.id,{status:'failed',result:{discarded:true},error:{code:'USER_DISCARDED_UNKNOWN',message:'用户已将未知模型请求标记为失败。'}});
+        else if(coEditing&&record(step.data)&&step.data.sequenceRequestId===step.id){
+          const proof=toolset().recoverSequenceUnknown({projectId,runId,stepId:step.id,requestId:step.id});
+          if(proof?.outcome==='applied'&&request.resolution==='accept_result'){
+            journal.updateStep(runId,step.id,{status:'completed',result:proof.result});
+          }else if(proof?.outcome==='not_applied'&&request.resolution==='discard'){
+            journal.updateStep(runId,step.id,{status:'failed',result:{...proof,error:{code:'UNKNOWN_NOT_APPLIED',message:'已核对原序列请求，旧步骤未提交。请按当前内容重新规划。'}}});
+            const sourceId=typeof step.data.sourceModelStepId==='string'?step.data.sourceModelStepId:undefined;
+            if(sourceId){
+              const source=journal.step(sourceId);
+              if(source.runId!==runId||source.kind!=='model'||source.status!=='completed')throw agentTaskFailure('AGENT_TASK_STATE_CONFLICT');
+              journal.updateStep(runId,source.id,{data:{...(record(source.data)?source.data:{}),toolsInvalidated:true}});
+            }
+          }else throw agentTaskFailure('AGENT_TASK_UNKNOWN_RESULT');
+        }
         else if(step.toolCall?.name==='mioon_task_wait'&&request.resolution==='accept_result'){
           const prepared=toolset().prepare({projectId,operation:step.toolCall.name,input:step.toolCall.arguments,locale:taskResponseLocale(run.context)}),result=toolset().recoverWait(prepared);
           if(result===null)throw agentTaskFailure('AGENT_TASK_UNKNOWN_RESULT');journal.updateStep(runId,step.id,{status:'completed',result});
@@ -1146,11 +1178,11 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         // X4: a foreground approval that meets a conflict is still rejected. The
         // step is handed back and the run continues; a new plan needs a new approval.
         if(step?.status==='awaiting_approval'&&journal.run(runId).status==='awaiting_approval'){
-          const handBack=()=>{handBackConflict(runId,step.id,failure,journal.conflictingTargets(projectId,dispatchTargets(step)));journal.resume(runId,journal.run(runId).revision);};
+          const handBack=()=>{handBackConflict(runId,step.id,failure,journal.conflictingTargets(projectId,dispatchTargets(step),savedWriteTargets(step)));journal.resume(runId,journal.run(runId).revision);};
           if(store.db.isTransaction)handBack();else store.tx(handBack);handedBack=true;
         }else{
           // Background approvals may pause; an undo of a terminal run stays terminal.
-          if(step)rememberConflict(runId,step.id,journal.conflictingTargets(projectId,dispatchTargets(step)));
+          if(step)rememberConflict(runId,step.id,journal.conflictingTargets(projectId,dispatchTargets(step),savedWriteTargets(step)));
           if(!undo)pause(runId,failure==='AGENT_TASK_TARGET_CHANGED'?'conflict':'editing');
         }
       }

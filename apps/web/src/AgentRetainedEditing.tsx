@@ -4,7 +4,7 @@ import { WorkbenchButton as Button } from '@mioon/ui/components/workbench-contro
 import { useConfirmation } from '@mioon/ui/components/workbench-confirm';
 import { message } from '../../../packages/i18n/src/index.ts';
 import {
-  AGENT_TASK_DISPLAY_TARGET_KINDS, agentTaskEditingResolveBatchSchema, agentTaskEditingSchema,
+  AGENT_TASK_DISPLAY_TARGET_KINDS, agentTaskEditingResolveBatchSchema, agentTaskEditingSchema, agentTaskEditingTargetRevisionKind,
 } from '../../../packages/contracts/src/agent-tasks-v2.ts';
 import type {
   AgentTaskEditingClaimOwner, AgentTaskEditingInput, AgentTaskEditingResolveBatchInput,
@@ -115,7 +115,7 @@ export default function AgentRetainedEditing({ projectId, visible, readOnly, nat
           if (!isCurrent(token)) return;
           invalidateAgentEditingOwner(projectId, original.ownerId);
           const receipt = next?.receipt;
-          acknowledged = receipt?.requestId === original.requestId && receipt.projectId === projectId &&
+          acknowledged = receipt?.requestId === original.requestId && !receipt.error && receipt.projectId === projectId &&
             receipt.ownerId === original.ownerId && receipt.generation === original.generation && receipt.sequence === original.sequence;
         } else {
           acknowledged = matchesEditingBatchReceipt(original, await client.current.lookup(projectId, original.requestId));
@@ -162,7 +162,8 @@ export default function AgentRetainedEditing({ projectId, visible, readOnly, nat
     <div className="mio-retained-items">
       {unknown && <p role="alert">{t('agent.task.editingUnknown')}</p>}
       {retained.map(owner => {
-        const {claim} = owner, kind = AGENT_TASK_DISPLAY_TARGET_KINDS.find(value => value === claim.target.kind) ?? 'unknown';
+        const {claim} = owner;
+        const kind = AGENT_TASK_DISPLAY_TARGET_KINDS.find(value => value === agentTaskEditingTargetRevisionKind(claim.target.kind)) ?? 'unknown';
         return <article key={claim.id}>
           <p>{t('agent.panel.editingItem')} · {taskDisplayTargets({operation: '', targets: [{kind, id: claim.target.id}], targetCount: 1, fields: []}, locale, targetName)}</p>
           <Button type="button" disabled={!visible || readOnly || busy || receiptBlocked.current || Boolean(pending.current)} onClick={() => {void resolve(owner);}}>{t('agent.task.editingResolve')}</Button>

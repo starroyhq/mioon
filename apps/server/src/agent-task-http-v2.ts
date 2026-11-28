@@ -1,5 +1,5 @@
 import type {IncomingMessage,ServerResponse} from 'node:http';
-import {agentTaskEditingResolveBatchSchema,agentTaskEditingSchema} from '@mioon/contracts/agent-tasks-v2';
+import {AGENT_TASK_EDITING_CONFLICT_CODES,agentTaskEditingConflictDetailsSchema,agentTaskEditingResolveBatchSchema,agentTaskEditingRetainedCounts,agentTaskEditingSchema} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskEditingLiveness} from '@mioon/contracts/agent-tasks-v2';
 import {agentTaskFailure} from '@mioon/business/agent/task-runtime-v2';
 import type {AgentTaskRuntime} from '@mioon/business/agent/task-runtime-v2';
@@ -64,11 +64,22 @@ export function createAgentTaskHttp({runtime,tools,assertMutationAllowed,editing
             }));
           }else {res.setHeader('Allow','GET, POST');json(res,405,{code:'METHOD_NOT_ALLOWED',message:'请使用 GET 或 POST。'});}return true;
         }
+        if(url.pathname===prefix+'/editing/writes'){
+          if(!address)throw agentTaskFailure('AGENT_TASK_NOT_FOUND');
+          if(runtime.readOnly)throw agentTaskFailure('AGENT_TASK_READ_ONLY');
+          query(url,[]);
+          if(req.method==='GET')json(res,200,{writes:runtime.journal.editingWrites(address.projectId)});
+          else {res.setHeader('Allow','GET');json(res,405,{code:'METHOD_NOT_ALLOWED',message:'请使用 GET。'});}
+          return true;
+        }
         if(url.pathname===prefix+'/editing/retained'){
           if(!address)throw agentTaskFailure('AGENT_TASK_NOT_FOUND');
           if(runtime.readOnly)throw agentTaskFailure('AGENT_TASK_READ_ONLY');
           query(url,[]);
-          if(req.method==='GET')json(res,200,{groups:runtime.journal.editingClaimGroups(address.projectId,editingLiveness)});
+          if(req.method==='GET'){
+            const groups=runtime.journal.editingClaimGroups(address.projectId,editingLiveness);
+            json(res,200,{groups,...agentTaskEditingRetainedCounts(groups)});
+          }
           else {res.setHeader('Allow','GET');json(res,405,{code:'METHOD_NOT_ALLOWED',message:'请使用 GET。'});}
           return true;
         }
@@ -143,7 +154,9 @@ export function createAgentTaskHttp({runtime,tools,assertMutationAllowed,editing
           stream.attach(()=>{if(timer)clearInterval(timer);});timer=setInterval(emit,200);timer.unref();emit();stream.start();return true;
         }
         throw agentTaskFailure('AGENT_TASK_NOT_FOUND');
-      }catch(error){if(res.headersSent){res.destroy();return true;}const safe=agentTaskFailure(object(error)&&typeof error.code==='string'?error.code:'AGENT_TASK_FAILED',{handedBack:object(error)&&error.handedBack===true,policyOnContinuation:object(error)&&error.policyOnContinuation===true});json(res,safe.status,{code:safe.code,message:safe.message,details:{},retryable:false});}
+      }catch(error){if(res.headersSent){res.destroy();return true;}const safe=agentTaskFailure(object(error)&&typeof error.code==='string'?error.code:'AGENT_TASK_FAILED',{handedBack:object(error)&&error.handedBack===true,policyOnContinuation:object(error)&&error.policyOnContinuation===true});const conflict=url.pathname===prefix+'/editing'&&object(error)?agentTaskEditingConflictDetailsSchema.safeParse(error.details):null;
+        const details=conflict?.success&&AGENT_TASK_EDITING_CONFLICT_CODES[conflict.data.reason]===safe.code?conflict.data:{};
+        json(res,safe.status,{code:safe.code,message:safe.message,details,retryable:false});}
       return true;
     },
     close(){for(const stream of [...clients])stream.close();},

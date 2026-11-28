@@ -31,7 +31,7 @@ export function projectHandlerTarget(route: ProjectApiRoute): {readonly projectI
   if (first !== 'agent' || segments[1] !== 'tasks' || segments[2] !== 'v2') return null;
   const tail = segments.slice(3);
   if (tail.length === 1 && tail[0] === 'editing') return target(...segments);
-  if (tail.length === 2 && tail[0] === 'editing' && ['retained', 'resolve-batch'].includes(tail[1]!)) return target(...segments);
+  if (tail.length === 2 && tail[0] === 'editing' && ['retained', 'resolve-batch', 'writes'].includes(tail[1]!)) return target(...segments);
   if (tail[0] === 'policy' || tail[0] === 'diagnostics' || tail[0] === 'editing') return null;
   return target('agent', 'tasks', 'v2', projectId, ...tail);
 }
