@@ -486,6 +486,89 @@ test('two clips share one preview render and retain independent media leases', a
   }
 });
 
+for (const terminal of ['edit', 'expiry', 'failure', 'invalid clock'] as const) {
+  test(`an issued off preview remains readable during optical handoff until ${terminal}`, async t => {
+    const optical = Promise.withResolvers<void>(), successor = Promise.withResolvers<void>();
+    const scheduler = createProcessingScheduler();
+    let jobs = 0, replacementStarted = false;
+    const f = await fixture(t, {video: true, optical: true, scheduler: {
+      schedule(signal, start) {
+        // Hold the optical encoder after the initial off preview so the
+        // browser can obtain its original credential before promotion.
+        const hold = ++jobs === 2;
+        return scheduler.schedule(signal, async () => {
+          if (hold) await optical.promise;
+          await start();
+        });
+      },
+    }, previewRenderer: {...fakePreview, async prepare(input, options) {
+      if (input.interpolation === 'optical') {
+        replacementStarted = true;
+        await successor.promise;
+        if (terminal === 'failure') throw new ProcessingFailure('PROCESSING_FAILED');
+      }
+      const prepared = await fakePreview.prepare(input, options);
+      return {...prepared, profile: {...prepared.profile, effectiveInterpolation: input.interpolation}};
+    }}});
+    try {
+      f.direction('forward', 1, f.clipId, 2, 'optical');
+      const off = await until(() => f.processing.preview.lookup(f)?.ready);
+      const initial = await f.processing.preview.acquire(off.proof);
+      assert.ok(initial);
+      initial.release();
+
+      optical.resolve();
+      await until(() => replacementStarted ? true : undefined);
+      const pending = f.processing.preview.lookup(f);
+      assert.ok(pending);
+      assert.notEqual(pending.item.taskId, off.proof.taskId);
+      assert.equal(pending.item.status, 'running');
+      assert.equal(pending.ready, undefined, 'lookup still exposes the optical successor');
+      assert.equal(f.processing.cacheClear(f).freedBytes, 0, 'the off preview remains pinned while the successor prepares');
+      const oldRange = await f.processing.preview.acquire(off.proof);
+      try {
+        assert.ok(oldRange);
+        assert.equal(oldRange.verify(), true);
+        successor.resolve();
+        const finished = await f.processing.wait({...f, taskId: pending.item.taskId});
+        if (terminal === 'failure') {
+          assert.equal(finished.item.status, 'failed');
+          assert.equal(f.processing.preview.lookup(f)?.item.status, 'failed', 'failure remains visible to the UI');
+          assert.equal(oldRange.verify(), false);
+          assert.equal(await f.processing.preview.acquire(off.proof), null);
+        } else {
+          assert.equal(finished.item.status, 'ready');
+          const replacement = f.processing.preview.lookup(f)?.ready;
+          assert.ok(replacement);
+          assert.notEqual(replacement.proof.taskId, off.proof.taskId);
+          assert.equal(replacement.durationFrames, off.durationFrames);
+          assert.equal(oldRange.verify(), true, 'already-open responses remain readable during the handoff');
+          const graceRange = await f.processing.preview.acquire(off.proof);
+          assert.ok(graceRange, 'new browser range requests also keep the off credential briefly');
+          graceRange.release();
+          const opticalRange = await f.processing.preview.acquire(replacement.proof);
+          assert.ok(opticalRange);
+          try {
+            if (terminal === 'edit') f.direction('forward', 1, f.clipId, 2, 'off');
+            else if (terminal === 'expiry') {
+              const future = Date.now() + 15_001;
+              t.mock.method(Date, 'now', () => future);
+            } else {
+              f.store.tx(() => f.store.db.prepare('UPDATE main.timeline_processing_tasks SET updatedAt=? WHERE id=?')
+                .run('x'.repeat(24), replacement.proof.taskId));
+            }
+            assert.equal(oldRange.verify(), false);
+            assert.equal(await f.processing.preview.acquire(off.proof), null);
+            assert.equal(opticalRange.verify(), terminal !== 'edit');
+            if (terminal === 'edit') assert.equal(await f.processing.preview.acquire(replacement.proof), null);
+          } finally {opticalRange.release();}
+        }
+      } finally {oldRange?.release();}
+      assert.ok(f.processing.cacheClear(f).freedBytes > 0, 'the old unleased asset returns to ordinary cache eviction');
+    } finally {optical.resolve(); successor.resolve();}
+  });
+}
+
 test('a host with a preview renderer submits missing tasks when it restores committed clips', async t => {
   const f = await fixture(t, {video: true});
   f.direction('reverse');

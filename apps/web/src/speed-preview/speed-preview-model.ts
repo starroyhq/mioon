@@ -710,12 +710,13 @@ export function buildClipSpeedPreviewBinding(options: {
   readonly sourceUrl: string;
   readonly fps: number;
   readonly media: PreviewMedia | null;
+  readonly awaitingOpticalProxy?: boolean;
   readonly processingItems: readonly SpeedProcessingItem[];
   readonly t: Translator;
   readonly onRetryTask?: (taskId: string) => void;
   readonly onPlaybackStateChange?: ClipSpeedPreviewBinding['onPlaybackStateChange'];
 }): ClipSpeedPreviewBinding | null {
-  const {timeline, clip, asset, sourceUrl, fps, media, processingItems, t, onRetryTask, onPlaybackStateChange} = options;
+  const {timeline, clip, asset, sourceUrl, fps, media, awaitingOpticalProxy, processingItems, t, onRetryTask, onPlaybackStateChange} = options;
   if (!timelineSpeedEnabled(timeline) || !clip || !asset || !sourceUrl) return null;
   if (clip.sourceState === 'placeholder') return null;
   if (typeof asset.mimeType !== 'string' || !asset.mimeType.startsWith('video/')) return null;
@@ -752,7 +753,7 @@ export function buildClipSpeedPreviewBinding(options: {
   const opticalPending = optical && !opticalItem && plan ? timeMapHasSlowMotion(plan) : null;
   const awaitsOptical = opticalItem !== null || opticalPending?.ok === true && opticalPending.value;
   const opticalOverlay = buildOverlayFromProcessingItem(opticalItem, t)
-    ?? (!opticalItem && awaitsOptical
+    ?? (awaitingOpticalProxy || !opticalItem && awaitsOptical
       ? {kind: 'processing' as const, label: t('speed.processing.opticalActive'), percent: null, taskKind: 'optical' as const}
       : null);
 

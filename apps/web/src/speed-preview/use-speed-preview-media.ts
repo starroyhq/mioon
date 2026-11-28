@@ -193,8 +193,17 @@ export function previewProcessingStateKey(clipId: string, items: readonly SpeedP
 
 export interface UseSpeedPreviewMediaResult {
   readonly media: PreviewMedia | null;
+  readonly awaitingOpticalProxy: boolean;
   readonly clipId: string | null;
   readonly refresh: () => void;
+}
+
+function isOffProxyFallback(
+  state: {readonly readyOpticalTask: string | null; readonly media: PreviewMedia | null},
+  readyOpticalTask: string | null,
+): boolean {
+  return readyOpticalTask !== null && state.readyOpticalTask === null &&
+    state.media?.mode === 'proxy' && state.media.status === 'ready';
 }
 
 export function useSpeedPreviewMedia(options: {
@@ -244,11 +253,13 @@ export function useSpeedPreviewMedia(options: {
       clipId,
       read: signal => rpcRef.current('timeline.preview.media', {projectId, clipId}, {signal}),
       readyOpticalTask: () => readyOpticalTaskRef.current,
-      onMedia: (media, task) => setState(prev => (
-        prev?.bindingKey === bindingKey && prev.readyOpticalTask === task && JSON.stringify(prev.media) === JSON.stringify(media)
-          ? prev
-          : {bindingKey, readyOpticalTask: task, media}
-      )),
+      onMedia: (media, task) => setState(prev => {
+        if (prev?.bindingKey === bindingKey) {
+          if (isOffProxyFallback(prev, task) && media?.mode === 'proxy' && previewMediaNeedsPolling(media)) return prev;
+          if (prev.readyOpticalTask === task && JSON.stringify(prev.media) === JSON.stringify(media)) return prev;
+        }
+        return {bindingKey, readyOpticalTask: task, media};
+      }),
     });
     controllerRef.current = controller;
     controller.start();
@@ -272,10 +283,11 @@ export function useSpeedPreviewMedia(options: {
     controllerRef.current?.refresh();
   }, []);
 
+  const bound = state?.bindingKey === bindingKey ? state : null;
+  const awaitingOpticalProxy = bound !== null && isOffProxyFallback(bound, readyOpticalTask);
   return {
-    // A ready optical task changes the host's selected credential. Retire the
-    // off response while the new task's output-domain preview is being read.
-    media: state && state.bindingKey === bindingKey && state.readyOpticalTask === readyOpticalTask ? state.media : null,
+    media: bound && (bound.readyOpticalTask === readyOpticalTask || awaitingOpticalProxy) ? bound.media : null,
+    awaitingOpticalProxy,
     clipId,
     refresh,
   };

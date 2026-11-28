@@ -52,6 +52,11 @@ interface MediaBinding {
   pendingSourceSeek: {scope?: string | null; id: number | string} | null; lastSeekRequest: string | number | null;
   speedSeekFrame: number | null;
 }
+interface SpeedPlaybackAttempt {speed: ClipSpeedPreviewBinding; frame: number; preparing: boolean}
+interface ProxyHandoff {
+  from: MediaBinding; to: HTMLVideoElement; key: string; clipKey: string;
+  frame: number; playback: SpeedPlaybackAttempt | null;
+}
 interface CaptureContext {key: string; visible: boolean; busy: boolean; scope?: string | null}
 interface SourceState {scope?: string | null; position: number; request: PreviewSeek | null}
 export interface PreviewProps {
@@ -139,16 +144,36 @@ export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onB
   visible = visible && ancestorVisible;
   const visibleRef = useRef<boolean>(visible);
   const rendered = kind === 'timeline';
-  const activeSpeedPreview = !rendered && clip ? (speedPreview ?? null) : null;
+  const requestedSpeed = !rendered && clip ? speedPreview : null;
+  const speedClipKey = requestedSpeed && clip
+    ? JSON.stringify([timeline?.id, timeline?.revision, clip.id, asset?.id, asset?.sha256,
+        clip.startFrame, clip.durationFrames, clip.sourceInFrame, clip.timing]) : '';
+  const [displayedProxy, setDisplayedProxy] = useState<{clipKey: string; speed: ClipSpeedPreviewBinding} | null>(null);
+  const candidateVideo = useRef<HTMLVideoElement | null>(null);
+  const proxyHandoff = useRef<ProxyHandoff | null>(null);
+  const ready = Boolean(job && ['succeeded','completed','ready'].includes(job.status) && (job.url || job.assetId));
+  const gate = useProjectMediaReadGate();
+  const readIdentity = rendered ? {id: job?.assetId, projectId: job?.projectId} : asset;
+  const blocked = Boolean(gate && (rendered ? ready : asset) && !gate.canRead(readIdentity));
+  const pendingProxy = visible && !blocked && requestedSpeed?.mode === 'proxy-ready' &&
+    displayedProxy?.clipKey === speedClipKey && displayedProxy.speed.mediaKey !== requestedSpeed.mediaKey
+    ? requestedSpeed : null;
+  const activeSpeedPreview = pendingProxy ? displayedProxy!.speed : requestedSpeed;
+  useLayoutEffect(() => {
+    if (!pendingProxy) setDisplayedProxy(previous => {
+      if (requestedSpeed?.mode !== 'proxy-ready' || blocked || !visible) return null;
+      return previous?.clipKey === speedClipKey && previous.speed.mediaKey === requestedSpeed.mediaKey
+        ? previous : {clipKey: speedClipKey, speed: requestedSpeed};
+    });
+  }, [requestedSpeed, pendingProxy, speedClipKey, visible, blocked]);
   const speedPreviewRef = useRef<ClipSpeedPreviewBinding | null>(activeSpeedPreview);
   speedPreviewRef.current = activeSpeedPreview;
   const frameListeners = useRef<Set<() => void>>(new Set());
   const notifyFramePlayback = () => { for (const listener of frameListeners.current) listener(); };
   const frameLoop = useRef<{raf: number | null; token: object; startMs: number; startFrame: number; lastFrame: number} | null>(null);
   const nativeTicker = useRef<number | null>(null);
-  const speedPlayback = useRef<{speed: ClipSpeedPreviewBinding; frame: number; preparing: boolean} | null>(null);
+  const speedPlayback = useRef<SpeedPlaybackAttempt | null>(null);
   const timelineClock = rendered || clip ? playbackClock : undefined;
-  const ready = Boolean(job && ['succeeded','completed','ready'].includes(job.status) && (job.url || job.assetId));
   const stale = Boolean(ready && !previewMatchesTimeline(job, timeline));
   const frozenTimeline = rendered && ready ? job?.snapshot?.timeline : null;
   const playbackDuration = frozenTimeline?.durationFrames ?? timeline?.durationFrames;
@@ -159,16 +184,12 @@ export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onB
     ? ready && (stale || !Object.hasOwn(job?.snapshot ?? {}, 'speedExport')) &&
       Boolean(timeline?.clips?.some(item => !canRenderTimelineClipAtIdentity(item, timeline.fps)))
     : !activeSpeedPreview && Boolean(clip?.timing !== undefined && !canRenderTimelineClipAtIdentity(clip, playbackFps));
-  const gate = useProjectMediaReadGate();
-  const readIdentity = rendered ? {id: job?.assetId, projectId: job?.projectId} : asset;
-  const blocked = Boolean(gate && (rendered ? ready : asset) && !gate.canRead(readIdentity));
   const url = blocked || speedBlocked ? '' : rendered ? ready ? mediaUrl(job!.projectId, job!.assetId) : '' : activeSpeedPreview ? activeSpeedPreview.mediaUrl : assetUrl(asset);
   const type: string = rendered ? 'video' : assetKind(asset);
-  const speedClipKey = activeSpeedPreview && clip
-    ? JSON.stringify([timeline?.id, timeline?.revision, clip.id, asset?.id, asset?.sha256,
-        clip.startFrame, clip.durationFrames, clip.sourceInFrame, clip.timing]) : '';
-  const speedBindingKey = activeSpeedPreview ? `${activeSpeedPreview.mediaKey}:${speedClipKey}` : '';
-  const mediaKey = `${kind}:${type}:${url}:${rendered ? job?.id || job?.timelineRevision : asset?.id || ''}:${clip?.id || ''}:${!rendered && !clip ? sourceScope || '' : ''}:${!rendered ? asset?.sha256 || '' : ''}${speedBindingKey ? `:${speedBindingKey}` : ''}`;
+  const keyForMedia = (mediaUrl: string, speed: ClipSpeedPreviewBinding | null) =>
+    `${kind}:${type}:${mediaUrl}:${rendered ? job?.id || job?.timelineRevision : asset?.id || ''}:${clip?.id || ''}:${!rendered && !clip ? sourceScope || '' : ''}:${!rendered ? asset?.sha256 || '' : ''}${speed ? `:${speed.mediaKey}:${speedClipKey}` : ''}`;
+  const mediaKey = keyForMedia(url, activeSpeedPreview);
+  const candidateKey = pendingProxy ? keyForMedia(pendingProxy.mediaUrl, pendingProxy) : null;
   const latestMedia = useRef({mediaKey, speedClipKey});
   latestMedia.current = {mediaKey, speedClipKey};
   const activeMedia = useRef<MediaBinding | null>(null);
@@ -312,25 +333,84 @@ export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onB
   useLayoutEffect(() => {
     const element = media.current;
     if (!element) return;
-    const binding = { element, key: mediaKey, url, programmaticSeek: null, sourceSeekIntent: null,
+    const binding: MediaBinding = { element, key: mediaKey, url, programmaticSeek: null, sourceSeekIntent: null,
       pendingSourceSeek: null, lastSeekRequest: null, speedSeekFrame: null };
     activeMedia.current = binding;
+    const promotion = proxyHandoff.current;
+    proxyHandoff.current = null;
     // Restore src when development Strict Mode replays the cleanup/setup pair.
     if (element.getAttribute('src') !== url) element.setAttribute('src', url);
     applySpeedPlaybackRate(element);
+    if (promotion?.to === element && promotion.key === mediaKey) {
+      // The candidate has already decoded the selected output frame.
+      binding.lastSeekRequest = sourceSeconds;
+      binding.speedSeekFrame = promotion.frame;
+      if (promotion.playback && speedPlayback.current === promotion.playback) {
+        timelineClock?.start(binding, promotion.frame);
+        void element.play().catch(() => {
+          if (activeMedia.current === binding && speedPlayback.current === promotion.playback) settlePlayback(binding);
+        });
+      }
+    }
     captureObserver.current?.();
     return () => {
       // A replacement proxy for the same saved clip keeps the output playhead.
       // A clip/edit/tab change must leave the new destination untouched.
       const next = latestMedia.current;
       const handoff = speedClipKey !== '' && next.speedClipKey === speedClipKey && next.mediaKey !== mediaKey;
-      stopFramePlayback(handoff);
+      const promotion = proxyHandoff.current;
+      const transfer = handoff && promotion?.from === binding && promotion.key === next.mediaKey &&
+        promotion.clipKey === next.speedClipKey;
+      if (!transfer) stopFramePlayback(handoff);
       stopNativeTicker();
       if (activeMedia.current === binding) activeMedia.current = null;
-      settlePlayback(binding);
+      if (!transfer) settlePlayback(binding);
       disposeMedia(element);
     };
   }, [mediaKey, timelineClock]);
+  useLayoutEffect(() => {
+    const candidate = candidateVideo.current, from = activeMedia.current;
+    if (!candidate || !from || !pendingProxy || !candidateKey || typeof requestAnimationFrame !== 'function') return;
+    let raf: number, target: number | null = null, targetingPlayback = false;
+    const inspect = () => {
+      if (activeMedia.current !== from || candidateVideo.current !== candidate ||
+          !isCurrentMedia(from.element) || candidate.error) return;
+      const playback = speedPlayback.current;
+      if (!playback?.preparing && candidate.readyState >= 1) {
+        const playing = Boolean(playback && !from.element.paused && !from.element.ended);
+        const end = pendingProxy.clipStartFrame + pendingProxy.clipDurationFrames;
+        const frame = playing
+          ? pendingProxy.clipStartFrame + Math.floor(from.element.currentTime * pendingProxy.fps + 0.00001)
+          : from.speedSeekFrame ?? playhead;
+        const clock = timelineClock?.getSnapshot() ?? frame;
+        if (target === frame && targetingPlayback === playing && clock <= frame &&
+            candidate.readyState >= 2 && !candidate.seeking) {
+          proxyHandoff.current = {from, to: candidate, key: candidateKey, clipKey: speedClipKey, frame,
+            playback: playing ? playback : null};
+          setDisplayedProxy({clipKey: speedClipKey, speed: pendingProxy});
+          return;
+        }
+        if (target === null || targetingPlayback !== playing || (playing ? target < frame || clock > target : target !== frame)) {
+          // Decode a frame ahead while the visible proxy continues. Promote
+          // only when the visible playhead reaches that same output frame.
+          target = playing ? Math.min(end - 1, frame + 3) : frame;
+          targetingPlayback = playing;
+          const seconds = pendingProxy.outputFrameToMediaSeconds(target) + SPEED_SEEK_EPSILON_SECONDS;
+          candidate.currentTime = Math.min(seconds, Math.max(0, candidate.duration - .001));
+        }
+      }
+      raf = requestAnimationFrame(inspect);
+    };
+    raf = requestAnimationFrame(inspect);
+    return () => {
+      cancelAnimationFrame(raf);
+      const promotion = proxyHandoff.current;
+      if (promotion?.to !== candidate || latestMedia.current.mediaKey !== candidateKey) {
+        if (promotion?.to === candidate) proxyHandoff.current = null;
+        if (media.current !== candidate) disposeMedia(candidate);
+      }
+    };
+  }, [candidateKey, mediaKey, speedClipKey, timelineClock]);
   useLayoutEffect(() => {
     visibleRef.current = visible;
     if (!visible) pauseCurrent.current();
@@ -609,6 +689,18 @@ export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onB
       subscribe: (listener: () => void) => { frameListeners.current.add(listener); return () => { frameListeners.current.delete(listener); }; },
       toggle: () => { void toggleSpeedPlayback(); },
     } } : {})} />;
+  const renderPlaybackVideo = (key: string, source: string, speed: ClipSpeedPreviewBinding | null, staging = false) =>
+    <video key={key} ref={staging ? candidateVideo : media as React.Ref<HTMLVideoElement>}
+      className={staging ? 'preview-proxy-candidate' : undefined} aria-hidden={staging || undefined}
+      data-testid={staging ? undefined : rendered ? 'timeline-preview-video' : 'source-preview-video'}
+      data-speed-preview-mode={speed?.mode} src={source} muted={speed?.muteVideo ? true : undefined}
+      playsInline preload={staging ? 'auto' : 'metadata'}
+      onLoadedMetadata={staging ? undefined : event => seekMedia(event.currentTarget, true)}
+      onPlay={staging ? undefined : guardPlayback} onPlaying={staging ? undefined : guardPlayback}
+      onPause={staging ? undefined : pauseMedia} onEnded={staging || !timelineClock ? undefined : pauseMedia}
+      onTimeUpdate={staging ? undefined : updateTime} onSeeked={staging ? undefined : finishSeek}
+      onLoadedData={staging ? undefined : updateCapture} onCanPlay={staging ? undefined : updateCapture}
+      onSeeking={staging ? undefined : updateCapture} onEmptied={staging ? undefined : updateCapture} />;
 
   return <Tabs value={kind} onValueChange={onKind} className={`central-preview edit-preview ${visible ? '' : 'workspace-hidden'}`} aria-label={t('timeline.preview.main')} data-testid="central-preview">
     <div className="preview-mode-bar">
@@ -626,7 +718,7 @@ export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onB
     {rendered && pendingJob?.status === 'failed' && <div className="preview-notice stale" role={cancelledExport ? 'status' : 'alert'} data-testid={cancelledExport ? 'preview-export-cancelled' : 'preview-render-failed'}><span>{t(cancelledExport ? 'redesign.export.cancelled' : 'timeline.preview.failed')}{safeTaskErrorCode(pendingJob!.error) && <small>{t('timeline.frame.errorCode', { code: safeTaskErrorCode(pendingJob!.error)! })}</small>}</span><Button variant="ghost" disabled={busy} onClick={() => onRender('preview')}>{t('timeline.preview.rerender')}</Button></div>}
     {rendered && audioPreview && <details className="edit-preview-audio"><summary><Headphones size={14}/><span>{t('audio.preview.title')}</span><ChevronDown size={12}/></summary>{withPlaybackPosition(frame => <TimelineAudioPreview audioPreview={audioPreview} startFrame={frame} />)}</details>}
     <TabsContent value={kind} className={`preview-stage ${type === 'audio' ? 'audio-stage' : ''}`}>
-      {speedBlocked ? <div className="preview-placeholder" role="alert" data-error-code={SPEED_RENDER_NOT_READY}>{t('timeline.speed.renderNotReady')}</div> : blocked && gate ? <div className="preview-placeholder pf-media-blocked" data-testid="preview-media-blocked"><MediaStatusBadge status={gate.statusFor(readIdentity)} /><MediaStatusNote status={gate.statusFor(readIdentity)} /></div> : url ? <>{type === 'image' ? <img className="preview-image" src={url} alt={asset?.name || t('timeline.preview.source')} /> : type === 'audio' ? <div className="audio-preview-art" data-testid="source-audio-card"><AudioLines size={48} aria-hidden="true" /><strong>{asset?.name}</strong><audio ref={media as unknown as React.Ref<HTMLAudioElement>} key={mediaKey} data-testid="source-preview-audio" src={url} preload="metadata" onLoadedMetadata={event => seekMedia(event.currentTarget, true)} onPlay={guardPlayback} onPlaying={guardPlayback} onPause={pauseMedia} onEnded={timelineClock ? pauseMedia : undefined} onTimeUpdate={updateTime} onSeeked={finishSeek} /></div> : <video ref={media as unknown as React.Ref<HTMLVideoElement>} key={mediaKey} data-testid={rendered ? 'timeline-preview-video' : 'source-preview-video'} data-speed-preview-mode={activeSpeedPreview?.mode} src={url} muted={activeSpeedPreview?.muteVideo ? true : undefined} playsInline preload="metadata" onLoadedMetadata={event => seekMedia(event.currentTarget, true)} onPlay={guardPlayback} onPlaying={guardPlayback} onPause={pauseMedia} onEnded={timelineClock ? pauseMedia : undefined} onTimeUpdate={updateTime} onSeeked={finishSeek} onLoadedData={updateCapture} onCanPlay={updateCapture} onSeeking={updateCapture} onEmptied={updateCapture} />}{rendered && <span className="preview-stage-label">{t('timeline.preview.stage', { kind: t(deliveredArtifact ? 'timeline.preview.final' : 'timeline.preview.editing'), revision: job!.timelineRevision ?? 0, status: t(stale ? 'timeline.preview.expired' : 'timeline.preview.current') })}</span>}{rendered && visible && !stale && job?.purpose === 'preview' && transformBox && timeline && withPlaybackPosition(frame => <ClipTransformBox key={`${mediaKey}:${timeline.revision}:${transformBox.clip.id}`} box={transformBox} playhead={frame} timeline={timeline} media={media} mediaKey={mediaKey} />)}{activeSpeedPreview?.overlay && (activeSpeedPreview.overlay.kind === 'processing' ? <div className="preview-speed-overlay is-processing" data-testid="preview-speed-processing" role="status" aria-live="polite"><div className="preview-speed-overlay-main"><div className="preview-speed-overlay-row"><span className="speed-spinner" aria-hidden="true" /><span>{activeSpeedPreview.overlay.label}</span></div>{activeSpeedPreview.overlay.percent !== null && <div className="preview-speed-overlay-bar"><span style={{ width: `${activeSpeedPreview.overlay.percent}%` }} /></div>}</div></div> : <div className="preview-speed-overlay is-failed" data-testid="preview-speed-failed" role="alert"><div className="preview-speed-overlay-main"><div className="preview-speed-overlay-row"><Icon name="warning" size={14} /><span>{activeSpeedPreview.overlay.message}</span></div></div>{activeSpeedPreview.overlay.canRetry && activeSpeedPreview.onRetryTask && <Button type="button" variant="outline" size="sm" className="preview-speed-overlay-retry" data-testid="preview-speed-retry" onClick={() => activeSpeedPreview.onRetryTask?.(activeSpeedPreview.overlay!.kind === 'failed' ? activeSpeedPreview.overlay!.taskId : '')}><Icon name="refresh" size={12} />{t('speed.processing.retry')}</Button>}</div>)}</> : rendered && !timeline?.clips?.length ? <div className="preview-empty-frame" style={{aspectRatio: `${timeline?.width || 1080} / ${timeline?.height || 1920}`}}><Film size={20}/><p>{t('edit.empty.preview')}</p></div> : <div className="preview-placeholder"><div className="preview-placeholder-icon"><Film size={20}/></div><h3>{rendered ? inProgress ? t('timeline.preview.preparing') : timeline?.clips?.length ? t('timeline.preview.ready') : t('timeline.preview.first') : t('timeline.preview.empty')}</h3><div>{rendered && timeline?.clips?.length ? <Button variant="ghost" className="button primary" disabled={busy || inProgress} onClick={() => onRender('preview')}><Icon name="play" size={15} />{t('timeline.preview.render')}</Button> : <>{canSeed && onSeed && !timeline?.clips?.length && <Button variant="ghost" className="button primary" data-testid="preview-seed-timeline" disabled={busy || seedBusy} onClick={onSeed}><Icon name="layers" size={15} />{t('timeline.preview.seed')}</Button>}{typeof onImport === 'function' && <Button variant="ghost" className={`button ${canSeed && onSeed && !timeline?.clips?.length ? '' : 'primary'}`} onClick={onImport}>{t('timeline.preview.import')}</Button>}{typeof onCanvas === 'function' && <Button variant="ghost" className="button" onClick={onCanvas}>{t('timeline.preview.canvas')}</Button>}</>}</div></div>}
+      {speedBlocked ? <div className="preview-placeholder" role="alert" data-error-code={SPEED_RENDER_NOT_READY}>{t('timeline.speed.renderNotReady')}</div> : blocked && gate ? <div className="preview-placeholder pf-media-blocked" data-testid="preview-media-blocked"><MediaStatusBadge status={gate.statusFor(readIdentity)} /><MediaStatusNote status={gate.statusFor(readIdentity)} /></div> : url ? <>{type === 'image' ? <img className="preview-image" src={url} alt={asset?.name || t('timeline.preview.source')} /> : type === 'audio' ? <div className="audio-preview-art" data-testid="source-audio-card"><AudioLines size={48} aria-hidden="true" /><strong>{asset?.name}</strong><audio ref={media as unknown as React.Ref<HTMLAudioElement>} key={mediaKey} data-testid="source-preview-audio" src={url} preload="metadata" onLoadedMetadata={event => seekMedia(event.currentTarget, true)} onPlay={guardPlayback} onPlaying={guardPlayback} onPause={pauseMedia} onEnded={timelineClock ? pauseMedia : undefined} onTimeUpdate={updateTime} onSeeked={finishSeek} /></div> : [renderPlaybackVideo(mediaKey, url, activeSpeedPreview), pendingProxy && candidateKey ? renderPlaybackVideo(candidateKey, pendingProxy.mediaUrl, pendingProxy, true) : null]}{rendered && <span className="preview-stage-label">{t('timeline.preview.stage', { kind: t(deliveredArtifact ? 'timeline.preview.final' : 'timeline.preview.editing'), revision: job!.timelineRevision ?? 0, status: t(stale ? 'timeline.preview.expired' : 'timeline.preview.current') })}</span>}{rendered && visible && !stale && job?.purpose === 'preview' && transformBox && timeline && withPlaybackPosition(frame => <ClipTransformBox key={`${mediaKey}:${timeline.revision}:${transformBox.clip.id}`} box={transformBox} playhead={frame} timeline={timeline} media={media} mediaKey={mediaKey} />)}{activeSpeedPreview?.overlay && (activeSpeedPreview.overlay.kind === 'processing' ? <div className="preview-speed-overlay is-processing" data-testid="preview-speed-processing" role="status" aria-live="polite"><div className="preview-speed-overlay-main"><div className="preview-speed-overlay-row"><span className="speed-spinner" aria-hidden="true" /><span>{activeSpeedPreview.overlay.label}</span></div>{activeSpeedPreview.overlay.percent !== null && <div className="preview-speed-overlay-bar"><span style={{ width: `${activeSpeedPreview.overlay.percent}%` }} /></div>}</div></div> : <div className="preview-speed-overlay is-failed" data-testid="preview-speed-failed" role="alert"><div className="preview-speed-overlay-main"><div className="preview-speed-overlay-row"><Icon name="warning" size={14} /><span>{activeSpeedPreview.overlay.message}</span></div></div>{activeSpeedPreview.overlay.canRetry && activeSpeedPreview.onRetryTask && <Button type="button" variant="outline" size="sm" className="preview-speed-overlay-retry" data-testid="preview-speed-retry" onClick={() => activeSpeedPreview.onRetryTask?.(activeSpeedPreview.overlay!.kind === 'failed' ? activeSpeedPreview.overlay!.taskId : '')}><Icon name="refresh" size={12} />{t('speed.processing.retry')}</Button>}</div>)}</> : rendered && !timeline?.clips?.length ? <div className="preview-empty-frame" style={{aspectRatio: `${timeline?.width || 1080} / ${timeline?.height || 1920}`}}><Film size={20}/><p>{t('edit.empty.preview')}</p></div> : <div className="preview-placeholder"><div className="preview-placeholder-icon"><Film size={20}/></div><h3>{rendered ? inProgress ? t('timeline.preview.preparing') : timeline?.clips?.length ? t('timeline.preview.ready') : t('timeline.preview.first') : t('timeline.preview.empty')}</h3><div>{rendered && timeline?.clips?.length ? <Button variant="ghost" className="button primary" disabled={busy || inProgress} onClick={() => onRender('preview')}><Icon name="play" size={15} />{t('timeline.preview.render')}</Button> : <>{canSeed && onSeed && !timeline?.clips?.length && <Button variant="ghost" className="button primary" data-testid="preview-seed-timeline" disabled={busy || seedBusy} onClick={onSeed}><Icon name="layers" size={15} />{t('timeline.preview.seed')}</Button>}{typeof onImport === 'function' && <Button variant="ghost" className={`button ${canSeed && onSeed && !timeline?.clips?.length ? '' : 'primary'}`} onClick={onImport}>{t('timeline.preview.import')}</Button>}{typeof onCanvas === 'function' && <Button variant="ghost" className="button" onClick={onCanvas}>{t('timeline.preview.canvas')}</Button>}</>}</div></div>}
     </TabsContent>
     {aspectFrame && <AspectFrameSuggestion {...aspectFrame} />}
     {kind === 'source' && !clip && type === 'video' && onCaptureFrame && <SourceFrameCaptureControl captureKey={captureKey} inspect={inspectCapture} subscribe={subscribeCapture} onCaptureFrame={onCaptureFrame} captureBusy={captureBusy || blocked} />}{kind === 'source' && !clip && type === 'video' && onDetectScenes && <div className="source-scene-detect"><Button type="button" variant="outline" size="sm" data-testid="source-detect-scenes" disabled={blocked || Boolean(sceneDetectIssue)} title={sceneDetectIssue ? renderMessage(sceneDetectIssue) : undefined} onClick={() => { if (!blocked) onDetectScenes(); }}><Icon name="scissors" size={13} />{t('scene.menu.detect')}</Button>{sceneDetectIssue && <span className="input-hint">{renderMessage(sceneDetectIssue)}</span>}</div>}{withPlaybackPosition(renderPlaybackControls)}

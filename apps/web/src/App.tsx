@@ -4763,13 +4763,14 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
           sourceUrl: assetUrl(sourceAsset),
           fps: timeline?.fps || 30,
           media: speedPreviewMedia.media,
+          awaitingOpticalProxy: speedPreviewMedia.awaitingOpticalProxy,
           processingItems: speedProcessing.previewItems,
           t: t as never,
           onRetryTask: taskId => { void speedProcessing.retry(taskId).then(() => speedPreviewMedia.refresh()); },
           onPlaybackStateChange: state => speedPreviewAudio.syncPlayback(state),
         })
       : null,
-    [speedEnabled, timeline, activeSourceClip, sourceAsset, previewKind, speedPreviewMedia.media, speedPreviewMedia.refresh, speedProcessing.previewItems, speedProcessing.retry, speedPreviewAudio.syncPlayback, t, projectMedia.state.status],
+    [speedEnabled, timeline, activeSourceClip, sourceAsset, previewKind, speedPreviewMedia.media, speedPreviewMedia.awaitingOpticalProxy, speedPreviewMedia.refresh, speedProcessing.previewItems, speedProcessing.retry, speedPreviewAudio.syncPlayback, t, projectMedia.state.status],
   );
   const speedWaveformWindowForClip = useMemo(
     () => speedEnabled

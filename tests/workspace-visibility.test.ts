@@ -13,10 +13,14 @@ import * as exportSettings from '../apps/web/src/export-settings-state.ts';
 import * as sourceRanges from '../apps/web/src/source-range-state.ts';
 import * as speedRender from '../packages/contracts/src/timeline-speed-render.ts';
 import * as previewPlayback from '../apps/web/src/preview-playback.ts';
+import * as speedPreviewModel from '../apps/web/src/speed-preview/speed-preview-model.ts';
 import {buildClipSpeedPreviewBinding} from '../apps/web/src/speed-preview/speed-preview-model.ts';
+import type {ClipSpeedPreviewBinding} from '../apps/web/src/speed-preview/speed-preview-model.ts';
+import type {UseSpeedPreviewMediaResult} from '../apps/web/src/speed-preview/use-speed-preview-media.ts';
 import * as speedModel from '../apps/web/src/speed-ui/speed-model.ts';
 import type {UseSpeedProcessingResult} from '../apps/web/src/speed-ui/use-speed-processing.ts';
 import {timelineProcessingResponseSchemas} from '../packages/contracts/src/timeline-processing.ts';
+import {timelinePreviewMediaPath} from '../packages/contracts/src/timeline-preview-media.ts';
 import {DEFAULT_UI_PREFERENCES} from '../packages/contracts/src/ui-preferences.ts';
 import {imageEditSourceIssueDescriptor} from '../apps/web/src/image-generation.ts';
 import {generationParameters, providerStatus} from '../apps/web/src/generation-settings.ts';
@@ -24,7 +28,8 @@ import {generationParameters, providerStatus} from '../apps/web/src/generation-s
 // Exercise the real component functions with deterministic hook, ref, media,
 // and animation-frame boundaries. These tests intentionally do not claim DOM
 // or browser playback coverage; browser acceptance covers the integrated UI.
-const componentCode = new Map(['workspace-visibility.tsx', 'Nodes.tsx', 'Preview.tsx', 'Inspector.tsx', 'speed-ui/use-speed-processing.ts'].map(file => [file,
+const componentCode = new Map(['workspace-visibility.tsx', 'Nodes.tsx', 'Preview.tsx', 'Inspector.tsx', 'speed-ui/use-speed-processing.ts',
+  'speed-preview/use-speed-preview-media.ts'].map(file => [file,
   transformSync(readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs', sourcefile: file }).code,
 ]));
 const noop = () => {};
@@ -34,10 +39,11 @@ const secondRenderAssetId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 function makeElement(src:unknown = null) {
   return {
     src, currentTime: 0, duration: 20, readyState: 1, paused: true, seeking: false, isConnected: true,
-    pauses: 0, loads: 0, focuses: 0, scrolls: 0,
+    plays: 0, pauses: 0, loads: 0, focuses: 0, scrolls: 0,
     getAttribute(name: string) { return name === 'src' ? this.src : null; },
     setAttribute(name: string, value: unknown) { if (name === 'src') this.src = value; },
     removeAttribute(name: string) { if (name === 'src') this.src = null; },
+    async play() { this.paused = false; this.plays++; },
     pause() { this.paused = true; this.pauses++; },
     load() { this.loads++; this.currentTime = 0; },
     focus() { this.focuses++; },
@@ -109,6 +115,7 @@ function createHarness(file: string, exportName = 'default') {
     './AspectFrameControls.tsx': { AspectFrameFeedback: 'AspectFrameFeedback', AspectFrameMenu: 'AspectFrameMenu', AspectFrameSuggestion: 'AspectFrameSuggestion' },
     './preview-playback.ts': previewPlayback,
     './speed-model.ts': speedModel,
+    './speed-preview-model.ts': speedPreviewModel,
     '../../../../packages/contracts/src/timeline-processing.ts': {timelineProcessingResponseSchemas},
     '../../../packages/contracts/src/timeline-speed-render.ts': speedRender,
     './UiPreferencesProvider.tsx': {useUiPreferences:()=>({preferences:DEFAULT_UI_PREFERENCES})},
@@ -138,6 +145,7 @@ function createHarness(file: string, exportName = 'default') {
     const require = (id: string) => {
       if (id === './project-media-read-gate.tsx') return {useProjectMediaReadGate: () => null, mediaReadIdentity: (asset: unknown, version?: {assetId?: string; projectId?: string}) => version ? {id: version.assetId, projectId: version.projectId} : asset, ProjectMediaImage: 'img'};
       if (id === './project-file/MediaStatus.tsx') return {MediaStatusBadge: 'MediaStatusBadge', MediaStatusNote: 'MediaStatusNote'};
+      if (id === '../speed-ui/use-speed-processing.ts') return load('speed-ui/use-speed-processing.ts');
       if (mocks[id]) return mocks[id];
       if (id.endsWith('.css')) return {};
       if (id.startsWith('@mioon/ui/')) return ui;
@@ -219,6 +227,37 @@ test('speed preview ignores ready processing rows from a previous timeline revis
   requests[1]!({items: [next]});
   await Promise.resolve();
   assert.deepEqual(render(2).previewItems, [next]);
+});
+
+test('speed preview holds the off proxy through the optical lookup and fences the saved revision', async t => {
+  const h = createHarness('speed-preview/use-speed-preview-media.ts', 'useSpeedPreviewMedia');
+  t.after(() => h.unmount());
+  const requests: ((value: unknown) => void)[] = [];
+  const projectId = renderProjectId, clipId = secondRenderAssetId, assetId = firstRenderAssetId;
+  const clip = {id: clipId, timing: {profile: 'timeline-speed-v1', interpolation: 'optical'}};
+  const props = {projectId, clip, asset: asset(), active: true, online: true, authenticated: true,
+    rpc: () => new Promise(resolve => requests.push(resolve))};
+  const readyOptical = {taskId: assetId, clipId, kind: 'optical', status: 'ready'};
+  const proxy = (taskId: string) => ({mode: 'proxy', status: 'ready', durationFrames: 90,
+    url: timelinePreviewMediaPath({projectId, assetId, clipId, taskId, digest: 'a'.repeat(64)})});
+  const off = proxy(clipId), optical = proxy(assetId);
+  const render = (revision: number, ready: boolean) => h.render({...props,
+    timeline: {revision, capabilities: {speed: true}}, processingItems: ready ? [readyOptical] : [],
+  }) as unknown as UseSpeedPreviewMediaResult;
+  render(1, false);
+  requests[0]!(off);
+  await Promise.resolve();
+  assert.deepEqual(render(1, true).media, off);
+  requests[1]!({mode: 'proxy', status: 'queued', taskId: assetId});
+  await Promise.resolve();
+  const pending = render(1, true);
+  assert.deepEqual(pending.media, off);
+  assert.equal(pending.awaitingOpticalProxy, true);
+  pending.refresh();
+  requests[2]!(optical);
+  await Promise.resolve();
+  assert.deepEqual(render(1, true).media, optical);
+  assert.equal(render(2, false).media, null);
 });
 
 test('visibility defaults to visible and nested visible panels cannot override a hidden ancestor', () => {
@@ -385,6 +424,61 @@ test('replaced Preview sources reject old callbacks and Strict Mode disposal res
   assert.deepEqual(seeks, []); assert.equal(original.paused, true);
   h.replayEffects(); assert.equal(current.src, mediaUrl(renderProjectId, secondRenderAssetId)); assert.equal(current.paused, true);
 });
+
+for (const playing of [true, false]) {
+  test(`the optical proxy takes over the same output frame while ${playing ? 'playing' : 'paused'}`, async t => {
+    const h = createHarness('Preview.tsx');
+    t.after(() => h.unmount());
+    const clip = {id: 'optical-clip', startFrame: 12, durationFrames: 300, sourceInFrame: 0};
+    const timeline = {id: 'timeline', revision: 1, fps: 30, durationFrames: 312};
+    const audio: boolean[] = [];
+    const seek = (frame: number) => (frame - clip.startFrame) / timeline.fps;
+    const off: ClipSpeedPreviewBinding = {
+      mode: 'proxy-ready', mediaUrl: '/off-proxy', mediaKey: 'off',
+      playbackRate: 1, muteVideo: true, frameDrivenPlayback: false, silent: false,
+      clipStartFrame: clip.startFrame, clipDurationFrames: clip.durationFrames, fps: timeline.fps, overlay: null,
+      outputFrameToMediaSeconds: seek,
+      mediaSecondsToOutputFrame: seconds => clip.startFrame + Math.round(seconds * timeline.fps),
+      onPlaybackStateChange: ({playing}) => {audio.push(playing);},
+    };
+    const optical = {...off, mediaUrl: '/optical-proxy', mediaKey: 'optical'};
+    const props = previewProps({timeline, clip, speedPreview: off, playhead: 50});
+    h.render(props);
+    const current = () => h.find('source-preview-video')!.props.ref.current as unknown as ReturnType<typeof makeElement>;
+    const old = current();
+    old.readyState = 4;
+    if (playing) {
+      const controls = h.nodes().find(node => node.type === 'PreviewPlaybackControls')!.props.customPlayback as {toggle(): void};
+      controls.toggle();
+      await new Promise(resolve => setImmediate(resolve));
+      assert.equal(old.paused, false);
+    }
+    h.render({...props, speedPreview: optical});
+    const candidate = h.nodes().find(node => node.props.className === 'preview-proxy-candidate')!
+      .props.ref.current as unknown as ReturnType<typeof makeElement>;
+    candidate.readyState = 1;
+    h.flushFrames();
+    const targetFrame = playing ? 53 : 50;
+    assert.ok(Math.abs(candidate.currentTime - seek(targetFrame)) < 0.00001);
+    assert.equal(current(), old, 'the old proxy stays visible while the candidate decodes');
+    assert.equal(old.paused, !playing);
+    old.currentTime = seek(targetFrame) + 0.000002;
+    candidate.readyState = 4;
+    candidate.seeking = true;
+    h.flushFrames();
+    assert.equal(current(), old, 'do not promote while the candidate seek is still pending');
+    candidate.seeking = false;
+    h.flushFrames();
+    h.render({...props, speedPreview: optical});
+    assert.equal(current(), candidate, 'reuse the decoded candidate element');
+    assert.equal(candidate.paused, !playing);
+    assert.equal(candidate.plays, playing ? 1 : 0);
+    assert.equal(candidate.src, '/optical-proxy');
+    assert.ok(Math.abs(candidate.currentTime - seek(targetFrame)) < 0.00001, 'replace at the same output frame');
+    assert.equal(old.src, null);
+    assert.deepEqual(audio, playing ? [true] : [], 'handoff neither stops nor starts another PCM session');
+  });
+}
 
 test('an old render seeks and steps within its frozen duration, in either direction of the duration change', () => {
   const h = createHarness('Preview.tsx'), seeks: unknown[] = [];
