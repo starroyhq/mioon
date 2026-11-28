@@ -334,9 +334,9 @@ export default function BoardUiLive(props: BoardUiLiveProps): React.ReactElement
         disabled={busy} onClick={props.onAddVideo}>
         <Video size={15} aria-hidden="true"/><span className="board-tool-label">{t('assets.video')}</span>
       </WorkbenchButton>}
-      {props.onGenerateImage && <WorkbenchButton variant="ghost" data-testid="board-ui-generate-image" aria-label={t('shell.images')} title={t('shell.images')}
+      {props.onGenerateImage && <WorkbenchButton variant="ghost" data-testid="board-ui-generate-image" aria-label={t('boardUi.generateImage')} title={t('boardUi.generateImage')}
         disabled={busy} onClick={props.onGenerateImage}>
-        <Sparkles size={15} aria-hidden="true"/><span className="board-tool-label">{t('shell.images')}</span>
+        <Sparkles size={15} aria-hidden="true"/><span className="board-tool-label">{t('boardUi.generateImage')}</span>
       </WorkbenchButton>}
       <WorkbenchButton variant="ghost" data-testid="board-ui-tidy" aria-label={t('canvas.edit.tidy')}
         title={`${t('canvas.edit.tidyHint')} · ${mac ? '⇧⌘L' : 'Ctrl+Shift+L'}`}
