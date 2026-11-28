@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="1821fe457b170a9d1e880c29570f18ad6446a3bca95466a5e3f2169d2e5bee4e";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="ca63a973861140e9c35c56e81cca32497a0ce6c5575df8508f4bb9b47c52e587";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "sequence.preview": {
   "type": "object",
@@ -12913,7 +12913,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
          "native",
          "short_360",
          "short_720",
-         "short_1080"
+         "short_1080",
+         "short_2160"
         ]
        },
        "rateControl": {
@@ -12985,7 +12986,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
          "native",
          "short_360",
          "short_720",
-         "short_1080"
+         "short_1080",
+         "short_2160"
         ]
        },
        "rateControl": {
@@ -13094,6 +13096,101 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   },
   "required": [
    "expectedRevision"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "timeline.export.estimate": {
+  "type": "object",
+  "properties": {
+   "expectedRevision": {
+    "type": "integer",
+    "exclusiveMinimum": 0,
+    "maximum": 9007199254740991
+   },
+   "profileId": {
+    "type": "string",
+    "enum": [
+     "mp4_h264_v1",
+     "mp4_h264_float_checked_v2"
+    ]
+   },
+   "rateControl": {
+    "anyOf": [
+     {
+      "type": "object",
+      "properties": {
+       "mode": {
+        "type": "string",
+        "const": "crf"
+       },
+       "quality": {
+        "type": "string",
+        "enum": [
+         "compact",
+         "standard",
+         "high"
+        ]
+       }
+      },
+      "required": [
+       "mode",
+       "quality"
+      ],
+      "additionalProperties": false
+     },
+     {
+      "type": "object",
+      "properties": {
+       "mode": {
+        "type": "string",
+        "const": "bitrate"
+       },
+       "targetKbps": {
+        "type": "number",
+        "enum": [
+         2000,
+         4000,
+         8000
+        ]
+       }
+      },
+      "required": [
+       "mode",
+       "targetKbps"
+      ],
+      "additionalProperties": false
+     }
+    ]
+   },
+   "exportRange": {
+    "type": "object",
+    "properties": {
+     "startFrame": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 17999,
+      "description": "Included start frame on the saved composition clock, fixed at 30fps."
+     },
+     "endFrame": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 18000,
+      "description": "Excluded end frame on the same 30fps composition clock. Must exceed startFrame; fresh export acceptance requires it not exceed the current saved timeline duration."
+     }
+    },
+    "required": [
+     "startFrame",
+     "endFrame"
+    ],
+    "additionalProperties": false,
+    "description": "Export-only half-open [startFrame,endFrame) range on the saved 30fps composition. At least one frame; bounded by the saved timeline. Omission preserves full export."
+   }
+  },
+  "required": [
+   "expectedRevision",
+   "profileId",
+   "rateControl"
   ],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"
@@ -13709,7 +13806,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
          "native",
          "short_360",
          "short_720",
-         "short_1080"
+         "short_1080",
+         "short_2160"
         ]
        },
        "rateControl": {
@@ -13781,7 +13879,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
          "native",
          "short_360",
          "short_720",
-         "short_1080"
+         "short_1080",
+         "short_2160"
         ]
        },
        "rateControl": {
@@ -16235,7 +16334,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
          "native",
          "short_360",
          "short_720",
-         "short_1080"
+         "short_1080",
+         "short_2160"
         ]
        },
        "rateControl": {
@@ -16307,7 +16407,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
          "native",
          "short_360",
          "short_720",
-         "short_1080"
+         "short_1080",
+         "short_2160"
         ]
        },
        "rateControl": {
@@ -19321,6 +19422,591 @@ export const AGENT_TASK_FORMAT4_THUMBNAIL_SCHEMAS:Readonly<Record<string,unknown
    "sceneRevision",
    "dataBase64",
    "framePresetId"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ }
+};
+export const AGENT_TASK_LEGACY_EXPORT_SCHEMAS:Readonly<Record<string,unknown>>={
+ "timeline.render": {
+  "type": "object",
+  "properties": {
+   "expectedRevision": {
+    "type": "integer",
+    "exclusiveMinimum": 0
+   },
+   "purpose": {
+    "type": "string",
+    "enum": [
+     "preview",
+     "export"
+    ]
+   },
+   "exportRange": {
+    "type": "object",
+    "properties": {
+     "startFrame": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 17999,
+      "description": "Included start frame on the saved composition clock, fixed at 30fps."
+     },
+     "endFrame": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 18000,
+      "description": "Excluded end frame on the same 30fps composition clock. Must exceed startFrame; fresh export acceptance requires it not exceed the current saved timeline duration."
+     }
+    },
+    "required": [
+     "startFrame",
+     "endFrame"
+    ],
+    "additionalProperties": false,
+    "description": "Optional export-only half-open [startFrame,endFrame) interval at the saved 30fps clock; at least one frame, bounded by the saved timeline. The full frozen snapshot remains unchanged. Omission preserves full export and historical bytes."
+   },
+   "deliveryName": {
+    "type": "string",
+    "minLength": 1,
+    "maxLength": 120,
+    "allOf": [
+     {
+      "pattern": "\\S"
+     },
+     {
+      "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\u2028\\u2029]+$(?![\\s\\S])"
+     },
+     {
+      "pattern": "^(?:[^\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$"
+     }
+    ]
+   },
+   "exportSettings": {
+    "anyOf": [
+     {
+      "type": "object",
+      "properties": {
+       "profileId": {
+        "type": "string",
+        "const": "mp4_h264_v1"
+       },
+       "resolution": {
+        "type": "string",
+        "enum": [
+         "native",
+         "short_360",
+         "short_720",
+         "short_1080"
+        ]
+       },
+       "rateControl": {
+        "anyOf": [
+         {
+          "type": "object",
+          "properties": {
+           "mode": {
+            "type": "string",
+            "const": "crf"
+           },
+           "quality": {
+            "type": "string",
+            "enum": [
+             "compact",
+             "standard",
+             "high"
+            ]
+           }
+          },
+          "required": [
+           "mode",
+           "quality"
+          ],
+          "additionalProperties": false
+         },
+         {
+          "type": "object",
+          "properties": {
+           "mode": {
+            "type": "string",
+            "const": "bitrate"
+           },
+           "targetKbps": {
+            "type": "number",
+            "enum": [
+             2000,
+             4000,
+             8000
+            ]
+           }
+          },
+          "required": [
+           "mode",
+           "targetKbps"
+          ],
+          "additionalProperties": false
+         }
+        ]
+       }
+      },
+      "required": [
+       "profileId",
+       "resolution",
+       "rateControl"
+      ],
+      "additionalProperties": false
+     },
+     {
+      "type": "object",
+      "properties": {
+       "profileId": {
+        "type": "string",
+        "const": "mp4_h264_float_checked_v2"
+       },
+       "resolution": {
+        "type": "string",
+        "enum": [
+         "native",
+         "short_360",
+         "short_720",
+         "short_1080"
+        ]
+       },
+       "rateControl": {
+        "anyOf": [
+         {
+          "type": "object",
+          "properties": {
+           "mode": {
+            "type": "string",
+            "const": "crf"
+           },
+           "quality": {
+            "type": "string",
+            "enum": [
+             "compact",
+             "standard",
+             "high"
+            ]
+           }
+          },
+          "required": [
+           "mode",
+           "quality"
+          ],
+          "additionalProperties": false
+         },
+         {
+          "type": "object",
+          "properties": {
+           "mode": {
+            "type": "string",
+            "const": "bitrate"
+           },
+           "targetKbps": {
+            "type": "number",
+            "enum": [
+             2000,
+             4000,
+             8000
+            ]
+           }
+          },
+          "required": [
+           "mode",
+           "targetKbps"
+          ],
+          "additionalProperties": false
+         }
+        ]
+       }
+      },
+      "required": [
+       "profileId",
+       "resolution",
+       "rateControl"
+      ],
+      "additionalProperties": false,
+      "description": "Explicit export-only float intermediate profile. The complete pre-encode sample peak must not exceed one; otherwise the export fails without publishing an asset. No automatic gain change. This is not an AAC or true-peak safety guarantee."
+     }
+    ]
+   },
+   "preflightSnapshotHash": {
+    "type": "string",
+    "pattern": "^[a-f0-9]{64}$",
+    "description": "Optional exact snapshot digest returned by timeline.export.preflight. New renders verify it against current frozen content; exact replay still returns its original response first. Omission preserves the legacy input and response. A successful check does not guarantee future source availability or full decoding."
+   }
+  },
+  "required": [
+   "expectedRevision",
+   "purpose"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "timeline.export.preflight": {
+  "type": "object",
+  "properties": {
+   "exportSettings": {
+    "anyOf": [
+     {
+      "type": "object",
+      "properties": {
+       "profileId": {
+        "type": "string",
+        "const": "mp4_h264_v1"
+       },
+       "resolution": {
+        "type": "string",
+        "enum": [
+         "native",
+         "short_360",
+         "short_720",
+         "short_1080"
+        ]
+       },
+       "rateControl": {
+        "anyOf": [
+         {
+          "type": "object",
+          "properties": {
+           "mode": {
+            "type": "string",
+            "const": "crf"
+           },
+           "quality": {
+            "type": "string",
+            "enum": [
+             "compact",
+             "standard",
+             "high"
+            ]
+           }
+          },
+          "required": [
+           "mode",
+           "quality"
+          ],
+          "additionalProperties": false
+         },
+         {
+          "type": "object",
+          "properties": {
+           "mode": {
+            "type": "string",
+            "const": "bitrate"
+           },
+           "targetKbps": {
+            "type": "number",
+            "enum": [
+             2000,
+             4000,
+             8000
+            ]
+           }
+          },
+          "required": [
+           "mode",
+           "targetKbps"
+          ],
+          "additionalProperties": false
+         }
+        ]
+       }
+      },
+      "required": [
+       "profileId",
+       "resolution",
+       "rateControl"
+      ],
+      "additionalProperties": false
+     },
+     {
+      "type": "object",
+      "properties": {
+       "profileId": {
+        "type": "string",
+        "const": "mp4_h264_float_checked_v2"
+       },
+       "resolution": {
+        "type": "string",
+        "enum": [
+         "native",
+         "short_360",
+         "short_720",
+         "short_1080"
+        ]
+       },
+       "rateControl": {
+        "anyOf": [
+         {
+          "type": "object",
+          "properties": {
+           "mode": {
+            "type": "string",
+            "const": "crf"
+           },
+           "quality": {
+            "type": "string",
+            "enum": [
+             "compact",
+             "standard",
+             "high"
+            ]
+           }
+          },
+          "required": [
+           "mode",
+           "quality"
+          ],
+          "additionalProperties": false
+         },
+         {
+          "type": "object",
+          "properties": {
+           "mode": {
+            "type": "string",
+            "const": "bitrate"
+           },
+           "targetKbps": {
+            "type": "number",
+            "enum": [
+             2000,
+             4000,
+             8000
+            ]
+           }
+          },
+          "required": [
+           "mode",
+           "targetKbps"
+          ],
+          "additionalProperties": false
+         }
+        ]
+       }
+      },
+      "required": [
+       "profileId",
+       "resolution",
+       "rateControl"
+      ],
+      "additionalProperties": false,
+      "description": "Explicit export-only float intermediate profile. The complete pre-encode sample peak must not exceed one; otherwise the export fails without publishing an asset. No automatic gain change. This is not an AAC or true-peak safety guarantee."
+     }
+    ]
+   },
+   "deliveryName": {
+    "type": "string",
+    "minLength": 1,
+    "maxLength": 120,
+    "allOf": [
+     {
+      "pattern": "\\S"
+     },
+     {
+      "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\u2028\\u2029]+$(?![\\s\\S])"
+     },
+     {
+      "pattern": "^(?:[^\\uD800-\\uDFFF]|[\\uD800-\\uDBFF][\\uDC00-\\uDFFF])*$"
+     }
+    ]
+   },
+   "exportRange": {
+    "type": "object",
+    "properties": {
+     "startFrame": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 17999,
+      "description": "Included start frame on the saved composition clock, fixed at 30fps."
+     },
+     "endFrame": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 18000,
+      "description": "Excluded end frame on the same 30fps composition clock. Must exceed startFrame; fresh export acceptance requires it not exceed the current saved timeline duration."
+     }
+    },
+    "required": [
+     "startFrame",
+     "endFrame"
+    ],
+    "additionalProperties": false,
+    "description": "Export-only half-open [startFrame,endFrame) range on the saved 30fps composition. At least one frame; bounded by the saved timeline. Omission preserves full export."
+   },
+   "expectedRevision": {
+    "type": "integer",
+    "exclusiveMinimum": 0,
+    "description": "Existing timeline revision to check. This read never creates a timeline; a different current revision is reported as stale."
+   }
+  },
+  "required": [
+   "expectedRevision"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "timeline.export.capabilities": {
+  "type": "object",
+  "properties": {
+   "expectedRevision": {
+    "type": "integer",
+    "minimum": 1,
+    "maximum": 9007199254740991
+   },
+   "exportSettings": {
+    "anyOf": [
+     {
+      "type": "object",
+      "properties": {
+       "profileId": {
+        "type": "string",
+        "const": "mp4_h264_v1"
+       },
+       "resolution": {
+        "type": "string",
+        "enum": [
+         "native",
+         "short_360",
+         "short_720",
+         "short_1080"
+        ]
+       },
+       "rateControl": {
+        "anyOf": [
+         {
+          "type": "object",
+          "properties": {
+           "mode": {
+            "type": "string",
+            "const": "crf"
+           },
+           "quality": {
+            "type": "string",
+            "enum": [
+             "compact",
+             "standard",
+             "high"
+            ]
+           }
+          },
+          "required": [
+           "mode",
+           "quality"
+          ],
+          "additionalProperties": false
+         },
+         {
+          "type": "object",
+          "properties": {
+           "mode": {
+            "type": "string",
+            "const": "bitrate"
+           },
+           "targetKbps": {
+            "type": "number",
+            "enum": [
+             2000,
+             4000,
+             8000
+            ]
+           }
+          },
+          "required": [
+           "mode",
+           "targetKbps"
+          ],
+          "additionalProperties": false
+         }
+        ]
+       }
+      },
+      "required": [
+       "profileId",
+       "resolution",
+       "rateControl"
+      ],
+      "additionalProperties": false
+     },
+     {
+      "type": "object",
+      "properties": {
+       "profileId": {
+        "type": "string",
+        "const": "mp4_h264_float_checked_v2"
+       },
+       "resolution": {
+        "type": "string",
+        "enum": [
+         "native",
+         "short_360",
+         "short_720",
+         "short_1080"
+        ]
+       },
+       "rateControl": {
+        "anyOf": [
+         {
+          "type": "object",
+          "properties": {
+           "mode": {
+            "type": "string",
+            "const": "crf"
+           },
+           "quality": {
+            "type": "string",
+            "enum": [
+             "compact",
+             "standard",
+             "high"
+            ]
+           }
+          },
+          "required": [
+           "mode",
+           "quality"
+          ],
+          "additionalProperties": false
+         },
+         {
+          "type": "object",
+          "properties": {
+           "mode": {
+            "type": "string",
+            "const": "bitrate"
+           },
+           "targetKbps": {
+            "type": "number",
+            "enum": [
+             2000,
+             4000,
+             8000
+            ]
+           }
+          },
+          "required": [
+           "mode",
+           "targetKbps"
+          ],
+          "additionalProperties": false
+         }
+        ]
+       }
+      },
+      "required": [
+       "profileId",
+       "resolution",
+       "rateControl"
+      ],
+      "additionalProperties": false,
+      "description": "Explicit export-only float intermediate profile. The complete pre-encode sample peak must not exceed one; otherwise the export fails without publishing an asset. No automatic gain change. This is not an AAC or true-peak safety guarantee."
+     }
+    ]
+   }
+  },
+  "required": [
+   "expectedRevision",
+   "exportSettings"
   ],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"

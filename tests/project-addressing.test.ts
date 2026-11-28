@@ -32,8 +32,8 @@ const requires = (schema: unknown, field: string): boolean => {
 
 test('every operation has exactly one address: app-level, entity-addressed, or the project its input names', () => {
   const operations = Object.keys(schemas);
-  assert.equal(operations.length, 179);
-  for(const operation of ['canvas.copy.snapshot','image.service.list','asset.media.location.list'])assert.ok(operations.includes(operation),operation);
+  assert.equal(operations.length, 180);
+  for(const operation of ['canvas.copy.snapshot','image.service.list','asset.media.location.list','timeline.export.estimate'])assert.ok(operations.includes(operation),operation);
   assert.equal(operations.includes('project.notes.set'), false);
   assert.equal(operations.includes('sequence.undo-action'), false);
   for (const operation of [...PREVIS_OUTPUT_OPERATIONS, ...FCP_EXPORT_OPERATIONS]) {
@@ -60,6 +60,11 @@ test('rpcPathFor and the CLI/MCP project address', () => {
   const projectId = randomUUID(), other = randomUUID();
   assert.equal(rpcPathFor('project.get', {projectId}), projectRpcPath(projectId));
   assert.equal(rpcPathFor('project.get', {projectId}, other), projectRpcPath(projectId), 'only entity-addressed operations take the extra project');
+  const estimate = {projectId, expectedRevision: 1, profileId: 'mp4_h264_v1', rateControl: {mode: 'crf', quality: 'standard'}};
+  assert.equal(inputProjectId('timeline.export.estimate', estimate), projectId);
+  assert.equal(rpcPathFor('timeline.export.estimate', estimate, other), projectRpcPath(projectId));
+  assert.deepEqual(splitProjectAddress('timeline.export.estimate', estimate), {input: estimate});
+  assert.throws(() => rpcPathFor('timeline.export.estimate', {}, other), TypeError);
   assert.equal(rpcPathFor('image.review.prepare', {input: {projectId}, settingsRevision: 1}), projectRpcPath(projectId));
   assert.equal(inputProjectId('image.review.prepare', {input: {projectId}}), projectId);
   assert.equal(rpcPathFor('job.get', {jobId: randomUUID()}, projectId), `/api/projects/${projectId}/rpc`);

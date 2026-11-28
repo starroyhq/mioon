@@ -3,11 +3,13 @@ import assert from 'node:assert/strict';
 import {mkdtempSync, realpathSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {createProjectStore} from '../packages/business/src/project-file/store.ts';
+import {createProjectFile} from '../packages/business/src/project-file/connection.ts';
 import type {ProjectStore} from '../packages/business/src/project-file/store.ts';
+import {openStore} from '../packages/business/src/project-file/test-store.ts';
 import {createSequenceInspectionService} from '../packages/business/src/format5-sequence-inspection.ts';
-import {agentTaskToolCatalogProfile, FORMAT5_UNAVAILABLE_OPERATIONS} from '../packages/business/src/agent/task-tool-groups-v2.ts';
-import {listAgentTaskTools, listAgentTaskToolsForChannel} from '../packages/business/src/agent/task-tools-v2.ts';
+import {agentTaskToolCatalogProfile, agentTaskToolNamesForGroup, FORMAT5_UNAVAILABLE_OPERATIONS} from '../packages/business/src/agent/task-tool-groups-v2.ts';
+import {createAgentTaskTools, listAgentTaskTools, listAgentTaskToolsForChannel} from '../packages/business/src/agent/task-tools-v2.ts';
+import {createServices} from '../packages/business/src/services.ts';
 import {MIO_SEQUENCE_ACTION_COUNT, MIO_SEQUENCE_GROUP_OPERATIONS, mioSequenceActionKindsForOperation, mioSequenceEditSchemas} from '../packages/contracts/src/mio-sequence.ts';
 import {FORMAT5_INPUT_LIMITS} from '../packages/contracts/src/project-format5.ts';
 import {SEQUENCE_GENERATION_INPUT_LIMITS} from '../packages/contracts/src/sequence-inspection.ts';
@@ -15,6 +17,7 @@ import {AGENT_TASK_FORMAT5_TOOLS_LOAD_DESCRIPTIONS} from '../packages/business/s
 import {sequenceInspectionSchemas} from '../packages/contracts/src/sequence-inspection.ts';
 import {schemas} from '../packages/contracts/src/index.ts';
 import {operationEffects} from '../packages/contracts/src/operation-effects.ts';
+import {timelineExportEstimateResponseSchema} from '../packages/contracts/src/timeline-export-estimate.ts';
 
 const at = '2026-01-01T00:00:00.000Z';
 const id = (n: number): string => `91000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -25,8 +28,8 @@ const sha = (letter: string): string => letter.repeat(64);
 
 function fixture(t: test.TestContext): ProjectStore {
   const rootDir = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-mt-read-'));
-  const store = createProjectStore({projectId, projectFile: path.join(rootDir, 'project.mioon'), targetFormat: 5,
-    locate: () => ({localDir: path.join(rootDir, 'records'), cacheDir: path.join(rootDir, 'cache'), tempDir: path.join(rootDir, 'temp')})});
+  createProjectFile(path.join(rootDir, 'project.mioon'), {projectId, targetFormat: 5});
+  const store = openStore(rootDir);
   t.after(() => {store.close(); rmSync(rootDir, {recursive: true, force: true});});
   const node = (nodeId: string, type: string, extra: Record<string, unknown> = {}) =>
     ({id: nodeId, projectId, type, position: {x: 0, y: 0}, createdAt: at, ...extra});
@@ -69,6 +72,46 @@ function fixture(t: test.TestContext): ProjectStore {
   });
   return store;
 }
+
+test('format-5 Mio can load 4K delivery tools and read an estimate under the current project', async t => {
+  const store = fixture(t);
+  const services = createServices(store, new Map());
+  const tools = createAgentTaskTools({store, services});
+  t.after(async () => {tools.dispose(); await services.drain();});
+  const operation = 'timeline.export.estimate';
+  const name = 'mioon_timeline_export_estimate';
+  assert.equal(agentTaskToolNamesForGroup('exports', 'format5').includes(name), true);
+  for (const frameTransaction of [false, true]) {
+    const legacy = listAgentTaskTools(frameTransaction);
+    assert.ok(!legacy.some(tool => tool.operation === operation));
+    assert.doesNotMatch(JSON.stringify(legacy.find(tool => tool.operation === 'timeline.render')!.parameters), /short_2160/);
+  }
+  for (const operation of ['timeline.render', 'timeline.export.preflight', 'timeline.export.capabilities']) {
+    const tool = tools.list().find(tool => tool.operation === operation);
+    assert.ok(tool);
+    assert.match(JSON.stringify(tool.parameters), /short_2160/);
+  }
+  const renderInput = {expectedRevision: 1, purpose: 'export', exportSettings: {
+    profileId: 'mp4_h264_v1', resolution: 'short_2160', rateControl: {mode: 'bitrate', targetKbps: 4000},
+  }};
+  assert.equal(tools.prepare({projectId, operation: 'mioon_timeline_render', input: renderInput}).risk, 'local_irreversible');
+  assert.throws(() => tools.prepare({projectId, operation: 'mioon_timeline_render',
+    input: {expectedRevision: 1, purpose: 'preview'}}), {code: 'VALIDATION_ERROR'});
+  const prepared = tools.prepare({projectId, operation: name, input: {
+    expectedRevision: 1, profileId: 'mp4_h264_v1', rateControl: {mode: 'bitrate', targetKbps: 4000},
+  }});
+  assert.equal(prepared.risk, 'read_only');
+  assert.deepEqual(prepared.targets, []);
+  const result = await tools.execute(prepared, {
+    runId: id(90), stepId: id(91), requestId: id(91), beforeEffect() {},
+    recordInside() {assert.fail('reading an estimate has no atomic write');},
+  });
+  const estimate = timelineExportEstimateResponseSchema.parse(result.result);
+  assert.equal(estimate.projectId, projectId);
+  assert.equal(estimate.timelineRevision, 1);
+  assert.equal(estimate.estimates.find(row => row.resolution === 'short_2160')?.height, 3840);
+  assert.deepEqual(result.changes, []);
+});
 
 test('sequence.inspect is a registered read operation with one format-5 tool', () => {
   assert.equal(sequenceInspectionSchemas['sequence.inspect'].safeParse({projectId, limit: 5}).success, true);

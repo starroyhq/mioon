@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {parse,schemas,TIMELINE_OUTPUT_PRESETS,TIMELINE_EXPORT_DEFAULT_SETTINGS,resolveTimelineExportDelivery,isTimelineExportDelivery,isTimelineExportSnapshot,isTimelineRenderRecord,isTimelineMutationResponse,isTimelineExportCapabilitiesResponse,operationEffect,DURABLE_EDIT_OPERATIONS,hasRequestNotAppliedProof,timelineExportCapabilityResultSchema} from '@mioon/contracts';
+import {isTimelineDeliveryGeometry,timelineExport4KFrameRateSupported,timelineOutputRatio} from '../packages/contracts/src/timeline-output-geometry.ts';
 
 const clone=<T>(value: T): T=>JSON.parse(JSON.stringify(value)) as T;
 const settings=()=>clone(TIMELINE_EXPORT_DEFAULT_SETTINGS);
@@ -35,6 +36,34 @@ test('every fixed output size, CRF mapping and bitrate resolves without mutating
   assert.deepEqual(delivery.effective.rateControl,rateControl.mode==='crf'?{mode:'crf',crf:({compact:28,standard:23,high:18} as Record<string,number>)[(rateControl as {quality:string}).quality]}:rateControl);
   assert.ok(isTimelineExportDelivery(delivery,timeline,s));assert.equal(JSON.stringify([timeline,s]),before);assert.notEqual(delivery.exportSettings,s);
   for(const field of ['width','fps','gopFrames','audioChannels'] as const){(delivery.effective as unknown as Record<string, number>)[field]++;assert.equal(isTimelineExportDelivery(delivery,timeline,s),false);}
+ }
+});
+
+test('both 4K profiles use the six bounded Level 5.1 geometries and scale video bitrate by output pixels',()=>{
+ const expected={
+  '16:9':[3840,2160],'9:16':[2160,3840],'1:1':[2160,2160],
+  '4:3':[2880,2160],'3:4':[2160,2880],'21:9':[4096,1756],
+ } as const;
+ for(const fps of [24,25,30])assert.ok(timelineExport4KFrameRateSupported(fps));
+ assert.equal(timelineExport4KFrameRateSupported(60),false);
+ assert.equal(isTimelineDeliveryGeometry({width:5040,height:2160,fps:30}),false);
+ for(const timeline of TIMELINE_OUTPUT_PRESETS){
+  const ratio=timelineOutputRatio(timeline)!;
+  const [width,height]=expected[ratio];
+  const macroblocks=Math.ceil(width/16)*Math.ceil(height/16);
+  assert.ok(macroblocks<=36864);
+  assert.ok(macroblocks*30<=983040);
+  for(const profileId of ['mp4_h264_v1','mp4_h264_float_checked_v2']){
+   for(const targetKbps of [2000,4000,8000]){
+    const rateControl={mode:'bitrate',targetKbps};
+    const request={profileId,resolution:'short_2160',rateControl};
+    const {effective}=resolveTimelineExportDelivery(timeline,request);
+    assert.equal(effective.width,width);assert.equal(effective.height,height);assert.equal(effective.fps,30);
+    const {effective:hd}=resolveTimelineExportDelivery(timeline,{...request,resolution:'short_1080'});
+    assert.deepEqual(effective.rateControl,{mode:'bitrate',targetKbps:Math.round(targetKbps*width*height/(hd.width*hd.height))});
+    assert.ok(isTimelineExportDelivery({exportSettings:request,effective},timeline,request));
+   }
+  }
  }
 });
 

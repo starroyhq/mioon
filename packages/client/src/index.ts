@@ -36,7 +36,7 @@ import {FRAME_MUTATION_OPERATIONS,frameSchemas,canonicalFrameInput,isFrameMutati
 import {SCENE_MUTATION_OPERATIONS,sceneSchemas,canonicalSceneInput,isSceneMutationResponse,isSceneTaskResponse,isSceneRequestResponse,isSceneListResponse,isSceneResultResponse} from '@mioon/contracts';
 import {SUBJECT_VARIANT_MUTATION_OPERATIONS,subjectVariantSchemas,canonicalSubjectVariantInput,isSubjectVariantMutationResponse,isSubjectVariantBatch,isSubjectVariantListResponse} from '@mioon/contracts';
 import {PREVIS_MUTATION_OPERATIONS,isPrevisMutationResponse,isPrevisThumbnailSetResponse,isPrevisThumbnailGetResponse} from '@mioon/contracts';
-import {isTimelineExportCapabilitiesResponse} from '@mioon/contracts';
+import {isTimelineExportCapabilitiesResponse,isTimelineExportEstimateResponse} from '@mioon/contracts';
 import {isExportSamplePeakResponse, EXPORT_SAMPLE_PEAK_LIMITS} from '@mioon/contracts/export-sample-peak';
 import {isExportLoudnessResponse, EXPORT_LOUDNESS_LIMITS} from '@mioon/contracts/export-loudness';
 import {isTimelineMixLoudnessResponse, TIMELINE_MIX_LOUDNESS_LIMITS} from '@mioon/contracts/timeline-mix-loudness';
@@ -525,6 +525,8 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
       throw new ClientError('BACKEND_PROTOCOL_ERROR','The backend returned an invalid Look Pack inspection.',{details:{operation}});
     if (['lut.import','lut.list','lut.inspect'].includes(operation) && !isLutRpcResponse(operation,parsed,result))
       throw new ClientError('BACKEND_PROTOCOL_ERROR','The backend returned an invalid LUT resource response.',{details:operation==='lut.import'?uncertainRequestDetails(body):{operation}});
+    if (operation === 'timeline.export.estimate' && !isTimelineExportEstimateResponse(result, parsed))
+      throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid export estimate.');
     if (operation === 'timeline.export.capabilities' && !isTimelineExportCapabilitiesResponse(result, parsed))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid export capability report.');
     if (operation === 'timeline.audioPreview.plan' && !isAudioPreviewPlan(result, parsed as unknown as Parameters<typeof isAudioPreviewPlan>[1]))

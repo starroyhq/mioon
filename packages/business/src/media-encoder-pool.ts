@@ -24,6 +24,16 @@ export const MAX_SEGMENT_ENCODERS = 4;
  * concurrent encoder as the admission estimate.
  */
 export const ENCODER_RESIDENT_BYTES = 512 * 1024 * 1024;
+const BASE_FRAME_PIXELS = 1920 * 1080;
+const RGBA_BYTES_PER_PIXEL = 4;
+// Account for scaled staging, compositor/filter buffers and encoder lookahead
+// above the measured HD allowance. Use the actual landscape or portrait raster.
+const LARGE_FRAME_BUFFER_ALLOWANCE = 28;
+
+export function encoderResidentBytesForOutput(width: number, height: number): number {
+  const extraPixels = Math.max(0, width * height - BASE_FRAME_PIXELS);
+  return ENCODER_RESIDENT_BYTES + extraPixels * RGBA_BYTES_PER_PIXEL * LARGE_FRAME_BUFFER_ALLOWANCE;
+}
 /**
  * System and application allowance for the memory form of the cap: the desktop
  * shell (main process plus renderer windows and helpers) and the system work
@@ -63,12 +73,22 @@ export function coreEncoderSlots(parallelism: number = availableParallelism()): 
   return Math.max(1, Math.floor((cores - CORE_HEADROOM) / THREADS_PER_ENCODER));
 }
 
-export function memoryEncoderSlots(totalMemoryBytes: number = totalmem()): number {
+function hostEncoderMemoryBytes(): number {
+  const physical = totalmem();
+  const constrained = process.constrainedMemory();
+  return constrained > 0 ? Math.min(physical, constrained) : physical;
+}
+
+export function encoderMemoryAllows(residentBytes: number, totalMemoryBytes = hostEncoderMemoryBytes()): boolean {
+  return residentBytes <= totalMemoryBytes - ENCODER_MEMORY_RESERVE_BYTES;
+}
+
+export function memoryEncoderSlots(totalMemoryBytes: number = hostEncoderMemoryBytes()): number {
   if (typeof totalMemoryBytes !== 'number' || !Number.isFinite(totalMemoryBytes) || totalMemoryBytes <= 0) throw new RangeError('Invalid total memory');
   return Math.max(1, Math.floor((totalMemoryBytes - ENCODER_MEMORY_RESERVE_BYTES) / ENCODER_RESIDENT_BYTES));
 }
 
-export function encoderPoolLimits({ parallelism = availableParallelism(), totalMemoryBytes = totalmem() }: EncoderPoolLimitInput = {}): EncoderPoolLimits {
+export function encoderPoolLimits({ parallelism = availableParallelism(), totalMemoryBytes = hostEncoderMemoryBytes() }: EncoderPoolLimitInput = {}): EncoderPoolLimits {
   const coreSlots = coreEncoderSlots(parallelism);
   const memorySlots = memoryEncoderSlots(totalMemoryBytes);
   return Object.freeze({ slots: Math.min(coreSlots, memorySlots), coreSlots, memorySlots,
@@ -91,16 +111,16 @@ export interface EncoderPoolStats {
 export type EncoderSlotRelease = () => void;
 export interface MediaEncoderSlotPool {
   readonly limit: number;
-  /** Resolves with an idempotent release once a slot is free. Queuers are served
-   * round-robin between owners, so one export cannot take every later slot
-   * while another waits. */
-  acquire(signal?: AbortSignal | null, owner?: EncoderSlotOwner): Promise<EncoderSlotRelease>;
+  /** Resolves once enough capacity is free. Owners are served round-robin.
+   * Large rasters reserve multiple units until the idempotent release. */
+  acquire(signal?: AbortSignal | null, owner?: EncoderSlotOwner, residentBytes?: number): Promise<EncoderSlotRelease>;
   stats(): EncoderPoolStats;
 }
 
 interface EncoderSlotWaiter {
   readonly owner: EncoderSlotOwner;
   readonly signal: AbortSignal | null | undefined;
+  readonly slots: number;
   readonly resolve: (release: EncoderSlotRelease) => void;
   readonly reject: (error: unknown) => void;
   abort?: () => void;
@@ -108,7 +128,7 @@ interface EncoderSlotWaiter {
 
 export function createMediaEncoderPool(limit: number): MediaEncoderSlotPool {
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_ENCODER_POOL_SLOTS) throw new RangeError('Invalid encoder pool limit');
-  let active = 0, waiting = 0;
+  let active = 0, usedSlots = 0, waiting = 0;
   const queues = new Map<EncoderSlotOwner, EncoderSlotWaiter[]>();
   // Owners with queued work, in first-arrival order; grants rotate through it.
   const rotation: EncoderSlotOwner[] = [];
@@ -128,7 +148,11 @@ export function createMediaEncoderPool(limit: number): MediaEncoderSlotPool {
       const owner = rotation[(anchor + offset + rotation.length) % rotation.length]!;
       const queue = queues.get(owner);
       if (!queue?.length) continue;
-      const waiter = queue.shift()!;
+      const waiter = queue[0]!;
+      // Accumulate capacity for the next owner instead of starving a large
+      // export behind a continuous stream of single-unit requests.
+      if (waiter.slots > limit - usedSlots) return undefined;
+      queue.shift();
       if (!queue.length) dropOwner(owner);
       lastGranted = owner;
       waiting -= 1;
@@ -137,24 +161,29 @@ export function createMediaEncoderPool(limit: number): MediaEncoderSlotPool {
     return undefined;
   };
   const drain = (): void => {
-    while (active < limit) {
+    while (usedSlots < limit) {
       const waiter = take();
       if (!waiter) return;
       active += 1;
+      usedSlots += waiter.slots;
       detach(waiter);
       let released = false;
       waiter.resolve(() => {
         if (released) return;
         released = true;
         active -= 1;
+        usedSlots -= waiter.slots;
         drain();
       });
     }
   };
-  const acquire = async (signal?: AbortSignal | null, owner: EncoderSlotOwner = {}): Promise<EncoderSlotRelease> => {
+  const acquire = async (signal?: AbortSignal | null, owner: EncoderSlotOwner = {}, residentBytes = ENCODER_RESIDENT_BYTES): Promise<EncoderSlotRelease> => {
     throwIfMediaAborted(signal);
+    // A memory-qualified 4K export can occupy the whole pool on a machine
+    // whose CPU form admits fewer units. Its caller checks physical memory.
+    const slots = Math.min(limit, Math.ceil(positiveInteger(residentBytes, 'encoder resident bytes') / ENCODER_RESIDENT_BYTES));
     return new Promise<EncoderSlotRelease>((resolve, reject) => {
-      const waiter: EncoderSlotWaiter = { owner, signal, resolve, reject };
+      const waiter: EncoderSlotWaiter = { owner, signal, slots, resolve, reject };
       let queue = queues.get(owner);
       if (!queue) { queue = []; queues.set(owner, queue); rotation.push(owner); }
       queue.push(waiter);
@@ -169,6 +198,7 @@ export function createMediaEncoderPool(limit: number): MediaEncoderSlotPool {
           if (!pending!.length) dropOwner(owner);
           detach(waiter);
           reject(interruptedMediaError());
+          drain();
         };
         waiter.abort = abort;
         signal.addEventListener('abort', abort, { once: true });

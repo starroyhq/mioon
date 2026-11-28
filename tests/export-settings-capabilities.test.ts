@@ -12,6 +12,9 @@ import {onMediaProcess,terminateMediaProcesses,hasUnconfirmedMediaProcesses} fro
 import type {TimelineExportDelivery} from '@mioon/contracts';
 import type {MediaProcessEvent} from '../packages/business/src/media-processes.ts';
 import {timelineOutputPresetForRatio} from '../packages/contracts/src/timeline-output-geometry.ts';
+import {CLIP_TRANSFORM_PROFILE} from '../packages/contracts/src/timeline-clip-transform.ts';
+import {clipRenderPlacement} from '../packages/business/src/timeline-transform-filter.ts';
+import {timeline4kRasterBudget} from '../packages/business/src/timeline-4k-raster-budget.ts';
 
 interface TestRateControl {mode: string; quality?: string; targetKbps?: number}
 const settings=(resolution='native',rateControl: TestRateControl={mode:'crf',quality:'standard'}): {profileId: string; resolution: string; rateControl: TestRateControl} => ({profileId:'mp4_h264_v1',resolution,rateControl});
@@ -73,6 +76,42 @@ test('both encoding profiles prove the exact 2520×1080 output',async t=>{
   expected(await inspectTimelineExportCapability(delivery,{capabilityWorkRoot:root}),'available','EXPORT_CAPABILITY_AVAILABLE');
   assert.deepEqual(await readdir(root),[]);
  }
+});
+
+test('both 4K profiles prove High profile Level 5.1 without changing legacy CRF values',async t=>{
+ const root=await sandbox(t),frame=timelineOutputPresetForRatio('21:9',1080)!;
+ for(const profileId of ['mp4_h264_v1','mp4_h264_float_checked_v2']){
+  const delivery=resolveTimelineExportDelivery(frame,{...settings('short_2160'),profileId});
+  assert.deepEqual([delivery.effective.width,delivery.effective.height],[4096,1756]);
+  const args=timelineExportVideoArgs(delivery);
+  for(const [flag,value] of [['-crf','23'],['-profile:v','high'],['-level:v','5.1'],['-maxrate','240000k'],['-bufsize','240000k']]){
+   assert.ok(args.includes(flag));
+   assert.equal(args[args.indexOf(flag)+1],value);
+  }
+  expected(await inspectTimelineExportCapability(delivery,{capabilityWorkRoot:root}),'available','EXPORT_CAPABILITY_AVAILABLE');
+  assert.deepEqual(await readdir(root),[]);
+ }
+});
+
+test('4K placement scales the actual layers and accounts for visible overlaps, zoom, and selected ranges',()=>{
+ const frame=timelineOutputPresetForRatio('16:9',1080)!,output={width:3840,height:2160};
+ const track={id:'main',kind:'video',orderIndex:0,hidden:false,muted:false};
+ const clip={id:'clip1',trackId:track.id,assetId:'asset1',startFrame:0,durationFrames:30,sourceInFrame:0,
+  rect:{x:0,y:0,width:1920,height:1080},gain:1};
+ const another={...clip,id:'clip2',trackId:'overlay'};
+ const timeline={...frame,tracks:[track,{...track,id:'overlay',orderIndex:1}],clips:[clip,another]};
+ assert.deepEqual(clipRenderPlacement(clip,frame,1,output).rect,{x:0,y:0,...output});
+ const initial=timeline4kRasterBudget({...timeline,clips:[clip]},output);
+ assert.equal(timeline4kRasterBudget({...timeline,clips:[clip,{...another,startFrame:30}]},output).residentBytes,initial.residentBytes);
+ assert.ok(timeline4kRasterBudget(timeline,output).residentBytes>initial.residentBytes);
+ const transformed={...another,startFrame:30,transform:{
+  profileId:CLIP_TRANSFORM_PROFILE,crop:{left:0,right:0,top:0,bottom:0},rotation:45,keyframes:[{frame:0,x:10,y:-16,scale:8}],
+ }};
+ const rendered=clipRenderPlacement(transformed,frame,1,output);
+ assert.deepEqual(rendered.transform?.transform.keyframes,[{frame:0,x:20,y:-32,scale:8}]);
+ const highZoom={...timeline,clips:[clip,transformed]};
+ assert.ok(timeline4kRasterBudget(highZoom,output).unsupportedRaster);
+ assert.deepEqual(timeline4kRasterBudget(highZoom,output,{startFrame:0,endFrame:30}),initial);
 });
 
 for(const [name,body,status,code] of [

@@ -14,6 +14,7 @@ import {isTimelineExportRangeInput,isTimelineExportRangeProofInput,hasTimelineEx
 import {isTimelineExportAudioOutcome} from './timeline-export-float.ts';
 import {isTimelineDeliveryNameInput} from './timeline-delivery.ts';
 import {isTimelineExportSnapshot,timelineExportSettingsSchema,TIMELINE_EXPORT_CAPABILITY_REJECTION_CODES} from './timeline-export-profile.ts';
+import {TIMELINE_EXPORT_RESOURCE_REJECTION_CODES} from './timeline-export-estimate.ts';
 import {TIMELINE_SUBTITLE_OPERATIONS,timelineSubtitleSchemas,isTimelineSubtitleSnapshotProfile} from './timeline-subtitles.ts';
 import {timelineFormatSchemas,timelineFrameSetSchema,timelineOutputPreset} from './timeline-format.ts';
 import {TIMELINE_RELATIVE_SUBTITLE_PROFILE_ID} from './timeline-subtitle-profile.ts';
@@ -292,6 +293,14 @@ export function hasRequestNotAppliedProof(error: unknown, input: unknown, {opera
     ((value as Rec).exportSettings===undefined||timelineExportSettingsSchema.safeParse((value as Rec).exportSettings).success) && ((value as Rec).preflightSnapshotHash===undefined||digest((value as Rec).preflightSnapshotHash))};
   if(!isTimelineExportRangeProofInput(input,rangeProof))return false;
   if(failure?.code==='EXPORT_RANGE_BOUNDS')return hasTimelineExportRangeBoundsProof(failure,input,rangeProof);
+  if((TIMELINE_EXPORT_RESOURCE_REJECTION_CODES as readonly string[]).includes(failure?.code as string))
+    return Boolean(operation==='timeline.render' && request.purpose==='export' &&
+      operationInput(input,['purpose'],['exportSettings','preflightSnapshotHash','deliveryName','exportRange']) &&
+      isTimelineDeliveryNameInput(input,request.purpose) && isTimelineExportRangeInput(input,request.purpose) &&
+      (request.exportSettings===undefined||timelineExportSettingsSchema.safeParse(request.exportSettings).success) &&
+      (request.preflightSnapshotHash===undefined||digest(request.preflightSnapshotHash)) && object(details) &&
+      (failure.status===409||failure.status===undefined&&failure.definitive===true) &&
+      details.mutationOutcome==='not_applied'&&details.operation===operation&&details.projectId===request.projectId&&details.requestId===request.requestId);
   if(TIMELINE_EXPORT_CAPABILITY_REJECTION_CODES.includes(failure?.code as string)) return Boolean(operation==='timeline.render' &&
     operationInput(input,['purpose','exportSettings'],['preflightSnapshotHash','deliveryName','exportRange']) && isTimelineDeliveryNameInput(input,request.purpose) && isTimelineExportRangeInput(input,request.purpose) && request.purpose==='export' && timelineExportSettingsSchema.safeParse(request.exportSettings).success &&
     (request.preflightSnapshotHash===undefined||digest(request.preflightSnapshotHash)) && object(details) &&

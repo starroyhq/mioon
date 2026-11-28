@@ -61,6 +61,9 @@ const badRanges = [undefined, null, [], {}, 7, '7:19', {startFrame: 1}, {endFram
 
 test('range syntax is strict, integer, nonempty, export-only and preserves legacy omission', () => {
   const {input} = fixture(), legacyBytes = JSON.stringify(input);
+  const {profileId, rateControl} = TIMELINE_EXPORT_DEFAULT_SETTINGS;
+  const estimate = {projectId: input.projectId, expectedRevision: 4, profileId, rateControl};
+  assert.deepEqual(parse('timeline.export.estimate', estimate), estimate);
   assert.equal(JSON.stringify(parse('timeline.render', input)), legacyBytes);
   assert.equal(Object.hasOwn(parse('timeline.render', input), 'exportRange'), false);
   assert.deepEqual(timelineExportRangeFields(input), {});
@@ -70,6 +73,7 @@ test('range syntax is strict, integer, nonempty, export-only and preserves legac
     assert.deepEqual(parse('timeline.render', {...input, exportRange}), {...input, exportRange});
     assert.deepEqual(parse('timeline.export.preflight', {projectId: input.projectId, expectedRevision: 4, exportRange}),
       {projectId: input.projectId, expectedRevision: 4, exportRange});
+    assert.deepEqual(parse('timeline.export.estimate', {...estimate, exportRange}), {...estimate, exportRange});
     const fields = timelineExportRangeFields({exportRange});
     assert.deepEqual(fields, {exportRange}); assert.notEqual(fields.exportRange, exportRange);
     assert.equal(isTimelineExportRangeInput({exportRange}, 'export'), true);
@@ -80,6 +84,7 @@ test('range syntax is strict, integer, nonempty, export-only and preserves legac
     assert.throws(() => timelineExportRangeFields({exportRange}), {code: 'INVALID_TIMELINE_SNAPSHOT'});
     assert.throws(() => parse('timeline.render', {...input, exportRange}), {code: 'VALIDATION_ERROR'});
     assert.throws(() => parse('timeline.export.preflight', {projectId: input.projectId, expectedRevision: 4, exportRange}), {code: 'VALIDATION_ERROR'});
+    assert.throws(() => parse('timeline.export.estimate', {...estimate, exportRange}), {code: 'VALIDATION_ERROR'});
   }
   for (const value of [undefined, null, [], 1]) assert.equal(isTimelineExportRangeInput(value), false);
   assert.equal(JSON.stringify(input), legacyBytes);
@@ -253,13 +258,13 @@ test('only strict fresh range-bounds or capability rejection proofs release the 
   assert.equal(hasRequestNotAppliedProof(capability, {...withSettings, exportRange: undefined}, {operation: 'timeline.render'}), false);
 });
 
-test('global discovery stays exhaustive and range belongs only to the two existing operations', () => {
+test('global discovery allows the exact export range only for render, preflight and estimate', () => {
   const catalog = discoverSchema({}) as Extract<ReturnType<typeof discoverSchema>,{operations: unknown}>;
   assert.deepEqual(catalog.operations.map(row => row.operation).sort(), Object.keys(schemas).sort());
   for (const row of catalog.operations) {
     const audited = assertOperationInputBranches(row);
     for (const branch of audited.branches) {
-      const acceptsRange = ['timeline.render', 'timeline.export.preflight'].includes(row.operation);
+      const acceptsRange = ['timeline.render', 'timeline.export.preflight', 'timeline.export.estimate'].includes(row.operation);
       assert.equal(Object.hasOwn(branch.properties, 'exportRange'), acceptsRange, row.operation);
       assert.equal(branch.required.includes('exportRange'), false, row.operation);
       if (acceptsRange) {

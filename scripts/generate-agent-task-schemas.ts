@@ -55,6 +55,17 @@ const framedThumbnails=Object.fromEntries((['previs.thumbnail.get','previs.thumb
  if(operation==='previs.thumbnail.get')((projected.properties as Record<string,Record<string,unknown>>).slots).maxItems=1;
  return [operation,{...projected,required:[...(Array.isArray(projected.required)?projected.required:[]),'framePresetId']}];
 }));
+// Format 3/4 model requests keep their previously reviewed export enum.
+const legacyExports=Object.fromEntries(['timeline.render','timeline.export.preflight','timeline.export.capabilities'].map(operation=>{
+ const projected=structuredClone(entries[operation]) as {properties:{exportSettings:{anyOf:{properties:{resolution:{enum:string[]}}}[]}}};
+ const alternatives=projected.properties.exportSettings.anyOf;
+ if(alternatives.length!==2)throw Error(`Unexpected export profile schema: ${operation}`);
+ for(const {properties:{resolution}} of alternatives){
+  if(!resolution.enum.includes('short_2160'))throw Error(`Missing 4K export enum: ${operation}`);
+  resolution.enum=resolution.enum.filter(value=>value!=='short_2160');
+ }
+ return [operation,projected];
+}));
 const fcpExportStart=projectAgentTaskToolSchema(zodToJsonSchema(mioFcpExportStartSchema,{$refStrategy:'none',strictUnions:true,pipeStrategy:'input'}));
 const generated=
  '// Generated with node scripts/generate-agent-task-schemas.ts.\n'+
@@ -63,7 +74,8 @@ const generated=
  'export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>='+JSON.stringify(entries,null,1)+';\n'+
  'export const AGENT_TASK_FCP_EXPORT_START_PARAMETERS:unknown='+JSON.stringify(fcpExportStart,null,1)+';\n'+
  'export const AGENT_TASK_THUMBNAIL_READ_PARAMETERS:unknown='+JSON.stringify(thumbnailRead,null,1)+';\n'+
- 'export const AGENT_TASK_FORMAT4_THUMBNAIL_SCHEMAS:Readonly<Record<string,unknown>>='+JSON.stringify(framedThumbnails,null,1)+';\n';
+ 'export const AGENT_TASK_FORMAT4_THUMBNAIL_SCHEMAS:Readonly<Record<string,unknown>>='+JSON.stringify(framedThumbnails,null,1)+';\n'+
+ 'export const AGENT_TASK_LEGACY_EXPORT_SCHEMAS:Readonly<Record<string,unknown>>='+JSON.stringify(legacyExports,null,1)+';\n';
 const target=new URL('../packages/business/src/agent/task-tool-schemas-v2.ts',import.meta.url);
 if(process.argv.includes('--check')){
  if(readFileSync(target,'utf8')!==generated)throw Error('Fixed model tool schemas differ; --check never writes reviewed agent files.');

@@ -34,6 +34,11 @@ export function registerProjectOutputStore(store: ProjectStore): void {
 }
 export function assertProjectOutputStore(store: ProjectStore): OutputFileIdentity {
   for(const admission of admissions.get(store)??[])try{admission();}catch(error){if(error!==null&&typeof error==='object')admissionFailures.add(error);throw error;}
+  return verifyProjectOutputStore(store);
+}
+
+/** The same physical ownership check without the mutation-only admission hooks. */
+export function verifyProjectOutputStore(store: ProjectStore): OutputFileIdentity {
   registerProjectOutputStore(store);
   const owner = owners.get(store)!;
   const root = lstatSync(store.projectDir, {bigint: true}), project = lstatSync(store.projectFile, {bigint: true});

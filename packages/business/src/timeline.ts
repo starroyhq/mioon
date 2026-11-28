@@ -14,6 +14,8 @@ import {assertTimelineAudioRoleWorkspace as legacyAssertAudioRoleWorkspace,usesT
 import {createTimelineLoudnessTransactions} from './timeline-loudness-transactions.ts';
 import {hasSelectedTimelineExportRange,timelineExportRangeBoundsIssue} from './timeline-export-range.ts';
 import {freezeFormat5RenderSnapshot} from './format5-timeline-render.ts';
+import {createTimelineExportResourceServices, readTimelineExportBasis, timelineExportResourceError} from './timeline-export-estimate.ts';
+import {timeline4kImageStagingIssue} from './timeline-image-staging.ts';
 import {createAgentTimelineMoveBoundary, createAgentTimelineGainBoundary} from './agent/timeline-edit-domain.ts';
 import {createSubtitleMutations} from './timeline-subtitles.ts';
 import {randomUUID} from 'node:crypto';
@@ -77,6 +79,7 @@ interface TimelineServiceDeps {
  check: (timeline: {revision?: number},expectedRevision: number)=>void;
  hash: (value: unknown)=>string;
  now: ()=>string;
+ exportResources?: Pick<ReturnType<typeof createTimelineExportResourceServices>,'selectedIssue'>;
  exportAdmission: {render: (input: TimelineMutationInput,options: unknown,callbacks: unknown)=>unknown};
 }
 interface RenderAdmission {timelineId?: string;snapshotHash: string;failure?: Error|null}
@@ -198,7 +201,9 @@ const clone=(value: unknown)=>JSON.parse(JSON.stringify(value));
 
 // The timeline is its own aggregate: revision checks and idempotent responses
 // must be committed in the same SQLite transaction as every mutation.
-export function createTimelineServices(store: TimelineStore,{required,check,hash,now,exportAdmission,beforeEffect}: TimelineServiceDeps){
+export function createTimelineServices(store: TimelineStore,{required,check,hash,now,exportAdmission,exportResources,beforeEffect}: TimelineServiceDeps){
+ assertProjectStore(store);
+ const resources=exportResources??createTimelineExportResourceServices(store);
  const assertTimelineAudioRoleWorkspace=legacyAssertAudioRoleWorkspace;
  const assertTimelineVolumeEnvelopeWorkspace=legacyAssertVolumeWorkspace;
  const createTimelineRecoveryBoundary: (db: DatabaseSync,input: TimelineMutationInput)=>TimelineRecoveryBoundary=legacyRecoveryBoundary as never;
@@ -392,16 +397,30 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
    Object.assign(target,input.patch,envelope,transform);
   },boundary);
  }
+ function checkFormat5RenderResources(input: TimelineMutationInput): void{
+  if(input.purpose!=='export')return;
+  const basis=readTimelineExportBasis(store as ProjectStore,input.projectId);
+  if(!basis||basis.revision!==input.expectedRevision||basis.durationFrames===0||
+     timelineExportRangeBoundsIssue(input,basis.durationFrames))return;
+  const problem=resources.selectedIssue(input,basis);
+  if(problem)throw timelineExportResourceError(problem);
+ }
+ function checkRenderImageStaging(snapshot: unknown): void{
+  const issue=timeline4kImageStagingIssue(snapshot);
+  if(issue)throw timelineExportResourceError(issue);
+ }
  function renderSnapshot(input: TimelineMutationInput,boundary: TimelineRecoveryBoundary,write: ()=>void,expectedTimelineId?: string): unknown{
   // Format 5 stores native clip/cue rows; project them into the renderer's frozen
   // legacy snapshot through the TSb export ticket rules instead of the legacy
   // aggregate reader.
   if(isProjectStore(store)&&timelineStorageFormat(store.db,timelineStorageSchema(store.db))===FORMAT5_PROJECT_SCHEMA_VERSION){
+   checkFormat5RenderResources(input);
    const frozen=freezeFormat5RenderSnapshot(store,input);
    if(expectedTimelineId!==undefined&&(frozen as {timeline:{id:string}}).timeline.id!==expectedTimelineId)
     throw new AppError('TIMELINE_SOURCE_UNAVAILABLE','项目中的时间线或关联素材不可用',404);
    if(input.preflightSnapshotHash!==undefined&&hash(frozen)!==input.preflightSnapshotHash)
     throw new AppError('PREFLIGHT_STALE','导出检查已过期，请重新检查已保存的时间线',409);
+   checkRenderImageStaging(frozen);
    return frozen;
   }
   // Explicit settings/ranges cannot initialize a timeline. The omitted path retains
@@ -414,9 +433,14 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
   if(!timeline.clips.length)throw new AppError('EMPTY_TIMELINE','请先向时间线添加片段');
   const rangeIssue=timelineExportRangeBoundsIssue(input,timeline.durationFrames);
   if(rangeIssue)throw new AppError(rangeIssue.code as string,rangeIssue.message as string,rangeIssue.status as number);
+  if(input.purpose==='export'){
+   const problem=resources.selectedIssue(input,timeline);
+   if(problem)throw timelineExportResourceError(problem);
+  }
   const frozen=freezeTimelineSnapshot(timeline,boundary.sources(timeline),input.exportSettings,input);
   // The colour plan counts images per clip; a transition shows two at once.
   assertTransitionImageBudget(frozen as never);
+  checkRenderImageStaging(frozen);
   if(input.preflightSnapshotHash!==undefined){
    let current;
    try{current=readTimelinePreflightSnapshot(store,input.projectId,input.exportSettings,input).snapshot;}
@@ -430,7 +454,10 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
   // The legacy receipt verifier reconstructs/validates the released aggregate;
   // format 5 has its own projected snapshot, so keep the same immutable request
   // receipt shape but verify replay by the stored request hash instead.
-  return tx(()=>{
+  const rejection: TimelineRejectionState={operation:'timeline.render',receiptAbsent:false,writesStarted:false,
+   transactionEntered:false,callbackFailed:false,ownedScope:()=>ownsStoreLock(store)};
+  try{return tx(()=>{
+   rejection.transactionEntered=true;
    const requestHash=hash({operation:'timeline.render',input});
    const previous=db.prepare('SELECT requestHash,response FROM timeline_requests WHERE requestId=?')
      .get(input.requestId as string) as {requestHash?:string;response?:string}|undefined;
@@ -438,7 +465,12 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
     if(previous.requestHash!==requestHash)throw new AppError('IDEMPOTENCY_CONFLICT','同一时间线请求 ID 已用于不同内容',409,{requestId:input.requestId});
     return JSON.parse(String(previous.response));
    }
+   rejection.receiptAbsent=true;
+   try{checkFormat5RenderResources(input);}
+   catch(error){rejection.callbackFailed=true;throw error;}
    const frozen=freezeFormat5RenderSnapshot(store as unknown as Parameters<typeof freezeFormat5RenderSnapshot>[0],input);
+   try{checkRenderImageStaging(frozen);}
+   catch(error){rejection.callbackFailed=true;throw error;}
    const createdAt=now();
    const result={id:randomUUID(),projectId:input.projectId,requestId:input.requestId,mode:'timeline',purpose:input.purpose,
      timelineRevision:(frozen as {timeline:{revision:number}}).timeline.revision,snapshot:frozen,status:'queued',
@@ -449,7 +481,7 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
    db.prepare('INSERT INTO timeline_requests(requestId,requestHash,response) VALUES(?,?,?)')
      .run(input.requestId as string,requestHash,JSON.stringify(result));
    return result;
-  });
+  });}catch(error){rejectTimelineMutation(db,input,error,rejection);throw error;}
  }
  function render(input: TimelineMutationInput,admission?: RenderAdmission,outputLocale?: unknown): unknown{
   return transaction('timeline.render',input,({boundary,requestHash,write})=>{

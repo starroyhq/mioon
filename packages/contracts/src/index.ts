@@ -83,6 +83,8 @@ import {assetAnnotationSchemas} from './asset-annotations.ts';
 import {assetDispositionSchemas} from './asset-disposition.ts';
 import {waveformSchemas} from './waveforms.ts';
 import {exportPreflightSchemas} from './export-preflight.ts';
+import {timelineExportEstimateSchemas} from './timeline-export-estimate.ts';
+export * from './timeline-export-estimate.ts';
 import {exportSamplePeakSchemas} from './export-sample-peak.ts';
 export * from './export-sample-peak.ts';
 import {exportLoudnessSchemas} from './export-loudness.ts';
@@ -189,6 +191,7 @@ export const schemas={
 ...assetAnnotationSchemas,
 ...waveformSchemas,
 ...exportPreflightSchemas,
+...timelineExportEstimateSchemas,
 ...exportSamplePeakSchemas,
 ...exportLoudnessSchemas,
 ...timelineMixLoudnessSchemas,
@@ -327,6 +330,7 @@ Object.assign(descriptions,{
  'subject.version.list':'分页只读列出主体所有不可变参考版本，可明确重新选择旧版',
  'subject.binding.list':'按唯一镜头或主体过滤器分页只读列出绑定及保留的解绑版本，标记是否需复核',
  'timeline.export.capabilities':'显式检查所选 MP4/H264 导出配置的本地编码能力；运行有界本地计算，不修改项目或导出，不调用供应商；结果绑定项目和时间线版本，实际导出会再次验证',
+ 'timeline.export.estimate':'只读估算当前保存的时间线在各分辨率下的成品大小和耗时，返回项目导出目标卷的可用空间；不读素材、不启动媒体进程、不修改项目',
  'timeline.export.preflight':'只读检查既有时间线的本地导出条件；按版本流式核验素材哈希并运行有界ffprobe元数据检查，不完整解码、不创建时间线、缓存或导出，不调用供应商；返回ready、blocked、incomplete或stale，检查结果不保证未来文件可用',
  'timeline.export.samplePeak':'已导出文件解码样本峰值：显式完整解码一个已成功导出的托管文件，返回绑定实际核验文件哈希的临时测量；单次有界本地计算，不排队、不保存、不重试、不修改项目或导出、不调用供应商；结果不保证其他播放或制作阶段的表现',
  'timeline.export.loudness':'已导出文件响度与真峰值估计：按显式文件哈希和固定测量配置完整解码一个已成功导出的托管 MP4，返回临时结果；仅显式自定义目标产生算术建议，不验证当前时间线、不授权应用增益；有界本地只读计算，不排队、不保存、不重试、不调用模型或供应商、不修改或阻止导出',

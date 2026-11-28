@@ -6,6 +6,7 @@ import {readFormat5TimelineRecord} from './project-file/format5-timeline.ts';
 import {timelineStorageFormat,timelineStorageSchema} from './project-file/timeline-storage.ts';
 import {FORMAT5_PROJECT_SCHEMA_VERSION} from './project-file/schema/databases.ts';
 import {inspectTimelineExportCapability} from './timeline-export-capabilities.ts';
+import {readTimelineExportBasis, timelineExportFrameRateIssue, timelineExportResourceError} from './timeline-export-estimate.ts';
 import {checkpoint,awaitProvider,boundedShutdown} from './operation-lifecycle.ts';
 import {isProjectStore} from './project-file/store.ts';
 import type {DatabaseSync} from 'node:sqlite';
@@ -101,6 +102,18 @@ export function createTimelineExportAdmissionServices(store: ExportAdmissionStor
   // Direct service users get the same strict syntax boundary as RPC callers.
   input=timelineExportCapabilitySchemas['timeline.export.capabilities'].parse(input) as unknown as TimelineRecoveryInput;
   checkpoint(options.signal);checkpoint(ownerSignal);
+  if((input.exportSettings as {resolution?: string}).resolution==='short_2160'){
+   const basis=readTimelineExportBasis(store,input.projectId);
+   if(basis){
+    const problem=timelineExportFrameRateIssue(basis.fps,input.exportSettings);
+    if(problem){
+     if(basis.revision===input.expectedRevision)throw timelineExportResourceError(problem);
+     return {projectId:input.projectId,timelineId:basis.id,timelineRevision:basis.revision,
+      expectedRevision:input.expectedRevision as number,exportSettings:input.exportSettings,
+      delivery:null,checkedAt:new Date().toISOString(),status:'stale',issues:[issue('EXPORT_CAPABILITY_STALE')]};
+    }
+   }
+  }
   const report: TimelineExportCapabilityReport={projectId:input.projectId,timelineId:null,timelineRevision:null,expectedRevision:input.expectedRevision as number,exportSettings:input.exportSettings,
    delivery:null,checkedAt:new Date().toISOString(),status:'blocked',issues:[]};
   if(timelineStorageFormat(store.db,timelineStorageSchema(store.db))===FORMAT5_PROJECT_SCHEMA_VERSION)

@@ -1,13 +1,21 @@
 import {JFIF_INPUT_ARGS,JFIF_RGB24_FILTER,jpegDecodeIdentity} from './timeline-jpeg-decode.ts';
-import type {TimelineJpegEvidence} from '../../contracts/src/timeline-colour.ts';
+import type {TimelineColourPlan,TimelineJpegEvidence} from '../../contracts/src/timeline-colour.ts';
 import {constants,openSync,fstatSync,readSync,closeSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import path from 'node:path';
 import {createTimelineFloatStaging} from './timeline-float-staging.ts';
 import {timelineImageDisplayTable,timelineImageFilterGraph,TIMELINE_IMAGE_DISPLAY_PROFILE_ID,TIMELINE_IMAGE_RESIZE_PROFILE_ID,TIMELINE_IMAGE_DISPLAY_TABLE_SHA256} from './timeline-image-filter.ts';
+import {clipRenderPlacement,clipTransformPixelCrop} from './timeline-transform-filter.ts';
+import {planTimelineExportRange} from './timeline-export-range-plan.ts';
+import {timelineTransitionRegions,transitionPictureRange,transitionPlanSnapshot} from './timeline-transition-filter.ts';
+import type {ManagedAssetRecord,TimelineRecord} from './timeline-inputs.ts';
 
 type StagingRuntime=Parameters<typeof createTimelineFloatStaging>[2];
 interface Options {signal?:AbortSignal;beforeEffect?:()=>void}
+interface ImageStagingRaster {readonly width:number;readonly height:number;readonly nativePixels:number}
+interface LayerOptions extends Options {
+ readonly raster?: ImageStagingRaster;
+}
 interface LayerRuntime extends StagingRuntime {
  run(command:string,args:string[],options:{timeout:number;maxStdoutBytes:number;maxStderrBytes:number;signal?:AbortSignal;beforeEffect:()=>void}):Promise<unknown>;
  waitForMediaProcesses(options:{signal?:AbortSignal}):Promise<unknown>;
@@ -34,6 +42,75 @@ const digest=(value:string)=>createHash('sha256').update(value).digest('hex');
 interface Identity {readonly dev:number;readonly ino:number;readonly bytes:number;readonly sha256:string}
 interface VerifiedFile extends Identity {readonly file:string;readonly maximum:number}
 const validPath=(value:unknown):value is string=>typeof value==='string'&&path.isAbsolute(value)&&value.length<=4096&&!/[\0\r\n]/u.test(value);
+
+type FrozenImageLayer=Omit<TimelineImageLayerInput,'sourcePath'|'creativeLutPath'>&{readonly assetId:string};
+type ManagedImagePlan=Extract<TimelineColourPlan['clips'][number],{kind:'image'}>;
+interface ImagePlanningSnapshot {
+ readonly timeline:TimelineRecord;
+ readonly assets:readonly ManagedAssetRecord[];
+ readonly colourPlan?:TimelineColourPlan;
+ readonly delivery?:{exportSettings?:{resolution:string};effective:{width:number;height:number}};
+ readonly exportRange?:{startFrame:number;endFrame:number};
+}
+
+function imageStagingLimits(raster?:ImageStagingRaster){
+ const outputPixels=raster?raster.width*raster.height:TIMELINE_IMAGE_LAYER_LIMITS.outputPixels;
+ const pixelScale=raster?outputPixels/raster.nativePixels:1;
+ return {outputPixels,totalPixels:Math.ceil(TIMELINE_IMAGE_LAYER_LIMITS.totalOutputPixels*pixelScale),
+  totalBytes:Math.ceil(TIMELINE_IMAGE_LAYER_LIMITS.totalBytes*pixelScale)};
+}
+
+function imageLayerKey(item:Omit<TimelineImageLayerInput,'sourcePath'>,lookHash:string|null=null):string{
+ const identity=['static-image-evaluation-v1',item.assetSha256,'png-rgb8-srgb-v1',TIMELINE_IMAGE_DISPLAY_PROFILE_ID,TIMELINE_IMAGE_DISPLAY_TABLE_SHA256,
+  TIMELINE_IMAGE_RESIZE_PROFILE_ID,'straight-source-premultiplied-rgba8-output',item.sourceWidth,item.sourceHeight,item.width,item.height,item.lookCacheKey??null,lookHash,
+  ...(item.crop?['crop',item.crop.x,item.crop.y,item.crop.width,item.crop.height]:[])];
+ if(!item.jpegEvidence)return digest(JSON.stringify(identity));
+ identity[0]='static-jfif-evaluation-v1';identity[2]=item.jpegEvidence.profileId;
+ return digest(JSON.stringify([...identity,...jpegDecodeIdentity(item.jpegEvidence)]));
+}
+
+/** The already validated frozen snapshot owns all source interpretation,
+ * placement and effective look data. Planning opens no source or LUT file.
+ */
+export function planTimeline4kImageLayers(snapshot:unknown):{raster:ImageStagingRaster;layers:FrozenImageLayer[]}|null{
+ const saved=snapshot as ImagePlanningSnapshot|null|undefined,delivery=saved?.delivery;
+ if(delivery?.exportSettings?.resolution!=='short_2160'||!saved?.colourPlan)return null;
+ const {timeline,assets}=saved;
+ const images=saved.colourPlan.clips.filter((item):item is ManagedImagePlan=>('kind' in item)&&item.kind==='image');
+ if(!images.length)return null;
+ const raster={width:delivery.effective.width,height:delivery.effective.height,nativePixels:timeline.width*timeline.height};
+ const transitions=timelineTransitionRegions(timeline,new Map(assets.map(asset=>[asset.id,asset])));
+ const segments=planTimelineExportRange(transitionPlanSnapshot(saved,transitions)).segments;
+ const visible=new Set(timeline.tracks.filter(track=>track.kind==='video'&&!track.hidden).map(track=>track.id));
+ const clips=new Map(timeline.clips.filter(clip=>visible.has(clip.trackId)).map(clip=>[clip.id,clip]));
+ const layers:FrozenImageLayer[]=[];
+ for(const item of images){
+  const clip=clips.get(item.clipId);
+  if(!clip)continue;
+  const {start,end}=transitionPictureRange(clip,transitions);
+  if(!segments.some(segment=>start<=segment.beginFrame&&end>=segment.endFrame))continue;
+  const {width,height,transform}=clipRenderPlacement(clip,timeline,1,raster);
+  const {width:sourceWidth,height:sourceHeight}=item.evidence;
+  const crop=clipTransformPixelCrop(transform,sourceWidth,sourceHeight);
+  layers.push({clipId:item.clipId,assetId:item.assetId,assetSha256:item.assetSha256,sourceWidth,sourceHeight,width,height,
+   ...(crop?{crop}:{}),...(item.sourceProfileId==='jfif-ycbcr8-srgb-v1'?{jpegEvidence:item.evidence}:{}),
+   lookCacheKey:item.look?.enabled&&item.look.strength>0?JSON.stringify(item.look):null});
+ }
+ return {raster,layers};
+}
+
+export function timeline4kImageStagingIssue(snapshot:unknown){
+ const plan=planTimeline4kImageLayers(snapshot);
+ if(!plan)return null;
+ const maxLayers=TIMELINE_IMAGE_LAYER_LIMITS.layers,requiredLayers=plan.layers.length;
+ const maxPixels=imageStagingLimits(plan.raster).totalPixels;
+ const unique=new Map(plan.layers.map(layer=>[imageLayerKey(layer),layer]));
+ const requiredPixels=[...unique.values()].reduce((total,layer)=>total+layer.width*layer.height,0);
+ if(requiredLayers<=maxLayers&&requiredPixels<=maxPixels)return null;
+ return {code:'EXPORT_4K_IMAGE_STAGING_LIMIT' as const,severity:'error' as const,
+  message:'所选范围的图片图层超出了 4K 导出的暂存上限',
+  details:{requiredPixels,maxPixels,requiredLayers,maxLayers}};
+}
 
 // Never read a stat-sized unbounded file. The fixed buffer and explicit byte
 // ceiling also bound a concurrently growing file. Owned staging separately
@@ -77,15 +154,18 @@ export async function prepareTimelineImageDisplay(destination:string,options:Opt
  * We additionally bind their current bytes/inodes during derivation. On an
  * unconfirmed child termination no staging is removed until the child joins.
  */
-export async function prepareTimelineImageLayers(inputs:readonly TimelineImageLayerInput[],destination:string,options:Options,runtime:LayerRuntime):Promise<{
+export async function prepareTimelineImageLayers(inputs:readonly TimelineImageLayerInput[],destination:string,options:LayerOptions,runtime:LayerRuntime):Promise<{
  path(clipId:string):string|undefined;effect():void;verifyBytes():void;cleanup():boolean;readonly totalBytes:number;readonly totalPixels:number;
 }> {
  runtime.checkMediaEffect(options.beforeEffect,options.signal);
  if(!Array.isArray(inputs)||inputs.length>TIMELINE_IMAGE_LAYER_LIMITS.layers)throw fault(true);
+ const {raster}=options;
+ const {outputPixels:maxOutputPixels,totalPixels:totalOutputLimit,totalBytes:totalByteLimit}=imageStagingLimits(raster);
  const descriptors=inputs.map(item=>({...item})),ids=new Set<string>();
  for(const item of descriptors){
   if(!item||typeof item.clipId!=='string'||!/^[a-zA-Z0-9_-]{1,80}$/u.test(item.clipId)||ids.has(item.clipId)||!validPath(item.sourcePath)||
-   !/^[a-f0-9]{64}$/u.test(item.assetSha256)||!Number.isSafeInteger(item.width)||!Number.isSafeInteger(item.height)||item.width<1||item.height<1||item.width>4096||item.height>4096||item.width*item.height>TIMELINE_IMAGE_LAYER_LIMITS.outputPixels||
+   !/^[a-f0-9]{64}$/u.test(item.assetSha256)||!Number.isSafeInteger(item.width)||!Number.isSafeInteger(item.height)||item.width<1||item.height<1||
+   item.width>(raster?.width??4096)||item.height>(raster?.height??4096)||item.width*item.height>maxOutputPixels||
    !Number.isSafeInteger(item.sourceWidth)||!Number.isSafeInteger(item.sourceHeight)||item.sourceWidth<1||item.sourceHeight<1||item.sourceWidth>4096||item.sourceHeight>4096||item.sourceWidth*item.sourceHeight>TIMELINE_IMAGE_LAYER_LIMITS.sourcePixels||
    (item.creativeLutPath===undefined?item.lookCacheKey!=null:!validPath(item.creativeLutPath)||typeof item.lookCacheKey!=='string'||item.lookCacheKey.length<1||item.lookCacheKey.length>2048)||
    item.crop!==undefined&&(!item.crop||![item.crop.x,item.crop.y].every(value=>Number.isSafeInteger(value)&&value>=0)||![item.crop.width,item.crop.height].every(value=>Number.isSafeInteger(value)&&value>=1)||
@@ -95,7 +175,7 @@ export async function prepareTimelineImageLayers(inputs:readonly TimelineImageLa
  }
  if(!inputs.length)return {path:()=>undefined,effect:()=>runtime.checkMediaEffect(options.beforeEffect,options.signal),verifyBytes:()=>runtime.checkMediaEffect(options.beforeEffect,options.signal),cleanup:()=>true,totalBytes:0,totalPixels:0};
  const owned=createTimelineFloatStaging(destination,options,runtime),table=timelineImageDisplayTable(),tablePath=path.join(owned.work,`display-${table.sha256}.cube`);
- const verified:VerifiedFile[]=[],files=new Map<string,string>(),byClip=new Map<string,string>();let totalBytes=table.bytes,totalPixels=0;
+ const verified:VerifiedFile[]=[],files=new Map<string,{file:string;lookHash:string|null}>(),byClip=new Map<string,string>();let totalBytes=table.bytes,totalPixels=0;
  let activeSource:VerifiedFile|undefined,activeLook:VerifiedFile|undefined;
  const verifyBytes=()=>{owned.effect();for(const file of verified)verify(file);if(activeSource)verify(activeSource);if(activeLook)verify(activeLook);owned.effect();};
  try {
@@ -105,17 +185,18 @@ export async function prepareTimelineImageLayers(inputs:readonly TimelineImageLa
    verifyBytes();activeSource={file:item.sourcePath,maximum:TIMELINE_IMAGE_LAYER_LIMITS.sourceBytes,...inspect(item.sourcePath,TIMELINE_IMAGE_LAYER_LIMITS.sourceBytes)};
    if(activeSource.sha256!==item.assetSha256)throw fault();
    activeLook=item.creativeLutPath===undefined?undefined:{file:item.creativeLutPath,maximum:21*1024*1024,...inspect(item.creativeLutPath,21*1024*1024)};
-   const identity=['static-image-evaluation-v1',item.assetSha256,'png-rgb8-srgb-v1',TIMELINE_IMAGE_DISPLAY_PROFILE_ID,TIMELINE_IMAGE_DISPLAY_TABLE_SHA256,
-    TIMELINE_IMAGE_RESIZE_PROFILE_ID,'straight-source-premultiplied-rgba8-output',item.sourceWidth,item.sourceHeight,item.width,item.height,item.lookCacheKey??null,activeLook?.sha256??null,
-    // Uncropped layers keep their historical identity.
-    ...(item.crop?['crop',item.crop.x,item.crop.y,item.crop.width,item.crop.height]:[])];
-   const jpegIdentity=item.jpegEvidence?[...identity]:null;
-   if(jpegIdentity){jpegIdentity[0]='static-jfif-evaluation-v1';jpegIdentity[2]=item.jpegEvidence!.profileId;}
-   const key=digest(JSON.stringify(jpegIdentity?[...jpegIdentity,...jpegDecodeIdentity(item.jpegEvidence!)]:identity));
-   let file=files.get(key);
+   // 4K preflight and rendering identify the same layer from the frozen
+   // binding. Before a reuse, also verify the corresponding runtime LUT hash.
+   const lookHash=activeLook?.sha256??null,key=imageLayerKey(item,raster?null:lookHash),staged=files.get(key);
+   if(staged&&staged.lookHash!==lookHash)throw fault();
+   let file=staged?.file;
    if(file===undefined){
-    const pixels=item.width*item.height,maximum=pixels>LEGACY_IMAGE_LAYER_PIXELS?TIMELINE_IMAGE_LAYER_LIMITS.fileBytes:LEGACY_IMAGE_LAYER_BYTES;
-    if(pixels>TIMELINE_IMAGE_LAYER_LIMITS.totalOutputPixels-totalPixels||totalBytes>TIMELINE_IMAGE_LAYER_LIMITS.totalBytes-maximum)throw fault(true);
+    const pixels=item.width*item.height;
+    // Bounded storage for a worst-case RGBA PNG, including scanline bytes
+    // and incompressible deflate/PNG framing. Legacy caps retain their values.
+    const maximum=raster?Math.ceil((4*pixels+item.height)*1.02)+65536:
+     pixels>LEGACY_IMAGE_LAYER_PIXELS?TIMELINE_IMAGE_LAYER_LIMITS.fileBytes:LEGACY_IMAGE_LAYER_BYTES;
+    if(pixels>totalOutputLimit-totalPixels||totalBytes>totalByteLimit-maximum)throw fault(true);
     file=path.join(owned.work,`image-${String(files.size).padStart(3,'0')}-${key}.png`);owned.reserve(file);verifyBytes();
     const filters=timelineImageFilterGraph({input:item.jpegEvidence?'jpeg_rgb':'0:v:0',label:'layer',sourceWidth:item.sourceWidth,sourceHeight:item.sourceHeight,width:item.width,height:item.height,...(item.crop?{crop:item.crop}:{}),displayTablePath:tablePath,creativeLutPath:item.creativeLutPath});
     if(item.jpegEvidence)filters.unshift(`[0:v:0]${JFIF_RGB24_FILTER}[jpeg_rgb]`);
@@ -123,8 +204,8 @@ export async function prepareTimelineImageLayers(inputs:readonly TimelineImageLa
      '-filter_complex',filters.join(';'),'-map','[layer]','-frames:v','1','-an','-threads','1','-c:v','png','-pix_fmt','rgba','-compression_level','1','-map_metadata','-1',
      '-fs',String(maximum),'-f','image2','-update','1',file],{timeout:TIMELINE_IMAGE_LAYER_LIMITS.deriveTimeoutMs,maxStdoutBytes:0,maxStderrBytes:65536,signal:options.signal,beforeEffect:verifyBytes});
     verifyBytes();const recorded=inspect(file,maximum,undefined,{width:item.width,height:item.height});
-    if(recorded.bytes>TIMELINE_IMAGE_LAYER_LIMITS.totalBytes-totalBytes)throw fault(true);
-    verified.push({file,maximum,...recorded});files.set(key,file);totalBytes+=recorded.bytes;totalPixels+=pixels;verifyBytes();
+    if(recorded.bytes>totalByteLimit-totalBytes)throw fault(true);
+    verified.push({file,maximum,...recorded});files.set(key,{file,lookHash});totalBytes+=recorded.bytes;totalPixels+=pixels;verifyBytes();
    }
    byClip.set(item.clipId,file);activeSource=undefined;activeLook=undefined;verifyBytes();
   }

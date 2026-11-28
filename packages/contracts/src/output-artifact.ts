@@ -3,8 +3,10 @@ import {projectIdSchema} from './project-file.ts';
 import {projectOutputOwnerSchema} from './project-output-publication.ts';
 import {timelineExportAudioCheckSchema} from './timeline-export-float.ts';
 
+export const OUTPUT_ARTIFACT_MAX_BYTES = 8 * 1024 ** 3;
+
 const digest=z.string().regex(/^[a-f0-9]{64}$/u);
-export const outputArtifactFileInfoSchema=z.object({sizeBytes:z.number().int().positive().max(8*1024**3),sha256:digest,
+export const outputArtifactFileInfoSchema=z.object({sizeBytes:z.number().int().positive().max(OUTPUT_ARTIFACT_MAX_BYTES),sha256:digest,
  width:z.number().int().positive().max(32768),height:z.number().int().positive().max(32768),duration:z.number().positive().finite(),hasVideo:z.literal(true),hasAudio:z.boolean()}).strict();
 export const outputArtifactSchema=z.object({version:z.literal(1),kind:z.enum(['generation','export']),projectId:projectIdSchema,
  owner:projectOutputOwnerSchema,sourceIdentity:digest,assetId:projectIdSchema,publicationId:projectIdSchema,versionId:projectIdSchema.optional(),

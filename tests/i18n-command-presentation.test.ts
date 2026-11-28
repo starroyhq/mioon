@@ -91,6 +91,7 @@ test('CLI localizes only prose; default help snapshot, schema, version and error
     'sequence.timeline.edit', 'sequence.clip.edit', 'sequence.action.commit', 'sequence.inspect');
   expectedOperations.splice(expectedOperations.indexOf('sequence.inspect') + 1, 0, 'sequence.generation-inputs.get');
   expectedOperations.splice(expectedOperations.indexOf('export.output.get') + 1, 0, 'clip.audio.export', 'clip.audio.export.get', ...fcpOperations);
+  expectedOperations.splice(expectedOperations.indexOf('timeline.export.preflight') + 1, 0, 'timeline.export.estimate');
   expectedOperations.splice(expectedOperations.indexOf('timeline.loudness.prepare') + 1, 0, 'timeline.clip.loudness');
   expectedOperations.splice(expectedOperations.indexOf('timeline.audioPreview.plan') + 1, 0, 'timeline.audioPreview.continuousPlan');
   expectedOperations.splice(expectedOperations.indexOf('asset.disposition.set') + 1, 0, 'asset.annotation.list', 'asset.annotation.set');

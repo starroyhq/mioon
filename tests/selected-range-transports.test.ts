@@ -248,7 +248,9 @@ test('selected-range preflight still checks a missing off-range source across ac
     for (const transport of wire.all) {
       const result = await transport.call('timeline.export.preflight', {projectId: f.project.id, expectedRevision: f.timeline.revision, exportRange: RANGE});
       assert.equal(result.ok, true); assert.equal(result.data.status, 'blocked'); assert.equal(result.data.checks.totalAssets, 2);
-      assert.equal(result.data.issues[0].assetId, f.sources[1].id); assert.deepEqual(result.data.summary!.exportRange, RANGE);
+      const sourceIssue = result.data.issues[0];
+      assert.ok(sourceIssue && 'assetId' in sourceIssue);
+      assert.equal(sourceIssue.assetId, f.sources[1].id); assert.deepEqual(result.data.summary!.exportRange, RANGE);
     }
     await f.unchanged(before); assert.equal(f.store.list('exports').length, 0);
   } finally {await writeFile(source, bytes, {mode: 0o600, flag: 'wx'});}

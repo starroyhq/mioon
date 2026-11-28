@@ -11,6 +11,7 @@ interface SubtitlePreparedSnapshot {timeline: {width: number;height: number;subt
 interface SubtitleInkBounds {minX: number;minY: number;maxX: number;maxY: number;width: number;height: number}
 interface SubtitlePreparationOptions {
  signal?: AbortSignal;beforeEffect?: (()=>void)|undefined;
+ renderGeometry?: {width: number;height: number};
  openOwnedFile?: (file: string)=>Promise<FileHandle>;
  writeOwnedFile?: (file: string,data: string)=>Promise<void>;
 }
@@ -20,7 +21,7 @@ interface SubtitlePrepared {
  entries: Map<string,SubtitleRenderEntry>;
 }
 
-const WIDTH=4096,HEIGHT=256,FRAME_BYTES=WIDTH*HEIGHT,ORIGIN=64,GUARD=16;
+const WIDTH=4096,HEIGHT=256,ORIGIN=64,GUARD=16;
 const fault=(code: string,message: string): Error=>Object.assign(Error(message),{code});
 const invalid: ()=>never=()=>{throw fault('SUBTITLE_INK_INVALID','Subtitle text cannot fit safely in the fixed rendering profile.');};
 // Escape option-value syntax first, then filtergraph syntax. No shell layer is
@@ -40,16 +41,19 @@ const drawText=(font: string,text: string,textShaping: boolean,layout: TimelineS
 // Streaming scan retains only counters/bounds, never full frames. Exact frame
 // count and edge guards reject partial, extra or potentially clipped output.
 export function createSubtitleInkScanner(frameCount: number,width=WIDTH,height=HEIGHT): {consume(chunk: unknown): void;finish(): SubtitleInkBounds[]}{
- if(!Number.isSafeInteger(frameCount)||frameCount<1||frameCount>100||width!==WIDTH||height!==HEIGHT)throw invalid();
+ if(!Number.isSafeInteger(frameCount)||frameCount<1||frameCount>100||
+  !Number.isSafeInteger(width)||width<WIDTH||width>WIDTH+2*ORIGIN||
+  !Number.isSafeInteger(height)||height<HEIGHT||height>512)throw invalid();
+ const frameBytes=width*height;
  const bounds=Array.from({length:frameCount},()=>({minX:width,minY:height,maxX:-1,maxY:-1}));let offset=0;
  return {consume(chunk: unknown): void{
-  if(!Buffer.isBuffer(chunk)||chunk.length>frameCount*FRAME_BYTES-offset)throw invalid();
+  if(!Buffer.isBuffer(chunk)||chunk.length>frameCount*frameBytes-offset)throw invalid();
   for(let i=0;i<chunk.length;i++,offset++)if(chunk[i]){
-   const frame=Math.floor(offset/FRAME_BYTES),pixel=offset%FRAME_BYTES,x=pixel%width,y=Math.floor(pixel/width),b=bounds[frame];
+   const frame=Math.floor(offset/frameBytes),pixel=offset%frameBytes,x=pixel%width,y=Math.floor(pixel/width),b=bounds[frame];
    b.minX=Math.min(b.minX,x);b.maxX=Math.max(b.maxX,x);b.minY=Math.min(b.minY,y);b.maxY=Math.max(b.maxY,y);
   }
  },finish(): SubtitleInkBounds[]{
-  if(offset!==frameCount*FRAME_BYTES)throw invalid();
+  if(offset!==frameCount*frameBytes)throw invalid();
   return bounds.map(b=>{
    if(b.maxX<0||b.minX<=GUARD||b.maxX>=width-GUARD||b.minY<=GUARD||b.maxY>=height-GUARD)throw invalid();
    return {...b,width:b.maxX-b.minX+1,height:b.maxY-b.minY+1};
@@ -57,12 +61,21 @@ export function createSubtitleInkScanner(frameCount: number,width=WIDTH,height=H
  }};
 }
 
-export async function prepareTimelineSubtitles(snapshot: unknown,work: string,{signal,beforeEffect,openOwnedFile,writeOwnedFile}: SubtitlePreparationOptions={}): Promise<SubtitlePrepared|null>{
+export async function prepareTimelineSubtitles(snapshot: unknown,work: string,{signal,beforeEffect,renderGeometry,openOwnedFile,writeOwnedFile}: SubtitlePreparationOptions={}): Promise<SubtitlePrepared|null>{
  checkMediaEffect(beforeEffect,signal);
  if(!validateSubtitleSnapshotProfile(snapshot as SubtitlePreparedSnapshot))return null;
  const {timeline} = snapshot as SubtitlePreparedSnapshot;
- const layout=projectTimelineSubtitleLayout(timeline,timeline.subtitles);
- if(!layout)throw fault('INVALID_TIMELINE_SNAPSHOT','The saved subtitle layout is invalid.');
+ const nativeLayout=projectTimelineSubtitleLayout(timeline,timeline.subtitles);
+ if(!nativeLayout)throw fault('INVALID_TIMELINE_SNAPSHOT','The saved subtitle layout is invalid.');
+ const frame=renderGeometry??timeline;
+ const scaleX=frame.width/timeline.width,scaleY=frame.height/timeline.height;
+ const textScale=Math.min(frame.width,frame.height)/Math.min(timeline.width,timeline.height);
+ const layout=renderGeometry?{
+  fontSize:Math.round(nativeLayout.fontSize*textScale),outline:Math.round(nativeLayout.outline*textScale),
+  padding:Math.round(nativeLayout.padding*textScale),lineSpacing:Math.round(nativeLayout.lineSpacing*textScale),
+  horizontalMargin:Math.round(nativeLayout.horizontalMargin*scaleX),bottomInset:Math.round(nativeLayout.bottomInset*scaleY),
+  maxOuterHeight:Math.round(nativeLayout.maxOuterHeight*textScale),
+ }:nativeLayout;
  const {cues}=timeline.subtitles,font=path.join(work,'subtitle-font.otf');
  await verifySubtitleFontResource({signal,destination:font,beforeEffect,openOwnedFile});checkMediaEffect(beforeEffect,signal);
  const {textShaping}=await inspectSubtitleRenderer({signal,beforeEffect});checkMediaEffect(beforeEffect,signal);
@@ -72,17 +85,19 @@ export async function prepareTimelineSubtitles(snapshot: unknown,work: string,{s
   const file=path.join(work,`subtitle-${String(i).padStart(3,'0')}.txt`);
   await (writeOwnedFile?writeOwnedFile(file,distinct[i]):writeFile(file,distinct[i],{encoding:'utf8',flag:'wx',mode:0o600}));checkMediaEffect(beforeEffect,signal);files.push(file);
  }
- const scanner=createSubtitleInkScanner(distinct.length);
+ const measureWidth=renderGeometry?Math.max(WIDTH,frame.width+2*ORIGIN):WIDTH;
+ const measureHeight=renderGeometry?Math.max(HEIGHT,2*Math.ceil((layout.maxOuterHeight+ORIGIN+GUARD)/2)):HEIGHT;
+ const scanner=createSubtitleInkScanner(distinct.length,measureWidth,measureHeight);
  const filters=files.map((file,index)=>`${drawText(font,file,textShaping,layout)}:fontcolor=white:bordercolor=white:x=${ORIGIN}:y=${ORIGIN}:enable='eq(n,${index})'`);
  filters.push('alphaextract,format=gray');
  const script=path.join(work,'subtitle-measure.filter');checkMediaEffect(beforeEffect,signal);await (writeOwnedFile?writeOwnedFile(script,filters.join(',')):writeFile(script,filters.join(','),{flag:'wx',mode:0o600}));checkMediaEffect(beforeEffect,signal);
- await runStreaming('ffmpeg',['-hide_banner','-loglevel','error','-filter_threads','1','-f','lavfi','-i',`color=c=black@0:s=${WIDTH}x${HEIGHT}:r=30,format=rgba`,
+ await runStreaming('ffmpeg',['-hide_banner','-loglevel','error','-filter_threads','1','-f','lavfi','-i',`color=c=black@0:s=${measureWidth}x${measureHeight}:r=30,format=rgba`,
   '-/filter:v',script,'-frames:v',String(distinct.length),'-an','-c:v','rawvideo','-pix_fmt','gray','-threads','1','-f','rawvideo','pipe:1'],
-  {signal,beforeEffect,timeout:30000,maxStdoutBytes:distinct.length*FRAME_BYTES,maxStderrBytes:64*1024,onStdout:(chunk: Buffer)=>scanner.consume(chunk)});
+  {signal,beforeEffect,timeout:30000,maxStdoutBytes:distinct.length*measureWidth*measureHeight,maxStderrBytes:64*1024,onStdout:(chunk: Buffer)=>scanner.consume(chunk)});
  checkMediaEffect(beforeEffect,signal);
  const measured=scanner.finish();
  const entries=new Map<string,SubtitleRenderEntry>(distinct.map((text,index)=>{
-  const ink=measured[index],box=positionTimelineSubtitle(timeline,layout,ink);
+  const ink=measured[index],box=positionTimelineSubtitle(frame,layout,ink);
   if(!box)throw invalid();
   return [text,{file:files[index],ink,box}];
  }));

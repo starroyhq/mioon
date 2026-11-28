@@ -173,6 +173,20 @@ test('the 21:9 1080 static layer fits its output budget without relaxing source 
   await assert.rejects(prepareTimelineImageLayers([invalid],path.join(f.root,'invalid.mp4'),{},layerRuntime),{code:'TIMELINE_COLOUR_RESOURCE_CHANGED'});
  }
 });
+test('4K derives a full-raster premultiplied static layer and keeps the source pixel limit',{timeout:30000},async t=>{
+ const f=await fixture(t),{input}=await layerInput(f),raster={width:4096,height:1756,nativePixels:2520*1080};
+ const layer={...input,width:raster.width,height:raster.height};
+ const stage=await prepareTimelineImageLayers([layer,{...layer,clipId:'reused'}],path.join(f.root,'wide-4k.mp4'),{raster},layerRuntime);
+ try{
+  const bytes=await readFile(stage.path(layer.clipId)!);
+  assert.deepEqual([bytes.readUInt32BE(16),bytes.readUInt32BE(20),bytes[25]],[4096,1756,6]);
+  assert.equal(stage.path('reused'),stage.path(layer.clipId));
+  assert.equal(stage.totalPixels,4096*1756);
+  stage.verifyBytes();
+ }finally{assert.equal(stage.cleanup(),true);}
+ await assert.rejects(prepareTimelineImageLayers([{...layer,sourceWidth:2520,sourceHeight:1080}],
+  path.join(f.root,'wide-source.mp4'),{raster},layerRuntime),{code:'TIMELINE_COLOUR_RESOURCE_CHANGED'});
+});
 test('owned layer rejects hash tampering and preserves unknown replacement files',{timeout:30000},async t=>{
  const f=await fixture(t),{input}=await layerInput(f),stage=await prepareTimelineImageLayers([input],path.join(f.root,'result.mp4'),{},layerRuntime),file=stage.path(input.clipId),original=await readFile(((file) as unknown as Parameters<NonNullable<typeof readFile>>[0]));
  await writeFile(((file) as unknown as Parameters<typeof writeFile>[0]),Buffer.alloc(original.length,32));assert.throws(()=>stage.verifyBytes(),{code:'TIMELINE_COLOUR_RESOURCE_CHANGED'});await writeFile(((file) as unknown as Parameters<typeof writeFile>[0]),original);stage.verifyBytes();

@@ -675,6 +675,12 @@ export const operationMessages = {
     "en": "Read-only planning of a V2 continuous audio preview session for a saved timeline. Binds the project, full revision, and source identities; fixed 2-second mixed blocks share one 96 MiB application reservation for the entire session. Metadata only: no media-byte reads, decoding, playback, timeline initialization, file/database writes, network, model, or paid-provider calls. Only after an explicit playback gesture does a fixed authenticated local resource prepare complete multitrack mixes on demand within bounds. Not a built-in Mio tool, composed-video preview, or loudness/true-peak check; restored copies reject this operation",
     "ja": "保存済みタイムラインの V2 連続音声プレビューセッションを読み取り専用で計画します。プロジェクト、完全なリビジョン、ソース識別情報に紐づけ、固定 2 秒のミックスブロックでセッション全体の 96 MiB アプリケーション予約枠を共有します。メタデータのみを返し、メディアバイトの読み取り、デコード、再生、タイムライン初期化、ファイルやデータベースへの書き込み、ネットワーク、モデル、有料プロバイダーの呼び出しは行いません。明示的な再生操作後に限り、固定の認証済みローカルリソースが完全なマルチトラックミックスを必要に応じて範囲内で準備します。組み込み Mio ツール、合成映像プレビュー、ラウドネス／トゥルーピーク検査ではありません。復元コピーでは拒否されます"
   },
+  "operation.timeline.export.estimate": {
+    "zh-Hans": "只读估算当前保存的时间线在各分辨率下的成品大小和耗时，并返回导出目标卷的可用空间",
+    "zh-Hant": "唯讀估算目前儲存的時間軸在各解析度下的成品大小和耗時，並傳回匯出目標磁碟區的可用空間",
+    "en": "Estimate output size and export time for each resolution of the saved timeline and read the export volume's free space",
+    "ja": "保存済みタイムラインについて、解像度ごとの出力サイズと所要時間を推定し、書き出し先ボリュームの空き容量を確認します"
+  },
   "operation.timeline.export.capabilities": {
     "zh-Hans": "显式检查所选 MP4/H264 导出配置的本地编码能力；运行有界本地计算，不修改项目或导出，不调用供应商；结果绑定项目和时间线版本，实际导出会再次验证",
     "zh-Hant": "明確檢查所選MP4/H264匯出設定的本機編碼能力；執行有界本機計算，不修改專案或匯出，不呼叫供應商；結果綁定專案和時間軸版本，實際匯出會再次驗證",

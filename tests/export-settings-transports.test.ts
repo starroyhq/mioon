@@ -21,7 +21,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {createClient,discoverSchema,effectAnnotations} from '@mioon/client';
-import {isTimelineExportCapabilitiesResponse,isTimelineMutationResponse,publicValue,resolveTimelineExportDelivery} from '@mioon/contracts';
+import {isTimelineExportCapabilitiesResponse,isTimelineExportEstimateResponse,isTimelineMutationResponse,publicValue,resolveTimelineExportDelivery} from '@mioon/contracts';
 import {startServer} from './helpers/test-server.ts';
 import type {InspectApplication,InspectProject} from '../apps/server/src/index.ts';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
@@ -185,6 +185,26 @@ test('export settings offline CLI and official MCP expose identical strict schem
  for(const key of ['databaseWrite','externalIO','paidGeneration','openWorld','destructive'])assert.equal(definition.effects[key],false);
  const render=schemaOperation(discoverSchema({operation:'timeline.render'}));assert.equal(render.requiresRequestId,true);assert.equal(render.effects.databaseWrite,true);assert.equal(render.effects.fileWrite,true);assert.equal(render.effects.localProcess,true);assert.equal(render.effects.paidGeneration,false);
 
+});
+
+test('HTTP CLI and MCP return project-bound read-only export estimates', async t=>{
+ const w=await wire(t), before=await w.checkpoint(),events: Array<{type: string}>=[],off=onMediaProcess(event=>events.push(event));t.after(off);
+ const input={projectId:w.project.id,expectedRevision:w.timeline.revision,profileId:'mp4_h264_v1',rateControl:{mode:'bitrate',targetKbps:4000}};
+ const op='timeline.export.estimate';
+ let expected: unknown;
+ for(const transport of w.transports){
+  const result=await transport.call(op,input);
+  assert.equal(result.ok,true,JSON.stringify(result));
+  assert.ok(isTimelineExportEstimateResponse(result.data,input));
+  assert.ok(!JSON.stringify(result.data).includes(w.root));
+  expected??=result.data.estimates;
+  assert.deepEqual(result.data.estimates,expected);
+  const rejected=await transport.call(op,{...input,destination:w.root});
+  assert.equal(rejected.ok,false);
+  assert.equal(rejected.error?.code,'VALIDATION_ERROR');
+ }
+ assert.equal(events.length,0);
+ await w.unchanged(before);
 });
 
 test('actual HTTP CLI and MCP capabilities prove CRF and bitrate locally without writes and reject strict injected fields',{timeout:120000},async t=>{
