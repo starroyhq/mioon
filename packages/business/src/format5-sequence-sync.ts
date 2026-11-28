@@ -38,6 +38,7 @@ import type {SequenceSyncCommand} from '@mioon/contracts/sequence-sync';
 import {sequenceSyncIntent} from '@mioon/contracts/sequence-sync';
 import {planChainSync} from '../../contracts/src/chain-sync-algorithm.ts';
 import type {ChainSyncChange, ChainSyncChanges, ChainSyncOperation, ChainSyncPlan, ChainSyncWarning, TrackSyncEdit} from '../../contracts/src/chain-sync-algorithm.ts';
+import type {ChainSyncSourceIsStill} from '../../contracts/src/chain-main-track.ts';
 import type {ChainSyncClip, ChainSyncMedia, ChainSyncVersion} from '../../contracts/src/chain-main-track.ts';
 import type {ChainBoard, ChainNode, SequenceEdge} from '../../contracts/src/board-sequence.ts';
 import type {TrackAnchoredItem} from '../../contracts/src/chain-sync-analysis.ts';
@@ -135,6 +136,20 @@ function baselineFromRaw(raw: string): Format5SyncBaseline {
   return parsed.data;
 }
 
+const isImageAsset = (asset: Row | undefined): boolean =>
+  typeof asset?.mimeType === 'string' && asset.mimeType.startsWith('image/');
+
+const versionFromAsset = (id: string, asset: Row | undefined): ChainSyncVersion =>
+  ({id, sourceFrames: isImageAsset(asset) ? null : sourceFrameCount(asset?.duration)});
+
+/** Shot provenance selects the lookup, while the applied asset selects the source clock. */
+export function sequencePlanSourceIsStill(context: Pick<SequenceSyncContext, 'versions' | 'assets'>): ChainSyncSourceIsStill {
+  return (sourceId, kind) => {
+    const assetId = kind === 'shot' ? versionAssetId(context, sourceId) : sourceId;
+    return assetId !== null && isImageAsset(context.assets.get(assetId));
+  };
+}
+
 function readMediaNode(node: ChainNode, nodeRows: ReadonlyMap<string, Row>, shots: ReadonlyMap<string, Row>,
   versions: ReadonlyMap<string, Row>, assets: ReadonlyMap<string, Row>, clipDuration: (nodeId: string) => number | null): ChainSyncMedia | null {
   const row = nodeRows.get(node.id);
@@ -143,20 +158,16 @@ function readMediaNode(node: ChainNode, nodeRows: ReadonlyMap<string, Row>, shot
     const shot = shots.get(node.id);
     const selected = typeof shot?.selectedVersionId === 'string' ? versions.get(shot.selectedVersionId) : undefined;
     const selectedVersion: ChainSyncVersion | null = selected && typeof selected.assetId === 'string'
-      ? {id: selected.id, sourceFrames: sourceFrameCount(assets.get(selected.assetId)?.duration)} : null;
+      ? versionFromAsset(selected.id, assets.get(selected.assetId)) : null;
     return {nodeId: node.id, selectedVersion, durationFrames: selectedVersion?.sourceFrames ?? fallback};
   }
   if (!row) return null;
-  if (node.kind === 'image') {
+  if (node.kind === 'image' || node.kind === 'video') {
     const assetId = typeof row.assetId === 'string' ? row.assetId : null;
-    if (assetId === null || !assets.has(assetId)) return {nodeId: node.id, selectedVersion: null, durationFrames: fallback};
-    return {nodeId: node.id, selectedVersion: {id: assetId, sourceFrames: null}, durationFrames: fallback};
-  }
-  if (node.kind === 'video') {
-    const assetId = typeof row.assetId === 'string' ? row.assetId : null;
-    const frames = assetId === null ? null : sourceFrameCount(assets.get(assetId)?.duration);
-    return {nodeId: node.id, selectedVersion: assetId !== null && frames !== null ? {id: assetId, sourceFrames: frames} : null,
-      durationFrames: frames ?? fallback};
+    const asset = assetId === null ? undefined : assets.get(assetId);
+    const version = assetId !== null && asset ? versionFromAsset(assetId, asset) : null;
+    return {nodeId: node.id, selectedVersion: version?.sourceFrames != null || isImageAsset(asset) ? version : null,
+      durationFrames: version?.sourceFrames ?? fallback};
   }
   return null;
 }
@@ -295,7 +306,7 @@ function resolveVersion(context: SyncContext, nodeId: string, versionId: string)
   }
   const asset = typeof version.assetId === 'string' ? context.assets.get(version.assetId) : undefined;
   if (!asset || asset.sha256 !== version.sha256) return failure('INVALID_MEDIA', [nodeId]);
-  return {id: version.id, sourceFrames: sourceFrameCount(asset.duration)};
+  return versionFromAsset(version.id, asset);
 }
 
 function planFailure(plan: Extract<ChainSyncPlan, {ok: false}>): SequenceEditTransactionFailure {
@@ -369,6 +380,7 @@ function planSceneSplit(context: SyncContext, envelope: SequenceEditEnvelope,
   const {byTarget} = scenePairs(envelope, targets.targets);
   if (!byTarget.length) return failure('SEQUENCE_EDIT_CONTRACT_INVALID', []);
   let state = saState(context), targetIndex = 0;
+  const isStill = sequencePlanSourceIsStill(context);
   const changes: ChainSyncChanges = {nodes: [], edges: [], media: [], clips: [], anchored: []};
   const warnings: ChainSyncWarning[] = [];
   for (const target of targets.targets) {
@@ -381,7 +393,7 @@ function planSceneSplit(context: SyncContext, envelope: SequenceEditEnvelope,
       const currentClip = state.clips.find(item => item.id === current);
       if (!currentClip) return failure('CLIP_NOT_FOUND', [current]);
       const plan = planChainSync(state, {kind: 'track', edit: {kind: 'split', clipId: current,
-        offsetFrames: cut - currentClip.sourceInFrame, rightClipId: pair.rightClipId, rightSourceInFrame: cut}});
+        offsetFrames: cut - currentClip.sourceInFrame, rightClipId: pair.rightClipId, rightSourceInFrame: cut}}, isStill);
       if (plan.ok === false) return planFailure(plan);
       mergeChanges(changes, plan.changes);
       warnings.push(...plan.warnings);
@@ -503,7 +515,8 @@ function planGeneratePlaceholder(context: SyncContext, envelope: SequenceEditEnv
     filmId: context.rootNodeId,
     media: [...context.media, {nodeId: operation.shotId, selectedVersion: null, durationFrames}],
     clips: context.clips, anchored: context.anchored};
-  const plan = planChainSync(planningState, {kind: 'sync-board', newClipIds: {[operation.shotId]: operation.clipId}});
+  const plan = planChainSync(planningState, {kind: 'sync-board', newClipIds: {[operation.shotId]: operation.clipId}},
+    sequencePlanSourceIsStill(context));
   if (plan.ok === false) return planFailure(plan);
   generatedShotMeta.set(plan, {shot, nodeId: operation.shotId});
   return plan;
@@ -628,7 +641,7 @@ function planMainInsert(context: SyncContext, input: {
     versionId: input.versionId, versionLocked: false, startFrame: 0, durationFrames: input.durationFrames,
     sourceInFrame: input.sourceInFrame, splitGroupId: input.clipId}, beforeClipId: input.beforeClipId,
     media: input.media, nodeKind: input.kind};
-  const plan = planChainSync(planningState, {kind: 'track', edit});
+  const plan = planChainSync(planningState, {kind: 'track', edit}, sequencePlanSourceIsStill(context));
   if (!plan.ok) return failure(plan.code as SequenceEditErrorCode, 'id' in plan && typeof plan.id === 'string' ? [plan.id] : []);
   const shotRows = new Map<string, Row>(); if (input.shotRow) shotRows.set(input.nodeId, input.shotRow);
   const adoptionRows = new Map<string, Row>();
@@ -695,8 +708,8 @@ function expandedAddPlan(context: SyncContext, envelope: SequenceEditEnvelope,
       if (selected !== null && !version) return failure('INVALID_MEDIA', [selected]);
       const adoptionRow = version === undefined ? undefined : {id: randomUUID(), projectId: context.projectId,
         shotId: edit.clip.nodeId, versionId: selected!, createdAt: now()};
-      const mediaCopy = {nodeId: edit.clip.nodeId, selectedVersion: selected === null ? null
-        : (media.selectedVersion === null ? null : {id: media.selectedVersion.id, sourceFrames: media.selectedVersion.sourceFrames}),
+      const mediaCopy = {nodeId: edit.clip.nodeId, selectedVersion: version
+        ? versionFromAsset(version.id, context.assets.get(version.assetId)) : null,
         durationFrames: media.durationFrames};
       return planMainInsert(context, {nodeId: edit.clip.nodeId, clipId: edit.clip.id, beforeClipId: edit.beforeClipId,
         kind: 'shot', media: mediaCopy, shotRow, ...(adoptionRow ? {adoptionRow} : {}),
@@ -731,6 +744,7 @@ function expandedOverlayPlan(context: SyncContext, edit: Extract<TrackSyncEdit, 
       durationFrames: edit.durationFrames, sourceInFrame: edit.sourceInFrame,
       anchor: {clipId: owner.id, offsetFrames: edit.startFrame - owner.startFrame}};
     if (source.sourceState === 'placeholder') return failure('INVALID_MEDIA', [source.id]);
+    if (isImageAsset(context.assets.get(source.assetId)) && clip.sourceInFrame !== 0) return failure('SOURCE_BOUNDS', [clip.id]);
     if (track.kind === 'audio' && !String(context.assets.get(source.assetId)?.mimeType).startsWith('audio/'))
       return failure('INVALID_TRACK_TARGET', [edit.trackId], 'TRACK_KIND_MISMATCH');
     if (track.kind === 'video' && String(context.assets.get(source.assetId)?.mimeType).startsWith('audio/'))
@@ -852,16 +866,19 @@ function planEnvelope(context: SyncContext, envelope: SequenceEditEnvelope, scen
     return planSceneSplit(context, envelope, operation.edit, sceneCuts ?? []);
   }
   const state = saState(context);
-  const checked = (plan: ChainSyncPlan): SequenceEditPlan | SequenceEditTransactionFailure =>
-    plan.ok ? plan : planFailure(plan);
+  const isStill = sequencePlanSourceIsStill(context);
+  const checked = (operation: ChainSyncOperation): SequenceEditPlan | SequenceEditTransactionFailure => {
+    const plan = planChainSync(state, operation, isStill);
+    return plan.ok ? plan : planFailure(plan);
+  };
   if (operation.kind === 'sync-board') {
-    return checked(planChainSync(state, {kind: 'sync-board', newClipIds: allocationClipIds(envelope)}));
+    return checked({kind: 'sync-board', newClipIds: allocationClipIds(envelope)});
   }
   if (operation.kind === 'board-version') {
     const version = operation.version === null ? null : resolveVersion(context, operation.nodeId, operation.version.id);
     if (version !== null && 'ok' in version && version.ok === false) return version;
-    return checked(planChainSync(state, {kind: 'board-version', nodeId: operation.nodeId,
-      version: version === null ? null : version as ChainSyncVersion}));
+    return checked({kind: 'board-version', nodeId: operation.nodeId,
+      version: version === null ? null : version as ChainSyncVersion});
   }
   if (operation.kind === 'track') {
     const edit = operation.edit;
@@ -876,19 +893,19 @@ function planEnvelope(context: SyncContext, envelope: SequenceEditEnvelope, scen
       if (versionId === null) return failure('INVALID_MEDIA', [clip.nodeId]);
       const resolved = resolveVersion(context, clip.nodeId, versionId);
       if ('ok' in resolved) return resolved;
-      return checked(planChainSync(state, {kind: 'track', edit: {kind: 'version', clipId: clip.id,
-        version: resolved, locked: edit.locked}}));
+      return checked({kind: 'track', edit: {kind: 'version', clipId: clip.id,
+        version: resolved, locked: edit.locked}});
     }
     if (edit.kind === 'add') {
       const enriched = enrichAddEdit(context, edit);
       if ('ok' in enriched && enriched.ok === false) return enriched;
-      return checked(planChainSync(state, {kind: 'track', edit: enriched as Extract<typeof edit, {kind: 'add'}>}));
+      return checked({kind: 'track', edit: enriched as Extract<typeof edit, {kind: 'add'}>});
     }
     if (edit.kind === 'move-off-track') {
       const track = context.timeline.tracks.find(item => item.id === edit.trackId);
       if (!track) return failure('INVALID_TRACK_TARGET', [edit.trackId], 'TRACK_NOT_FOUND');
     }
-    return checked(planChainSync(state, {kind: 'track', edit}));
+    return checked({kind: 'track', edit});
   }
   return failure('SEQUENCE_EDIT_SYNC_SEAM_UNAVAILABLE', []);
 }
@@ -897,7 +914,7 @@ function planEnvelope(context: SyncContext, envelope: SequenceEditEnvelope, scen
 // Format-5 mapping helpers
 // ---------------------------------------------------------------------------
 
-function versionAssetId(context: SyncContext, versionId: string | null): string | null {
+function versionAssetId(context: Pick<SyncContext, 'versions'>, versionId: string | null): string | null {
   if (versionId === null) return null;
   const version = context.versions.get(versionId);
   return version && typeof version.assetId === 'string' ? version.assetId : null;

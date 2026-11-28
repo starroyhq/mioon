@@ -13,8 +13,13 @@ import {restoreFormat4Backup} from '../packages/business/src/project-file/format
 import {copyProjectToNewFile} from '../packages/business/src/project-file/copy.ts';
 import {inspectCopiedProjectFile} from '../packages/business/src/project-file/backup.ts';
 import {createFormat5SequenceEditService} from '../packages/business/src/format5-sequence-edit-service.ts';
+import {createOwnedMediaGraphReader} from '../packages/business/src/inspection.ts';
 import {readFormat5TimelineRecord} from '../packages/business/src/project-file/format5-timeline.ts';
 import {sequenceSyncIntent} from '../packages/contracts/src/sequence-sync.ts';
+import {sequenceEditReceiptSchema} from '../packages/contracts/src/sequence-edit.ts';
+import {sequencePreviewFailureResponseSchema, sequencePreviewResponseSchema} from '../packages/contracts/src/sequence-edit-rpc.ts';
+import {sequenceHistoryViewResponseSchema} from '../packages/contracts/src/sequence-editing.ts';
+import {isTimelineRecord} from '../packages/contracts/src/timeline-replacement.ts';
 import {readProjectContentStamp} from '../packages/business/src/project-file/content-stamp.ts';
 import {captureProjectDocumentInside} from '../packages/business/src/project-versions/document.ts';
 import {buildRestorePlan} from '../packages/business/src/project-versions/preview.ts';
@@ -192,6 +197,110 @@ test('released 0.1.x and 0.2.0 projects upgrade with a confirmation, edit and un
     try {assert.equal((store.get('projects', preview.projectId) as {id: string}).id, preview.projectId);}
     finally {store.close();}
   }
+});
+
+test('a PNG retained as a format 4 shot version splits at source frame zero after the native upgrade', () => {
+  const f = released('v0.2.0');
+  const legacy = openStore({projectFile: f.projectFile, locate: () => f.location, format4: {}});
+  const {projectId} = legacy;
+  const versionId = randomUUID(), jobId = randomUUID();
+  try {
+    const shot = (legacy.list('shots') as {id: string; title: string; createdAt: string}[])[0]!;
+    const timeline = legacy.list('timelines')[0];
+    assert.ok(isTimelineRecord(timeline, {projectId}));
+    const original = timeline.clips[0]!;
+    const asset = legacy.get('assets', original.assetId) as {id: string; mimeType: string; sha256: string};
+    assert.equal(asset.mimeType, 'image/png');
+    const snapshot = {projectId, shotId: shot.id, title: shot.title,
+      referenceAssetIds: [], referenceAssets: [], referenceConnections: []};
+    legacy.tx(() => {
+      // A retained shot can own a still version even though today's generation
+      // path produces video. Use the release fixture's real PNG and locator.
+      legacy.put('jobs', {id: jobId, projectId, shotId: shot.id, requestId: randomUUID(), status: 'succeeded',
+        versionId, assetId: asset.id, snapshot});
+      legacy.put('versions', {id: versionId, projectId, shotId: shot.id, jobId, number: 1,
+        assetId: asset.id, sha256: asset.sha256, snapshot, createdAt: shot.createdAt});
+      legacy.put('shots', {...shot, duration: 3, selectedVersionId: versionId});
+      legacy.put('timelines', {...timeline, durationFrames: 90, revision: timeline.revision + 1,
+        clips: [{...original, startFrame: 0, durationFrames: 90, sourceInFrame: 0, shotId: shot.id, versionId, jobId}]});
+    });
+    assert.equal(createOwnedMediaGraphReader(legacy.db, projectId).version(versionId, shot.id, asset.id).id, versionId);
+  } finally {legacy.close();}
+
+  const preview = previewFor(f);
+  assert.equal(preview.projectVersion, 4);
+  const {store} = upgradeProjectFormatTo5({projectFile: f.projectFile, locate: () => f.location,
+    approveUpgrade: value => value.contentToken === preview.contentToken});
+  try {
+    assert.equal(store.db.prepare('PRAGMA project.user_version').get()?.user_version, FORMAT5_PROJECT_SCHEMA_VERSION);
+    const read = () => readFormat5TimelineRecord(store.db, 'project')!;
+    const before = read();
+    const clip = before.clips.find(item => item.versionId === versionId);
+    assert.ok(clip);
+    assert.equal(clip.sequenceSource?.kind, 'shot');
+    assert.equal(clip.trackId, before.mainTrack.trackId);
+    assert.deepEqual([clip.startFrame, clip.durationFrames, clip.sourceInFrame], [0, 90, 0]);
+
+    const edit = createFormat5SequenceEditService(store);
+    const history = () => sequenceHistoryViewResponseSchema.parse(edit.history({projectId}));
+    const cursor = history();
+    const rightClipId = randomUUID();
+    const draft = sequencePreviewResponseSchema.parse(edit.preview({projectId, requestId: randomUUID(),
+      intents: [sequenceSyncIntent({kind: 'clip-split', clipId: clip.id, offsetFrames: 45, rightClipId})]}));
+    assert.deepEqual(read(), before);
+    assert.deepEqual(history(), cursor);
+
+    const input = {projectId, envelope: draft.envelope, expectedPlanDigest: draft.planDigest};
+    const receipt = sequenceEditReceiptSchema.parse(edit.commit(input));
+    assert.equal(receipt.status, 'applied');
+    const afterSplit = read();
+    const pieces = afterSplit.clips.filter(item => item.versionId === versionId);
+    assert.deepEqual(pieces.map(item => [item.id, item.startFrame, item.durationFrames, item.sourceInFrame]),
+      [[clip.id, 0, 45, 0], [rightClipId, 45, 45, 0]]);
+    assert.ok(pieces.every(item => item.assetId === clip.assetId && item.trackId === clip.trackId &&
+      item.jobId === jobId && item.sequenceSource?.kind === 'shot' &&
+      item.sequenceSource.segmentGroupId === clip.sequenceSource?.segmentGroupId));
+    const applied = history();
+    assert.equal(applied.position, cursor.position + 1);
+    const travel = (direction: 'undo' | 'redo') => {
+      const {position, revision} = history();
+      const ack = sequenceEditReceiptSchema.parse(edit[direction]({projectId, requestId: randomUUID(),
+        actionId: receipt.actionId, expected: {position, revision}}));
+      assert.equal(ack.status, 'applied');
+    };
+    travel('undo');
+    assert.deepEqual(read().clips, before.clips);
+    const undone = history();
+    assert.equal(undone.position, cursor.position);
+    assert.deepEqual(edit.commit(input), receipt);
+    assert.deepEqual(read().clips, before.clips);
+    assert.deepEqual(history(), undone);
+    travel('redo');
+    assert.deepEqual(read().clips, afterSplit.clips);
+    assert.equal(history().position, applied.position);
+
+    const afterRedo = read(), afterRedoHistory = history();
+    const nonzeroTrim = sequencePreviewFailureResponseSchema.parse(edit.preview({projectId, requestId: randomUUID(),
+      intents: [sequenceSyncIntent({kind: 'clip-trim', clipId: clip.id, durationFrames: 44, sourceInFrame: 1})]}));
+    assert.equal(nonzeroTrim.code, 'SOURCE_BOUNDS');
+    assert.deepEqual(read(), afterRedo);
+    assert.deepEqual(history(), afterRedoHistory);
+
+    const paste = sequencePreviewResponseSchema.parse(edit.preview({projectId, requestId: randomUUID(),
+      intents: [sequenceSyncIntent({kind: 'paste-clip', clipId: rightClipId, startFrame: 90})]}));
+    const pastedReceipt = sequenceEditReceiptSchema.parse(edit.commit({projectId, envelope: paste.envelope,
+      expectedPlanDigest: paste.planDigest}));
+    assert.equal(pastedReceipt.status, 'applied');
+    const afterPaste = read();
+    const pasted = afterPaste.clips.find(item => item.startFrame === 90);
+    assert.ok(pasted?.sequenceSource?.kind === 'shot');
+    assert.notEqual(pasted.sequenceSource.nodeId, clip.sequenceSource?.nodeId);
+    assert.deepEqual([pasted.trackId, pasted.assetId, pasted.versionId, pasted.jobId, pasted.durationFrames, pasted.sourceInFrame],
+      [clip.trackId, clip.assetId, versionId, jobId, 45, 0]);
+    assert.deepEqual(afterPaste.clips.filter(item => item.id !== pasted.id), afterRedo.clips);
+    assert.equal(store.db.prepare('SELECT versionId FROM project.shot_version_adoptions WHERE shotId=?')
+      .get(pasted.sequenceSource.nodeId)?.versionId, versionId);
+  } finally {store.close();}
 });
 
 test('a format 5 project copies to a new file with its native rows and named versions restore clips', async () => {

@@ -4,9 +4,9 @@ import {
 import type { BoardSequenceEdit, BoardSequenceIssue, ChainBoard, ChainNode, SequenceEdge } from './board-sequence.ts';
 import {
   compareSyncClip, followChainSyncGroup, indexChainSyncTrack, packChainSyncTrack,
-  planChainMainTrack, validChainClipFrames, validChainMedia,
+  planChainMainTrack, stillByNodeKind, validChainClipFrames, validChainMedia,
 } from './chain-main-track.ts';
-import type { ChainSyncClip, ChainSyncMedia, ChainSyncVersion, ChainSyncWarning, MainTrackFailure } from './chain-main-track.ts';
+import type { ChainSyncClip, ChainSyncMedia, ChainSyncSourceIsStill, ChainSyncVersion, ChainSyncWarning, MainTrackFailure } from './chain-main-track.ts';
 import { planTrackAnchors } from './chain-sync-analysis.ts';
 import type { TrackAnchoredItem, TrackAnchorSplit } from './chain-sync-analysis.ts';
 import type { SourceRange } from './source-range.ts';
@@ -167,7 +167,8 @@ function makePlan(
 
 /** Deltas carry the exact old record on every modification. The transaction host
  * can apply them together and reverse them by exchanging before and after. */
-export function planChainSync(state: ChainSyncState, operation: ChainSyncOperation): ChainSyncPlan {
+export function planChainSync(state: ChainSyncState, operation: ChainSyncOperation,
+  isStill: ChainSyncSourceIsStill = stillByNodeKind): ChainSyncPlan {
   const graph = deriveFilmChains(state.board);
   const activeIssues = boardSequenceIssuesForComponent(state.board, graph.issues, [state.filmId]);
   let board = state.board;
@@ -232,7 +233,7 @@ export function planChainSync(state: ChainSyncState, operation: ChainSyncOperati
           state.anchored.filter(item => item.id !== removedClipId), [], issues);
       }
     }
-    return planTrackEdit(state, operation.edit, track.clips, oldIds, nodes, media, issues);
+    return planTrackEdit(state, operation.edit, track.clips, oldIds, nodes, media, issues, isStill);
   }
 
   let chain = previousChain;
@@ -248,7 +249,7 @@ export function planChainSync(state: ChainSyncState, operation: ChainSyncOperati
     if (!item) return {ok: false, code: 'MISSING_MEDIA', id: operation.nodeId};
     const candidate = {...item, selectedVersion: operation.version};
     const node = nodes.get(operation.nodeId);
-    if (!playable(node) || !validChainMedia(candidate, node.kind)) return {ok: false, code: 'INVALID_MEDIA', id: operation.nodeId};
+    if (!playable(node) || !validChainMedia(candidate, node.kind, isStill)) return {ok: false, code: 'INVALID_MEDIA', id: operation.nodeId};
     media.set(operation.nodeId, candidate);
     const other = graph.chains.find(item => item.filmId !== state.filmId && item.nodeIds.includes(operation.nodeId));
     if (other) return {ok: false, code: 'FILM_SCOPE_MISMATCH', id: other.filmId};
@@ -270,7 +271,7 @@ export function planChainSync(state: ChainSyncState, operation: ChainSyncOperati
   if (operation.kind !== 'sync-board' && !inSync) return {ok: false, code: 'CHAIN_TRACK_MISMATCH', id: state.filmId};
   const items = [...media.values()];
   const next = planChainMainTrack(chain.map(id => nodes.get(id)!), items, track.clips, operation.newClipIds,
-    {followVersions: operation.kind === 'sync-board'});
+    {followVersions: operation.kind === 'sync-board', isStill});
   if (!next.ok) return next;
   return makePlan(state, board, items, next.clips, planTrackAnchors(track.clips, next.clips, state.anchored), next.warnings, issues);
 }
@@ -319,6 +320,7 @@ function betweenSplitParts(clips: readonly ChainSyncClip[], at: number, nodeId: 
 function planTrackEdit(
   state: ChainSyncState, edit: TrackSyncEdit, previous: readonly ChainSyncClip[], oldIds: readonly string[],
   nodes: Map<string, ChainNode>, media: Map<string, ChainSyncMedia>, issues: readonly BoardSequenceIssue[],
+  isStill: ChainSyncSourceIsStill,
 ): ChainSyncPlan {
   // ED insert/paste/overlay actions are expanded by the format-5 service into
   // ordinary add edits before SA planning; they never reach this planner.
@@ -343,12 +345,13 @@ function planTrackEdit(
     const node = addedNode ?? nodes.get(clip.nodeId)!;
     const source = edit.media ?? media.get(clip.nodeId);
     if (!source) return {ok: false, code: 'MISSING_MEDIA', id: clip.nodeId};
-    if (!playable(node) || source.nodeId !== clip.nodeId || !validChainMedia(source, node.kind))
+    if (!playable(node) || source.nodeId !== clip.nodeId || !validChainMedia(source, node.kind, isStill))
       return {ok: false, code: 'INVALID_MEDIA', id: clip.nodeId};
     if (!validChainClipFrames(clip)) return {ok: false, code: 'INVALID_CLIP_FRAMES', id: clip.id};
     if (!clip.versionLocked && clip.versionId !== (source.selectedVersion?.id ?? null))
       return {ok: false, code: 'INVALID_CLIP_VERSION', id: clip.id};
-    if (exceedsKnownSource(clip, source)) return {ok: false, code: 'SOURCE_BOUNDS', id: clip.id};
+    if ((clip.versionId !== null && isStill(clip.versionId, node.kind) && clip.sourceInFrame !== 0)
+      || exceedsKnownSource(clip, source)) return {ok: false, code: 'SOURCE_BOUNDS', id: clip.id};
     nodes.set(node.id, node);
     media.set(node.id, source);
     next.splice(at, 0, clip);
@@ -410,10 +413,12 @@ function planTrackEdit(
         if (!Number.isSafeInteger(offsetFrames) || offsetFrames <= 0 || offsetFrames >= clip.durationFrames || !rightClipId)
           return {ok: false, code: 'INVALID_SPLIT', id: clip.id};
         if (next.some(item => item.id === rightClipId)) return {ok: false, code: 'DUPLICATE_CLIP', id: rightClipId};
+        const still = clip.versionId !== null && isStill(clip.versionId, nodes.get(clip.nodeId)!.kind);
+        if (still && (edit.rightSourceInFrame ?? 0) !== 0) return {ok: false, code: 'SOURCE_BOUNDS', id: clip.id};
         const splitGroupId = clip.splitGroupId ?? clip.id;
         const splitFrame = clip.startFrame + offsetFrames;
         const right = {...clip, id: rightClipId, startFrame: splitFrame, durationFrames: clip.durationFrames - offsetFrames,
-          splitGroupId, sourceInFrame: edit.rightSourceInFrame ?? (clip.versionId === null ? 0 : clip.sourceInFrame + offsetFrames)};
+          splitGroupId, sourceInFrame: edit.rightSourceInFrame ?? (still || clip.versionId === null ? 0 : clip.sourceInFrame + offsetFrames)};
         if (!validChainClipFrames(right)) return {ok: false, code: 'INVALID_CLIP_FRAMES', id: rightClipId};
         if (exceedsKnownSource(right, media.get(clip.nodeId))) return {ok: false, code: 'SOURCE_BOUNDS', id: rightClipId};
         next.splice(at, 1, {...clip, durationFrames: offsetFrames, splitGroupId}, right);
@@ -423,7 +428,8 @@ function planTrackEdit(
       case 'trim': {
         const trimmed = {...clip, durationFrames: edit.durationFrames, sourceInFrame: edit.sourceInFrame ?? clip.sourceInFrame};
         if (!validChainClipFrames(trimmed)) return {ok: false, code: 'INVALID_CLIP_FRAMES', id: clip.id};
-        if (exceedsKnownSource(trimmed, media.get(clip.nodeId))) return {ok: false, code: 'SOURCE_BOUNDS', id: clip.id};
+        if ((clip.versionId !== null && isStill(clip.versionId, nodes.get(clip.nodeId)!.kind) && trimmed.sourceInFrame !== 0)
+          || exceedsKnownSource(trimmed, media.get(clip.nodeId))) return {ok: false, code: 'SOURCE_BOUNDS', id: clip.id};
         next[at] = trimmed;
         break;
       }
@@ -431,7 +437,7 @@ function planTrackEdit(
         const source = media.get(clip.nodeId);
         if (!source) return {ok: false, code: 'MISSING_MEDIA', id: clip.nodeId};
         const updated = {...source, selectedVersion: edit.version};
-        if (!validChainMedia(updated, nodes.get(clip.nodeId)!.kind) || edit.locked && edit.version === null)
+        if (!validChainMedia(updated, nodes.get(clip.nodeId)!.kind, isStill) || edit.locked && edit.version === null)
           return {ok: false, code: 'INVALID_MEDIA', id: clip.nodeId};
         if (!edit.locked) media.set(clip.nodeId, updated);
         if (edit.version === null) {
