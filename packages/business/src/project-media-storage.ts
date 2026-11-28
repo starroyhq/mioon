@@ -199,12 +199,12 @@ export async function prepareProjectAssetFullHash(root: string, assetId: string,
 /** Existing producers use private staging, then register an ordinary project
  * file. Final locations remain their current output paths until S2; persisted
  * assets nevertheless have exactly one reference locator from S1 onward. */
-export async function referenceForPublishedMedia(store: ProjectStore, file: string, {sha256, signal, beforeEffect}: {sha256?: string; signal?: AbortSignal; beforeEffect?: () => void} = {}): Promise<{reference: MediaReference; referenceRevision: number; sha256: string; sizeBytes: number}> {
+export async function referenceForPublishedMedia(store: ProjectStore, file: string, {sha256, signal, beforeEffect, hashChunkBytes}: {sha256?: string; signal?: AbortSignal; beforeEffect?: () => void; hashChunkBytes?: number} = {}): Promise<{reference: MediaReference; referenceRevision: number; sha256: string; sizeBytes: number}> {
   if (!isProjectStore(store)) throw new TypeError('Published media requires the exact live owner');
   const access: MediaAccess = {projectDir: store.projectDir, projectFile: store.projectFile, mayReadOutside: () => false,
     isHeld: identity => isProjectFileHeld(identity) || isAppLibraryHeld(identity)};
   const media = await referenceForFile(access, file, {signal, beforeEffect});
-  const full = await computeFullSha256(access, {...media.reference, fullSha256: sha256 ?? media.reference.fullSha256}, {signal, beforeEffect});
+  const full = await computeFullSha256(access, {...media.reference, fullSha256: sha256 ?? media.reference.fullSha256}, {signal, beforeEffect, chunkBytes: hashChunkBytes});
   return {reference: full.reference, referenceRevision: 1, sha256: full.sha256, sizeBytes: full.reference.sizeBytes};
 }
 

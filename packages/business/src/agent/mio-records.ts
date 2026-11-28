@@ -442,6 +442,11 @@ export function createMioRecords(store: ProjectStore) {
     if (ownerId !== undefined) validated(requestIdSchema, ownerId);
     return db.prepare('SELECT * FROM mio_edit_claims WHERE projectId=? AND (? IS NULL OR ownerId=?) ORDER BY kind,targetId,id').all(projectId, ownerId ?? null, ownerId ?? null).map(row => rowValue(mioClaimSchema, row));
   }
+  function claimById(id: string): MioClaim | undefined {
+    validated(idSchema, id);
+    const row = db.prepare('SELECT * FROM mio_edit_claims WHERE projectId=? AND id=?').get(projectId, id);
+    return row ? rowValue(mioClaimSchema, row) : undefined;
+  }
   function saveClaim(input: Omit<MioClaim, 'projectId'>): MioClaim { return write(() => {
     const value = validated(mioClaimSchema, {...input, projectId});
     const old = db.prepare('SELECT projectId,ownerId,kind,targetId,revision FROM mio_edit_claims WHERE id=?').get(value.id);
@@ -508,7 +513,7 @@ export function createMioRecords(store: ProjectStore) {
       return db.prepare('SELECT runId,sequence,createdAt FROM mio_events WHERE runId=? AND sequence>? ORDER BY sequence LIMIT 2000').all(runId, after).map(row => rowValue(mioEventSchema, row));
     },
     changes, addChange, control, saveControl, controlState, setControlState,
-    importRecord, addImport, updateImport, origin, addOrigin, claims, saveClaim, removeClaim,
+    importRecord, addImport, updateImport, origin, addOrigin, claims, claimById, saveClaim, removeClaim,
     editOwner, saveEditOwner, editReceipt, saveEditReceipt, conversationPolicy, setConversationPolicy,
   };
 }

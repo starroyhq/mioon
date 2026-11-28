@@ -7,7 +7,7 @@ import {downloadAsset} from '@mioon/client/download';
 import {exportProjectPackage,importProjectPackage,duplicateProject} from '@mioon/client/project-package';
 import {importLutFile, LutImportFileError} from './lut-import-file.ts';
 
-import {translate, message} from '@mioon/i18n';
+import {translate, translateSequenceEditDiagnostic, localizeSequenceEditReceipt, message} from '@mioon/i18n';
 import type {Locale, MessageDescriptor, MessageKey, MessageParameters} from '@mioon/i18n';
 import {localizeHelp} from '@mioon/i18n/presentation';
 
@@ -105,7 +105,7 @@ export async function runCli(): Promise<void> {
       if(agent)data=await runAgentCommand(operation,input,options,{signal:abort.signal,redact:value=>{if(value)sensitive.push(value);}});
       else if(agentSchema){if(Object.keys(input).length)fail('schema does not accept input.');data=agentCommandHelp(words.slice(1).join('.'));}
       else {
-      const client = createClient();
+      const client = createClient({reportSubmissionRejections: true});
       const watch = ['job.watch', 'export.watch'].includes(operation), download = ['asset.download', 'export.download'].includes(operation);
       // Project files use dedicated management routes, not the RPC/MCP catalog.
       const projectPackage = ['project.export', 'project.import', 'project.duplicate'].includes(operation);
@@ -173,15 +173,18 @@ export async function runCli(): Promise<void> {
       }
       }
     }
+    if (operation === 'sequence.action.commit') data = localizeSequenceEditReceipt(locale, data);
     process.stdout.write(JSON.stringify(redact(successEnvelope(data))) + '\n');
   } catch (error) {
     // errorEnvelope always emits a string message for known and unknown errors;
     // the client package currently widens it while its own strict pass completes.
-    const result = redact(errorEnvelope(error)) as {ok: false; error: {code: string; message: string}};
+    const result = redact(errorEnvelope(error)) as {ok: false; error: {code: string; message: string; details: unknown}};
+    const sequenceMessage = translateSequenceEditDiagnostic(locale, result.error.code, result.error.details);
+    if (sequenceMessage) result.error.message = sequenceMessage;
     process.stdout.write(JSON.stringify(result) + '\n');
     const diagnostic = result.error.message.replace(/[\r\n\x00-\x1f]/g, ' ');
     const display = error !== null && typeof error === 'object' ? displayErrors.get(error) : undefined;
-    const human = locale === undefined ? diagnostic : display
+    const human = locale === undefined || sequenceMessage ? diagnostic : display
       ? translate(locale, display.key, display.params as never)
       : `${translate(locale, result.error.code === 'CONNECTION_CONFIG_ERROR' ? 'cli.error.connection' : 'cli.error.summary')} ${translate(locale, 'cli.error.original', {diagnostic})}`;
     process.stderr.write(`${result.error.code}: ${human}\n`);

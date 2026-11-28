@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {chmodSync,readFileSync,statSync} from 'node:fs';
+import {chmodSync,closeSync,existsSync,fstatSync,ftruncateSync,openSync,readFileSync,readdirSync,statSync,writeSync} from 'node:fs';
 import {mkdtemp,copyFile,readFile,readdir,rename,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -10,12 +10,12 @@ import {createServices} from '../packages/business/src/services.ts';
 import type {JobRecord} from '../packages/business/src/services.ts';
 import type {Provider} from '../packages/business/src/provider-registry.ts';
 import {startWorker} from '../packages/business/src/jobs.ts';
-import {run} from '../packages/business/src/media.ts';
+import {fileHash,run} from '../packages/business/src/media.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {setProjectOutputPublicationTestHooks,isPublishedProjectOutput} from '../packages/business/src/project-output-publication.ts';
 import type {ProjectOutputPublicationProof} from '../packages/business/src/project-output-publication.ts';
 import {outputArtifactSchema} from '../packages/contracts/src/output-artifact.ts';
-import {writePrivateFileAtomic} from '../packages/contracts/src/private-storage.ts';
+import {PRIVATE_STORAGE_BUFFER_BYTES,writePrivateFileAtomic} from '../packages/contracts/src/private-storage.ts';
 import {isTimelineExportAudioOutcome} from '../packages/contracts/src/timeline-export-float.ts';
 import {isTimelineRenderRecord} from '../packages/contracts/src/timeline-acknowledgement.ts';
 import {timelineDeliveryContentDisposition} from '../packages/contracts/src/timeline-delivery.ts';
@@ -25,13 +25,35 @@ import {readOwnedTimelineAsset} from '../packages/business/src/timeline-sources.
 const row=(value:unknown):Record<string,unknown>=>{assert.ok(value&&typeof value==='object'&&!Array.isArray(value));return value as Record<string,unknown>;};
 async function sourceFile(root:string):Promise<string>{const file=path.join(root,'source.mp4');await run('ffmpeg',['-hide_banner','-loglevel','error','-n','-f','lavfi','-i','color=c=blue:s=144x256:r=30:d=0.2','-an','-c:v','libx264','-preset','ultrafast','-threads','1','-pix_fmt','yuv420p',file],{timeout:30000});return file;}
 
+const largeOutputBytes = PRIVATE_STORAGE_BUFFER_BYTES + 1;
+
+function padOutput(file: string): void {
+  // An MP4 free box gives the real worker a large, valid file at the boundary
+  // without spending test time encoding a long timeline or buffering the payload.
+  const fd = openSync(file, 'r+');
+  try {
+    const {size} = fstatSync(fd);
+    const box = Buffer.alloc(8);
+    assert.ok(size > 0 && largeOutputBytes - size >= box.length);
+    box.writeUInt32BE(largeOutputBytes - size);
+    box.write('free', 4, 'ascii');
+    assert.equal(writeSync(fd, box, 0, box.length, size), box.length);
+    ftruncateSync(fd, largeOutputBytes);
+  } finally { closeSync(fd); }
+}
+
 function changeCtimeBeforeRegistration(store: ReturnType<typeof openStore>, targetKind: 'exports' | 'generated') {
   let changed: ProjectOutputPublicationProof | undefined;
-  const clear = setProjectOutputPublicationTestHooks(store, {fault(point, proof) {
+  const clear = setProjectOutputPublicationTestHooks(store, {fault(point, proof, workingFile) {
     if (point !== 'after_final' || proof.targetKind !== targetKind || changed) return;
     assert.equal(store.db.isTransaction, false);
     assert.equal(store.get('assets', proof.assetId), null);
-    const file = path.join(store.projectDir, proof.relativePath);
+    const final = path.join(store.projectDir, proof.relativePath);
+    if (targetKind === 'exports') {
+      assert.ok(workingFile);
+      assert.equal(existsSync(final), false);
+    }
+    const file = workingFile ?? final;
     const before = statSync(file, {bigint: true});
     const bytes = readFileSync(file);
     const mode = Number(before.mode & 0o777n);
@@ -191,12 +213,12 @@ test('a moved private download stage retains its task and serializes an I/O erro
  assert.deepEqual(error,{code:'ENOENT',message:'本地产物文件不可用，已保留任务记录',retryable:true});assert.equal(serialized.includes(root),false);assert.equal(serialized.includes(store.tempDir),false);assert.equal(serialized.includes(moved),false);assert.equal(store.list('versions').length,0);assert.equal(store.list('assets').length,0);assert.deepEqual(await readFile(moved),await readFile(source));
 });
 
-test('completed generation artifact resumes locally after restart, rejects corrupt manifest and registers its exact IDs once',async t=>{
+test('completed generation artifact over 64 MiB resumes after restart, rejects corrupt manifest and registers its exact IDs once',async t=>{
  const root=await mkdtemp(path.join(tmpdir(),'mioon-generation-artifact-')),source=await sourceFile(root);let store=openStore(root),worker:ReturnType<typeof startWorker>|undefined;
  const calls={submit:0,poll:0,download:0};
  const provider:Provider={id:'ark',capabilities:{models:['fixture'],inputModes:['text'],aspectRatios:['9:16'],durations:[4],configured:true,enabled:true,mock:false},
   submit:async()=>{calls.submit++;return{providerJobId:'existing-completed-provider-job'};},poll:async()=>{calls.poll++;return{status:'succeeded'};},reconcile:async()=>null,
-  download:async(_id,destination)=>{calls.download++;await copyFile(source,destination);}};
+  download:async(_id,destination)=>{calls.download++;await copyFile(source,destination);padOutput(destination);}};
  const providers=new Map([['ark',provider]]);let services=createServices(store,providers);
  t.after(async()=>{await worker?.stop();await services.drain();store.close();await rm(root,{recursive:true,force:true});});
  const project=row(await services.call('project.create',{name:'Generation artifact'})),projectId=String(project.id),shot=row(await services.call('shot.create',{projectId,title:'Frozen output',prompt:'A blue rectangle',duration:4}));
@@ -206,8 +228,12 @@ test('completed generation artifact resumes locally after restart, rejects corru
  const unreceipted=path.join(root,'media',`result-${jobId}.mp4`);await copyFile(source,unreceipted);const unreceiptedBytes=await readFile(unreceipted);
  const off=setProjectOutputPublicationTestHooks(store,{fault:point=>{if(point==='after_final')controller.abort();}});
  worker=startWorker(store,services,providers,{signal:controller.signal});await worker.tick();await worker.tick();await worker.stop();worker=undefined;off();
- assert.equal(row(store.get('jobs',jobId)).status,'downloading');assert.deepEqual(calls,{submit:1,poll:1,download:1},'an existing result-like file without a complete artifact never substitutes for the provider download');assert.equal(store.list('versions').length,0);assert.deepEqual(await readFile(unreceipted),unreceiptedBytes);
+ const interrupted=row(store.get('jobs',jobId));
+ assert.equal(interrupted.status,'downloading',JSON.stringify(interrupted.error));
+ assert.equal(interrupted.error,null,JSON.stringify(interrupted.error));
+ assert.deepEqual(calls,{submit:1,poll:1,download:1},'an existing result-like file without a complete artifact never substitutes for the provider download');assert.equal(store.list('versions').length,0);assert.deepEqual(await readFile(unreceipted),unreceiptedBytes);
  const manifestFile=path.join(store.tempDir,'job-results',jobId,'complete.json'),raw=await readFile(manifestFile,'utf8'),artifact=outputArtifactSchema.parse(JSON.parse(raw)),files=await readdir(path.join(root,'生成'));assert.equal(files.length,1);
+ assert.equal(artifact.info.sizeBytes,largeOutputBytes);
  await services.drain();store.close();store=openStore(root);services=createServices(store,new Map());
  writePrivateFileAtomic(manifestFile,JSON.stringify({...artifact,sourceIdentity:'f'.repeat(64)}),{root:store.tempDir,maxBytes:32768});
  let children=0;const stopObserving=onMediaProcess(event=>{if(event.type==='started')children++;});
@@ -219,10 +245,17 @@ test('completed generation artifact resumes locally after restart, rejects corru
  assert.equal(asset.name,'Frozen output · Generated video.mp4');
  assert.equal(completed.status,'succeeded');assert.equal(completed.versionId,artifact.versionId);assert.equal(version.assetId,artifact.assetId);assert.equal(store.list('versions').length,1);assert.deepEqual(calls,{submit:1,poll:1,download:1});assert.equal(children,0,'recovery does not probe, decode, render or contact an adapter');assert.deepEqual(await readdir(path.join(root,'生成')),files);
  assert.ok(isPublishedProjectOutput(asset,{projectId,assetId:artifact.assetId,owner:artifact.owner,targetKind:'generated'}));
+ const generatedFile=path.join(root,'生成',files[0]);
+ assert.equal(asset.sizeBytes,largeOutputBytes);
+ assert.equal(statSync(generatedFile).size,largeOutputBytes);
+ assert.equal(await fileHash(generatedFile),artifact.info.sha256);
  assert.deepEqual(await readFile(unreceipted),unreceiptedBytes,'unreceipted project files are never deleted or adopted');
+ await services.drain();store.close();store=openStore(root);services=createServices(store,new Map());
+ assert.equal(row(await services.call('job.get',{jobId})).versionId,artifact.versionId);
+ assert.ok(isPublishedProjectOutput(store.get('assets',artifact.assetId),{projectId,assetId:artifact.assetId,owner:artifact.owner,targetKind:'generated'}));
 });
 
-for(const float of [false,true])test(`completed ${float?'float-checked':'ordinary'} export artifact resumes without a second render and keeps its original asset ID`,async t=>{
+for(const float of [false,true])test(`completed ${float?'float-checked export artifact':'ordinary export artifact over 64 MiB'} resumes without a second render and keeps its original asset ID`,async t=>{
  const root=await mkdtemp(path.join(tmpdir(),'mioon-export-artifact-')),source=await sourceFile(root);let store=openStore(root),services=createServices(store,new Map(),{exportOptions:{inspect:async()=>({status:'available',code:'EXPORT_CAPABILITY_AVAILABLE'})}}),worker:ReturnType<typeof startWorker>|undefined;
  t.after(async()=>{await worker?.stop();await services.drain();store.close();await rm(root,{recursive:true,force:true});});
  const project=row(await services.call('project.create',{name:'Export artifact'})),projectId=String(project.id),asset=row(await services.call('asset.import',{projectId,name:'source.mp4',mimeType:'video/mp4',dataBase64:(await readFile(source)).toString('base64')}));
@@ -230,27 +263,52 @@ for(const float of [false,true])test(`completed ${float?'float-checked':'ordinar
  const input={projectId,expectedRevision:timeline.revision,requestId:randomUUID(),purpose:'export',...(float?{exportSettings:{profileId:'mp4_h264_float_checked_v2',resolution:'short_360',rateControl:{mode:'crf',quality:'standard'}}}:{})},accepted=row(await services.call('timeline.render',input,{outputLocale:float?'ja':'zh-Hant'})),exportId=String(accepted.id),controller=new AbortController();
  assert.deepEqual(await services.call('timeline.render',input,{outputLocale:'en'}),accepted);
  const originalReceipt=store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(input.requestId),off=setProjectOutputPublicationTestHooks(store,{fault:point=>{if(point==='after_final')controller.abort();}});
- worker=startWorker(store,services,new Map(),{signal:controller.signal});await worker.tick();await worker.stop();worker=undefined;off();
- assert.equal(row(store.get('exports',exportId)).status,'queued');const artifact=outputArtifactSchema.parse(JSON.parse(await readFile(path.join(store.tempDir,'export-staging',exportId,'complete.json'),'utf8'))),files=await readdir(path.join(root,'导出'));assert.equal(files.length,1);
+ let padded=false,paddingError:unknown;
+ const stopPadding=float?undefined:onMediaProcess(event=>{
+  if(padded||paddingError||event.type!=='exited'||event.kind!=='ffmpeg')return;
+  try {
+   const directory=path.join(store.tempDir,'export-staging',exportId);
+   const stage=readdirSync(directory).find(file=>/^stage-[a-f0-9-]+\.mp4$/u.test(file));
+   if(!stage)return;
+   const file=path.join(directory,stage);
+   if(statSync(file).size===0)return;
+   padOutput(file);
+   padded=true;
+  } catch(error) {paddingError=error;}
+ });
+ try {
+  worker=startWorker(store,services,new Map(),{signal:controller.signal});await worker.tick();await worker.stop();worker=undefined;
+ } finally {stopPadding?.();off();}
+ if(!float){if(paddingError)throw paddingError;assert.ok(padded);}
+ const interrupted=row(store.get('exports',exportId));
+ assert.equal(interrupted.status,'queued',JSON.stringify(interrupted.error));
+ const artifact=outputArtifactSchema.parse(JSON.parse(await readFile(path.join(store.tempDir,'export-staging',exportId,'complete.json'),'utf8')));
+ assert.deepEqual(await readdir(path.join(root,'导出')),[]);
+ assert.deepEqual(await readdir(path.join(root,'.mioon-export-staging')),[]);
+ if(!float)assert.equal(artifact.info.sizeBytes,largeOutputBytes);
  await services.drain();store.close();store=openStore(root);services=createServices(store,new Map(),{exportOptions:{inspect:async()=>{assert.fail('completed artifact does not re-run export capability/render admission');}}});
  let children=0;const stopObserving=onMediaProcess(event=>{if(event.type==='started')children++;});
  worker=startWorker(store,services,new Map());await worker.tick();await worker.stop();worker=undefined;stopObserving();
- const completed=row(store.get('exports',exportId));assert.equal(completed.status,'succeeded',JSON.stringify(completed.error));assert.equal(completed.assetId,artifact.assetId);assert.equal(children,0);assert.deepEqual(await readdir(path.join(root,'导出')),files);assert.deepEqual(store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(input.requestId),originalReceipt);
+ const completed=row(store.get('exports',exportId));assert.equal(completed.status,'succeeded',JSON.stringify(completed.error));assert.equal(completed.assetId,artifact.assetId);assert.equal(children,0);assert.deepEqual(await readdir(path.join(root,'导出')),['Export artifact.mp4']);assert.deepEqual(store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(input.requestId),originalReceipt);
  if(float)assert.ok(isTimelineExportAudioOutcome(completed,{assetSha256:artifact.info.sha256}));
  const output=row(await services.call('export.output.get',{projectId,exportId}));assert.equal(output.assetId,artifact.assetId);
  const firstFile=path.join(root,'导出','Export artifact.mp4');
  assert.equal(output.fileLocation,firstFile);
  assert.equal(row(store.get('assets',artifact.assetId)).name,float?'タイムライン書き出し · 9x16.mp4':'多軌時間軸-匯出-9x16.mp4');
  if(!float){
-  const firstBytes=await readFile(firstFile);
+  assert.equal(output.sizeBytes,largeOutputBytes);
+  assert.equal(statSync(firstFile).size,largeOutputBytes);
+  assert.equal(await fileHash(firstFile),artifact.info.sha256);
   const next=row(await services.call('timeline.render',{...input,requestId:randomUUID()},{outputLocale:'zh-Hant'}));
   worker=startWorker(store,services,new Map());await worker.tick();await worker.stop();worker=undefined;
   const second=row(store.get('exports',String(next.id)));
   assert.equal(second.status,'succeeded');
   assert.equal(row(await services.call('export.output.get',{projectId,exportId:next.id})).fileLocation,path.join(root,'导出','Export artifact 2.mp4'));
-  assert.deepEqual(await readFile(firstFile),firstBytes);
+  assert.equal(await fileHash(firstFile),artifact.info.sha256);
   assert.deepEqual((await readdir(path.join(root,'导出'))).sort(),['Export artifact 2.mp4','Export artifact.mp4']);
   assert.equal(row(store.get('assets',String(second.assetId))).name,'多軌時間軸-匯出-9x16 (2).mp4');
   assert.equal(row(store.get('assets',artifact.assetId)).name,'多軌時間軸-匯出-9x16.mp4');
+  await services.drain();store.close();store=openStore(root);services=createServices(store,new Map());
+  assert.deepEqual(await services.call('export.output.get',{projectId,exportId}),output);
  }
 });

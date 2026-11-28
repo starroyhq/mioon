@@ -8,6 +8,7 @@ import {z} from 'zod';
 import {sequenceClipPropertyEditsSchema, sequenceEditFormatIntentSchema} from './sequence-edit.ts';
 import {FORMAT5_REFERENCE_ROLES} from './project-format5.ts';
 import {PREVIS_LIMITS, previsSceneSchema} from './previs.ts';
+import {assetRangeOnSourceGridSchema} from './source-range.ts';
 
 const uuid = z.string().uuid();
 const offset = z.number().int().min(0).max(9007199254740991);
@@ -118,8 +119,9 @@ const mioSequenceActionBranches = z.discriminatedUnion('kind', [
     modelEntryId: z.string().min(1).max(200).optional()}).strict(),
   // ED: put one library asset into the timeline. The server expands the asset
   // into a board media node plus main clip, or an anchored overlay clip, and
-  // allocates every new identity; the model only names asset, track and frame.
-  z.object({kind: z.literal('insert-asset'), assetId: uuid, trackId: uuid.nullable(), startFrame: offset}).strict(),
+  // allocates every new identity.
+  z.object({kind: z.literal('insert-asset'), assetId: uuid, trackId: uuid.nullable(), startFrame: offset,
+    assetRange: assetRangeOnSourceGridSchema.optional()}).strict(),
   z.object({kind: z.literal('track-add'), trackKind: z.enum(['video', 'audio']), name: z.string().min(1).max(150).optional()}).strict(),
   z.object({kind: z.literal('track-update'), trackId: uuid, patch: z.object({
     name: z.string().min(1).max(150).optional(), hidden: z.boolean().optional(), muted: z.boolean().optional(),

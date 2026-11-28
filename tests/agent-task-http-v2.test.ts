@@ -21,12 +21,42 @@ import {createTestAgentSettings} from './helpers/secret-codec.ts';
 import {deriveAgentEndpoint} from '../packages/contracts/src/agent-protocol.ts';
 import type {AgentTaskSnapshot,AgentTaskPolicy,AgentTaskJson,AgentTaskHistoryPage,AgentTaskConversationPage} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {agentTaskSnapshotSchema,agentTaskHistoryPageSchema,agentTaskConversationPageSchema,agentTaskConnectionTestResponseSchema,agentTaskConversationPolicySchema,AGENT_TASK_POLICY_PRESETS} from '../packages/contracts/src/agent-tasks-v2.ts';
+import {agentTaskEditingClaimGroupSchema} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type {TaskGateway} from '../packages/business/src/agent/task-gateway-v2.ts';
 import type {AgentConfiguration} from '../packages/business/src/agent/config.ts';
 import {agentTaskToolNamesForGroup} from '../packages/business/src/agent/task-tool-groups-v2.ts';
 import type {AgentTaskLoadableToolGroupId} from '../packages/business/src/agent/task-tool-groups-v2.ts';
 
 const object=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
+
+test('authenticated project editing groups preserve unknown owners and the batch route cannot clear them',async t=>{
+ const f=await fixture(t),read=`${f.prefix}/editing/retained`,batch=`${f.prefix}/editing/resolve-batch`;
+ const ownerId=`normal:${randomUUID()}:test`,target={kind:'timeline_subtitle',id:randomUUID(),revision:0};
+ const oldInput={projectId:f.projectId,requestId:randomUUID(),ownerId,action:'claim',generation:1,sequence:1,targets:[target]};
+ assert.equal((await f.request(`${f.prefix}/editing`,'POST',oldInput)).status,200);
+ assert.equal((await f.request(read,'GET',undefined,false)).status,401);
+ assert.equal((await f.request(read,'POST',{})).status,405);
+ assert.equal((await f.request(`${read}?projectId=${f.projectId}`)).status,400);
+ assert.equal((await f.request('/api/agent/tasks/v2/editing/retained')).status,404);
+ const listed=await f.request(read);assert.equal(listed.status,200);assert.ok(object(listed.data));
+ const groups=agentTaskEditingClaimGroupSchema.array().parse(listed.data.groups);
+ assert.equal(groups.length,1);
+ const [group]=groups;assert.equal(group.projectId,f.projectId);assert.equal(group.kind,target.kind);assert.equal(group.id,target.id);
+ const [owner]=group.owners;
+ assert.equal(owner.claim.ownerId,ownerId);assert.equal(owner.claim.state,'active');assert.equal(owner.liveness,'uncertain');
+ const input={projectId:f.projectId,requestId:randomUUID(),claims:[{
+  claimId:owner.claim.id,ownerId,generation:owner.generation,sequence:owner.sequence,claimSnapshot:owner.claimSnapshot,
+ }]};
+ assert.equal((await f.request(batch,'POST',input,false)).status,401);
+ const wrongProject=await f.request(batch,'POST',{...input,projectId:randomUUID()});
+ assert.equal(wrongProject.status,400);assert.ok(object(wrongProject.error));assert.equal(wrongProject.error.code,'PROJECT_ID_MISMATCH');
+ assert.equal((await f.request(batch,'POST',{...input,claims:[input.claims[0],input.claims[0]]})).status,400);
+ const refused=await f.request(batch,'POST',input);assert.equal(refused.status,409);assert.ok(object(refused.error));
+ assert.equal(refused.error.code,'AGENT_TASK_EDIT_BATCH_CONFLICT');
+ assert.deepEqual(await f.request(`${batch}?requestId=${input.requestId}`),{status:200,data:{receipt:null},error:undefined});
+ assert.deepEqual(await f.request(`${batch}?requestId=${oldInput.requestId}`),{status:200,data:{receipt:null},error:undefined});
+ assert.deepEqual(await f.request(read),listed);
+});
 
 test('continued policy has a specific fixed HTTP error without exposing internal markers or consuming a receipt',async t=>{
  const f=await fixture(t,'chat_completions',async function*(request){request.beforeSubmit?.();yield {type:'done',output:{text:'Completed locally',toolCalls:[],providerOutput:{role:'assistant',content:'Completed locally'}}};});

@@ -36,10 +36,11 @@ function directory(projects: readonly LauncherCreatedProject[], patch: Partial<P
 }
 const result = (patch: object = {}): EntryResult => ({ ok: true, reason: 'accepted', targetWindowId: uuid(11), targetPhase: 'opening', ...patch }) as EntryResult;
 const tick = (): Promise<void> => new Promise(resolve => { setImmediate(resolve); });
-function fixture({ context = ctx(), confirm = async () => true, rpc, readDirectory, invoke, identity: suppliedIdentity, explicitProjectId = null }:
+function fixture({ context = ctx(), confirm = async () => true, rpc, readDirectory, invoke, identity: suppliedIdentity, explicitProjectId = null, desktopClient, onNativeOpenError }:
   { context?: LauncherContext; confirm?: () => Promise<boolean>; rpc?: (operation: string, input?: Readonly<Record<string, unknown>>) => unknown;
     readDirectory?: () => unknown;
-    invoke?: (value: InvokeArgs) => unknown; identity?: Identity; explicitProjectId?: string | null } = {}) {
+    invoke?: (value: InvokeArgs) => unknown; identity?: Identity; explicitProjectId?: string | null;
+    desktopClient?: ControllerOptions['desktopClient']; onNativeOpenError?: ControllerOptions['onNativeOpenError'] } = {}) {
   const calls: Array<[string, unknown]> = [], opens: OpenRecord[] = []; let current = context, serial = 100;
   let controller: ProjectController;
   const bridge = { context: async () => current,
@@ -56,7 +57,7 @@ function fixture({ context = ctx(), confirm = async () => true, rpc, readDirecto
     if (operation === 'project.create') return row(uuid(5), String((input as { name?: unknown } | undefined)?.name));
     assert.fail(`Unexpected native RPC ${operation}`);
   }, {...checks, readDirectory: () => readProjectEntryIdentity(identity)});
-  controller = createProjectEntryController({ client, context, bridge, identity, explicitProjectId, confirm, newToken: () => uuid(++serial) });
+  controller = createProjectEntryController({ client, context, bridge, identity, explicitProjectId, confirm, desktopClient, onNativeOpenError, newToken: () => uuid(++serial) });
   controller.activate();
   return { controller, calls, opens, client, bridge, context: () => current,
     receive(patch: object) { current = { ...current, ...patch } as LauncherContext; controller.updateContext(current); } };
@@ -239,6 +240,48 @@ test('accepted already-ready editor targets close the picker while rejected targ
     assert.equal(Boolean(f.controller.getState().error),!accepted);
     assert.equal(f.controller.getContext().editorProjectId,uuid(3));
   }
+});
+test('a direct editor menu refusal presents only the native issue and never activates the picker', async () => {
+  const context = ctx({role: 'editor', initialProjectId: uuid(3), editorProjectId: uuid(3), editorPhase: 'ready', editorCount: 1});
+  const calls: unknown[] = [], failure = {code: 'PROJECT_MISSING'} as const;
+  const f = fixture({context,
+    desktopClient: {openRecent: async ({projectId, entryToken}) => {
+      const state = f.controller.getState();
+      assert.equal(state.shown, false, 'A menu choice does not open the catalog while native admission runs');
+      assert.equal(state.sealed, true);
+      assert.equal(f.controller.consume(entryToken, projectId).accepted, true);
+      f.receive({entryReceipt: {entryToken, result: {ok: false, reason: 'unavailable', targetWindowId: null, targetPhase: null, failure}}});
+      return {status: 'failed', reason: 'unavailable', failure};
+    }},
+    onNativeOpenError: (error, projectId) => calls.push({error, projectId}),
+  });
+  assert.equal(await f.controller.open(uuid(4)), false);
+  assert.deepEqual(calls, [{error: failure, projectId: uuid(4)}]);
+  assert.deepEqual(f.calls, [['directory.list', undefined]], 'The one fresh admission read remains mandatory');
+  const state = f.controller.getState();
+  assert.equal(state.shown, false);
+  assert.equal(state.sealed, false);
+  assert.equal(state.listError, '');
+});
+test('a direct menu open shows the picker for the exact cancellable candidate, then retires it on cancellation', async () => {
+  const context = ctx({role: 'editor', initialProjectId: uuid(3), editorProjectId: uuid(3), editorPhase: 'ready', editorCount: 1});
+  const held = Promise.withResolvers<EntryResult>();
+  const f = fixture({context, invoke: ({projectId, entryToken, controller}) => {
+    assert.equal(controller.consume(entryToken, projectId).accepted, true);
+    return held.promise;
+  }});
+  const opening = f.controller.open(uuid(4));
+  await tick();
+  const {entryToken, projectId} = f.opens[0];
+  f.receive({entryPending: {entryToken: uuid(900), projectId}});
+  assert.equal(f.controller.getState().shown, false);
+  f.receive({entryPending: {entryToken, projectId}});
+  assert.equal(f.controller.getState().shown, true);
+  assert.equal(f.controller.getState().pendingOpenProjectId, projectId);
+  held.resolve(result({ok: false, reason: 'cancelled', targetWindowId: null, targetPhase: null}));
+  assert.equal(await opening, false);
+  assert.equal(f.controller.getState().shown, false);
+  assert.equal(f.controller.getState().pendingOpenProjectId, null);
 });
 test('an exact late accepted receipt closes the editor picker after an unknown open without redispatch', async () => {
   const initial=ctx({role:'editor',initialProjectId:uuid(3),editorProjectId:uuid(3),editorPhase:'ready',editorCount:2});

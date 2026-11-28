@@ -2,7 +2,7 @@ import {testEnv} from './helpers/test-env.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {mkdtempSync,rmSync,mkdirSync,copyFileSync,renameSync,readFileSync,linkSync,lstatSync} from 'node:fs';
+import {mkdtempSync,rmSync,mkdirSync,copyFileSync,renameSync,readFileSync,linkSync,lstatSync,realpathSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
@@ -11,6 +11,8 @@ import {projectLocation,serverAppDirectories} from '../apps/server/src/project-h
 import {createServerProject} from './helpers/project-database.ts';
 import {createProjectEntryControlClient,createProjectEntryControlBroker,safeProjectEntryControlError} from '../apps/desktop/src/project-entry-control.ts';
 import {PROJECT_ENTRY_CONTROL_LIMITS} from '../packages/contracts/src/project-entry-control.ts';
+import {projectApiPath} from '../packages/contracts/src/project-file.ts';
+import type {AgentTaskEditingClaimGroup,AgentTaskEditingInput} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type {ProjectEntryControlPort} from '../packages/contracts/src/project-entry-native.ts';
 import {CACHE_SCHEMA_VERSION,createProjectFile,FORMAT4_HISTORY_SCHEMA_VERSION,FORMAT4_PROJECT_SCHEMA_VERSION,FORMAT5_PROJECT_SCHEMA_VERSION,HISTORY_SCHEMA_VERSION,isProjectFileHeld,openProjectStore,openStore,PROJECT_FILE_SCHEMA_VERSION} from '../packages/business/src/project-file/index.ts';
 import {openAppLibrary,isAppLibraryHeld} from '../packages/business/src/app-db/index.ts';
@@ -73,6 +75,75 @@ test('real utility control roundtrip opens the selected original, creates once a
  const source=await f.client.api.observeSource({projectFile:adoptedCopy});assert.equal(source.name,'Original');assert.equal(source.source.sourceFile,adoptedCopy);
 });
 
+test('only native destruction makes a window claim safe to end after the project host reopens', async t => {
+ const f = await fixture(t), projectId = f.projectId, windowId = randomUUID();
+ const target = {kind: 'shot', id: randomUUID(), revision: 0}, ownerId = `desktop:${windowId}:${target.kind}:${target.id}`;
+ const editing = projectApiPath(projectId, 'agent', 'tasks', 'v2', 'editing');
+ const request = async (suffix = '', input?: unknown) => {
+  const response = await fetch(f.server.url + editing + suffix, {
+   method: input === undefined ? 'GET' : 'POST', headers: {authorization: `Bearer ${f.server.token}`, 'content-type': 'application/json'},
+   body: input === undefined ? undefined : JSON.stringify(input),
+  });
+  return {status: response.status, body: await response.json()};
+ };
+ const readOwner = async () => {
+  const result = await request('/retained');
+  assert.equal(result.status, 200);
+  const groups = result.body.data.groups as AgentTaskEditingClaimGroup[];
+  const group = groups.find(group => group.kind === target.kind && group.id === target.id);
+  assert.ok(group);
+  assert.equal(group.projectId, projectId);
+  assert.equal(group.owners.length, 1);
+  return group.owners[0]!;
+ };
+ const first: AgentTaskEditingInput = {projectId, ownerId, action: 'claim', generation: 1, sequence: 1, requestId: randomUUID(), targets: [target]};
+ const denied = await request('', first);
+ assert.equal(denied.status, 409); assert.equal(denied.body.error.code, 'AGENT_TASK_EDIT_OWNER_UNCERTAIN');
+ await f.client.api.acquire({projectId,windowId});
+ const originalDb = f.inspect(projectId, db => db);
+ assert.equal((await request('', first)).status, 200);
+ const released = await request('', {...first, action: 'release', sequence: 2, requestId: randomUUID()});
+ assert.equal(released.status, 200);
+ assert.deepEqual(released.body.data.claims, []);
+ const claim = {...first, generation: 2, requestId: randomUUID()};
+ const written = await request('', claim);
+ assert.equal(written.status, 200, 'a reloaded document can reacquire its cleanly released native owner');
+ const other = {...target, id: randomUUID()};
+ const finalClaim = {...claim, ownerId: `desktop:${windowId}:${other.kind}:${other.id}`, requestId: randomUUID(), targets: [other]};
+ assert.equal((await request('', finalClaim)).status, 200);
+ const active = await readOwner();
+ assert.equal(active.liveness, 'in_use');
+
+ f.client.api.release({windowId});
+ await f.client.api.capabilities();
+ for (let attempt = 0; originalDb.isOpen && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25));
+ assert.equal(originalDb.isOpen, false, 'ordinary release evicts the idle project host');
+ const uncertain = await readOwner();
+ assert.equal(uncertain.liveness, 'uncertain');
+ assert.equal(uncertain.claim.id, active.claim.id);
+ assert.notEqual(f.inspect(projectId, db => db), originalDb);
+ const selected = {claimId: uncertain.claim.id, ownerId, generation: uncertain.generation, sequence: uncertain.sequence, claimSnapshot: uncertain.claimSnapshot};
+ const cleanup = {projectId, requestId: randomUUID(), claims: [selected]};
+ assert.equal((await request('/resolve-batch', cleanup)).status, 409, 'lease release alone is no proof of owner loss');
+
+ f.client.api.release({windowId,closed:true});
+ await f.client.api.capabilities();
+ const closed = await readOwner();
+ assert.equal(closed.liveness, 'retained');
+ assert.deepEqual((await request('', claim)).body, written.body, 'closed window can only replay its original edit receipt');
+ const delayed = await request('', {...claim, requestId: randomUUID(), action: 'heartbeat', sequence: 2});
+ assert.equal(delayed.status, 409); assert.equal(delayed.body.error.code, 'AGENT_TASK_EDIT_OWNER_UNCERTAIN');
+ const finalRelease = {...finalClaim, action: 'release', sequence: 2, requestId: randomUUID()};
+ assert.equal((await request('', {...finalRelease, generation: 3})).status, 409);
+ const lateRelease = await request('', finalRelease);
+ assert.equal(lateRelease.status, 200, 'the existing generation can acknowledge its clean pagehide release after destruction');
+ assert.deepEqual(lateRelease.body.data.claims, []);
+ const ended = await request('/resolve-batch', cleanup);
+ assert.equal(ended.status, 200);
+ assert.deepEqual(ended.body.data.releasedClaimIds, [active.claim.id]);
+ assert.deepEqual((await request('/retained')).body.data.groups, []);
+});
+
 test('cancelling an unacknowledged ready write never releases its displayed window lease', async t => {
  const acknowledgement = Promise.withResolvers<() => void>(), released: string[] = [];
  const f = await fixture(t, control => ({...control, release(input) {
@@ -97,6 +168,22 @@ test('cancelling an unacknowledged ready write never releases its displayed wind
  await new Promise<void>(resolve => setImmediate(resolve));
  assert.deepEqual(released, [windowId]);
  assert.equal(isProjectFileHeld(opened.project.fileIdentity), false);
+});
+
+test('FCP destination authorization requires the matching ready editor lease through the real utility control', async t => {
+ const f = await fixture(t);
+ const windowId = randomUUID(), token = randomUUID(), directory = realpathSync(f.parent);
+ const info = lstatSync(directory, {bigint: true});
+ const input = {projectId: f.projectId, windowId, token, directory, device: String(info.dev), inode: String(info.ino)};
+ const choose = f.client.api.nativeFcpExport.chooseDestination;
+ await assert.rejects(choose(input), {code: 'PROJECT_ENTRY_UNAVAILABLE'});
+ await f.client.api.acquire({windowId, projectId: f.projectId, deferRecent: true});
+ await assert.rejects(choose(input), {code: 'PROJECT_ENTRY_UNAVAILABLE'});
+ await f.client.api.markOpened({windowId, contextId: randomUUID()});
+ await assert.rejects(choose({...input, projectId: randomUUID()}), {code: 'PROJECT_ENTRY_UNAVAILABLE'});
+ assert.deepEqual(await choose(input), {token, displayPath: directory});
+ f.client.api.release({windowId});
+ await assert.rejects(choose({...input, token: randomUUID()}), {code: 'PROJECT_ENTRY_UNAVAILABLE'});
 });
 
 for(const kind of ['project','history','cache','application'] as const)test(`source observation refuses an alias of a held ${kind} before any descriptor can release its real write lock`,async t=>{

@@ -38,20 +38,22 @@ export function getTimelineSubtitleTextIssue(text: unknown): SubtitleIssue | nul
  return null;
 }
 
-// durationFrames is media-derived, never extended by subtitles. Intervals use
-// the 30fps timeline clock and exclusive ends; adjacency is legal.
-export function getTimelineSubtitleIssue(subtitles: unknown, durationFrames: unknown): SubtitleIssue | null {
+// durationFrames is media-derived, never extended by subtitles. Intervals have
+// exclusive ends, so adjacency is legal.
+export function getTimelineSubtitleIssue(subtitles: unknown, durationFrames: unknown,
+ limits: {readonly cues: number; readonly durationFrames: number} = TIMELINE_SUBTITLE_LIMITS): SubtitleIssue | null {
  const layout=subtitleLayoutRecord(subtitles);
  if(!layout)
   return issue('INVALID_SUBTITLES','字幕数据或固定排版配置无效');
  const cues = layout.cues as Rec[];
- if(cues.length>TIMELINE_SUBTITLE_LIMITS.cues)return issue('SUBTITLE_LIMIT','时间线最多支持100条手动字幕',{maxCues:TIMELINE_SUBTITLE_LIMITS.cues});
+ if(cues.length>limits.cues)return issue('SUBTITLE_LIMIT',`时间线最多支持${limits.cues}条手动字幕`,{maxCues:limits.cues});
  const ids=new Set<string>();
  for(const cue of cues){
   if(!fields(cue,['id','text','startFrame','durationFrames'])||!uuid(cue.id)||ids.has(cue.id))return issue('INVALID_SUBTITLES','字幕标识或字段无效');
   ids.add(cue.id);
   const textIssue=getTimelineSubtitleTextIssue(cue.text);if(textIssue)return {...textIssue,details:{...textIssue.details,cueId:cue.id}};
-  if(!integer(cue.startFrame,0,18000)||!integer(cue.durationFrames,1,18000)||!integer(durationFrames,0,18000)||cue.startFrame+cue.durationFrames>durationFrames)
+  if(!integer(cue.startFrame,0,limits.durationFrames)||!integer(cue.durationFrames,1,limits.durationFrames)||
+     !integer(durationFrames,0,limits.durationFrames)||cue.startFrame+cue.durationFrames>durationFrames)
    return issue('SUBTITLE_BOUNDS','字幕起止帧必须位于已有媒体时长内',{cueId:cue.id,durationFrames});
  }
  const sorted=[...cues].sort((a,b)=>(a.startFrame as number)-(b.startFrame as number));

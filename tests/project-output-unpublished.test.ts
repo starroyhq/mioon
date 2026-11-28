@@ -69,7 +69,8 @@ test('missing publications is an empty read-only snapshot without creating priva
   assert.deepEqual(readdirSync(f.store.tempDir), before); assert.equal(view.isExcluded(f.input.stageFile, lstatSync(f.input.stageFile, {bigint: true})), false);
 });
 
-for (const kind of ['generated', 'exports', 'assets'] as const) for (const point of ['after_intent', 'after_target_create', 'after_target_identity', 'after_copy_chunk', 'after_final']) {
+const preparationPoints = ['after_intent', 'after_target_create', 'after_target_identity', 'after_copy_chunk', 'after_final'] as const;
+for (const kind of ['generated', 'assets'] as const) for (const point of preparationPoints) {
   test(`${kind} copy ${point} is absent, rejected or excluded by durable inode proof`, async t => {
     const f = fixture(t, kind); await fault(f, point);
     const file = target(f), saved = readFileSync(f.receiptFile);
@@ -84,6 +85,18 @@ for (const kind of ['generated', 'exports', 'assets'] as const) for (const point
     assert.deepEqual(readFileSync(f.receiptFile), saved, 'query never recovers or advances a receipt');
   });
 }
+
+for (const point of [...preparationPoints, 'after_install']) test(`interrupted export ${point} leaves no ordinary target for media discovery`, async t => {
+  const f = fixture(t, 'exports'); await fault(f, point);
+  const file = target(f), saved = readFileSync(f.receiptFile);
+  for (const reopened of [false, true]) {
+    if (reopened) f.reopen();
+    assert.equal(existsSync(file), false);
+    const view = await f.snapshot(); view.assertCurrent();
+    assert.equal(f.store.get('assets', f.input.assetId), null);
+    assert.deepEqual(readFileSync(f.receiptFile), saved, 'query never recovers or advances a receipt');
+  }
+});
 
 test('link intent before targetIdentity ACK proves only its stage inode, including project aliases', async t => {
   const f = fixture(t, 'assets'); await fault(f, 'after_final', false);

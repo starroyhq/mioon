@@ -299,7 +299,7 @@ test('desktop source keeps the renderer sandbox and native secret channel privat
   }
   assert.doesNotMatch(main, /sandbox\s*:\s*false|nodeIntegration\s*:\s*true/);
   assert.deepEqual([...main.matchAll(/ipcMain\s*\.\s*handle\s*\(\s*([^,]+),/g)].map(match => match[1].trim()).sort(),
-    ['APP_LANGUAGE_CHANNEL', 'ASSET_IMPORT_CHANNEL', 'CANVAS_CLIPBOARD_CHANNEL', 'CLIP_LUT_RECOVERY_CHANNEL', 'DESKTOP_UPDATE_CHANNEL', 'EXTERNAL_AGENTS_CHANNEL', 'MENU_COMMAND_CHANNEL', 'NATIVE_ASSET_MEDIA_CHANNEL', 'NATIVE_AUDIO_CHANNEL', 'PROJECT_ENTRY_DESKTOP_CHANNEL', 'PROJECT_WINDOW_CHANNEL', 'SETTINGS_DIAGNOSTICS_CHANNEL', 'WORKSPACE_NATIVE_CHANNEL', 'WORKSPACE_TOOLS_CHANNEL']);
+    ['APP_LANGUAGE_CHANNEL', 'ASSET_IMPORT_CHANNEL', 'CANVAS_CLIPBOARD_CHANNEL', 'CLIP_LUT_RECOVERY_CHANNEL', 'DESKTOP_UPDATE_CHANNEL', 'EXTERNAL_AGENTS_CHANNEL', 'FCP_EXPORT_NATIVE_CHANNEL', 'MENU_COMMAND_CHANNEL', 'NATIVE_ASSET_MEDIA_CHANNEL', 'NATIVE_AUDIO_CHANNEL', 'PROJECT_ENTRY_DESKTOP_CHANNEL', 'PROJECT_WINDOW_CHANNEL', 'SETTINGS_DIAGNOSTICS_CHANNEL', 'WORKSPACE_NATIVE_CHANNEL', 'WORKSPACE_TOOLS_CHANNEL']);
   assert.doesNotMatch(main, /ipcMain\s*\[|ipcMain\s*\.\s*(?:on|once|handleOnce)\s*\(/);
   assert.match(main, /ipcMain\.handle\(PROJECT_WINDOW_CHANNEL,/);
   const preload = await readFile(new URL('../apps/desktop/src/preload.ts', import.meta.url), 'utf8');
@@ -307,14 +307,15 @@ test('desktop source keeps the renderer sandbox and native secret channel privat
   const assetImportBridge = await readFile(new URL('../apps/desktop/src/asset-import-preload.ts', import.meta.url), 'utf8');
   const assetRelinkBridge = await readFile(new URL('../apps/desktop/src/asset-relink-preload.ts', import.meta.url), 'utf8');
   const audioBridge = await readFile(new URL('../apps/desktop/src/native-audio-preview-preload.ts', import.meta.url), 'utf8');
+  const fcpExportBridge = await readFile(new URL('../apps/desktop/src/fcp-export-preload.ts', import.meta.url), 'utf8');
   const languageBridge = await readFile(new URL('../apps/desktop/src/app-language-preload.ts', import.meta.url), 'utf8');
   const menuBridge = await readFile(new URL('../apps/desktop/src/menu-command-preload.ts', import.meta.url), 'utf8');
   const menuProtocol = await readFile(new URL('../apps/desktop/src/menu-command-protocol.ts', import.meta.url), 'utf8');
   const updateBridge = await readFile(new URL('../apps/desktop/src/desktop-update-preload.ts', import.meta.url), 'utf8');
   const externalAgentsBridge = await readFile(new URL('../apps/desktop/src/external-agents-preload.ts', import.meta.url), 'utf8');
-  assert.doesNotMatch(preload + bridge + assetImportBridge + assetRelinkBridge + audioBridge + languageBridge + menuBridge + menuProtocol + updateBridge + externalAgentsBridge + await readFile(new URL('../apps/desktop/src/workspace-native-preload.ts', import.meta.url), 'utf8'), /safeStorage|secretCodec|agentSettings|decrypt|process\.parentPort|imageSecret|\.env|access-token/);
+  assert.doesNotMatch(preload + bridge + assetImportBridge + assetRelinkBridge + fcpExportBridge + audioBridge + languageBridge + menuBridge + menuProtocol + updateBridge + externalAgentsBridge + await readFile(new URL('../apps/desktop/src/workspace-native-preload.ts', import.meta.url), 'utf8'), /safeStorage|secretCodec|agentSettings|decrypt|process\.parentPort|imageSecret|\.env|access-token/);
   assert.deepEqual([...preload.matchAll(/exposeInMainWorld\('([^']+)'/g)].map(match => match[1]).sort(),
-    ['__mioonAppLanguage', '__mioonAssetImport', '__mioonAssetMediaNative', '__mioonCanvasClipboard', '__mioonDesktop', '__mioonExportFiles', '__mioonExternalAgents', '__mioonHomeDirectory', '__mioonLutRecovery', '__mioonMenuCommands', '__mioonNativeAudioPreview', '__mioonProjectBackups', '__mioonProjectEntries', '__mioonProjectPackages', '__mioonProjectWindow', '__mioonSettingsBootAppearance', '__mioonSettingsDiagnostics', '__mioonWindowChrome', '__mioonWorkspaceNative', '__mioonWorkspaceTools', 'mioonDesktopUpdate']);
+    ['__mioonAppLanguage', '__mioonAssetImport', '__mioonAssetMediaNative', '__mioonCanvasClipboard', '__mioonDesktop', '__mioonExportFiles', '__mioonExternalAgents', '__mioonFcpExport', '__mioonHomeDirectory', '__mioonLutRecovery', '__mioonMenuCommands', '__mioonNativeAudioPreview', '__mioonProjectBackups', '__mioonProjectEntries', '__mioonProjectPackages', '__mioonProjectWindow', '__mioonSettingsBootAppearance', '__mioonSettingsDiagnostics', '__mioonWindowChrome', '__mioonWorkspaceNative', '__mioonWorkspaceTools', 'mioonDesktopUpdate']);
 });
 
 for (const platform of ['linux', 'darwin'] as const) test('desktop settings persist ciphertext outside project data with owner-only files (' + platform + ')', async () => {

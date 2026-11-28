@@ -70,11 +70,11 @@ export default function ProjectEntry({ controller, status, help, launcher, onSet
       onRetry={async () => { if (state.openUnknown) {await controller.reconcileOpen(); return !controller.getState().openUnknown;} return state.openingProjectId ? controller.open(state.openingProjectId) : false; }}
       onRefresh={async () => { controller.interacted(); const ready = await controller.refresh(); if (ready) await desktop?.initialize(editor); return ready; }} onCreate={controller.create} settings={null} status={status} help={help}
       createDisabledReason={disabled} createUnavailable={createUnavailable} onCreateStateChange={controller.reportCreate} canMutateEntry={controller.canMutate} createIntentVersion={desktop ? 0 : state.formIntent} />
-    <NativeProjectEntryDialogs desktop={desktop} formIntent={state.formIntent}
-      onHistoryResolved={projectId => {void controller.open(projectId);}} />
   </>;
-  if (!editor) return contents;
-  return <Dialog open={state.shown} onOpenChange={(open, details) => {
+  const nativeDialogs = <NativeProjectEntryDialogs desktop={desktop} formIntent={state.formIntent}
+    onHistoryResolved={projectId => {void controller.open(projectId);}} />;
+  if (!editor) return <>{contents}{nativeDialogs}</>;
+  return <><Dialog open={state.shown} onOpenChange={(open, details) => {
     if (open) return;
     // Escape/backdrop are requests, never permission to discard or unmount.
     // The controlled owner changes open only after its exact guard succeeds.
@@ -82,5 +82,5 @@ export default function ProjectEntry({ controller, status, help, launcher, onSet
   }}>
     <DialogContent keepMounted showCloseButton={false} hidden={!state.shown} inert={!state.shown}
       className="modal project-entry-dialog" data-testid="project-entry-dialog" style={!state.shown ? { display: 'none' } : undefined}>{contents}</DialogContent>
-  </Dialog>;
+  </Dialog>{nativeDialogs}</>;
 }

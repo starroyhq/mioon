@@ -5,6 +5,7 @@
 import React, {useCallback, useEffect, useState} from 'react';
 import {useI18n} from '../i18n/I18nProvider.tsx';
 import {format5BoardFailureMessageKey} from '../edit-ui/session.ts';
+import {isSequenceEditNoop} from '../edit-ui/lost-response.ts';
 import EditUiNoticeBar from '../edit-ui/EditUiNotice.tsx';
 import type {EditUiNotice} from '../edit-ui/EditUiNotice.tsx';
 import BoardUiStatic from './BoardUiStatic.tsx';
@@ -82,7 +83,7 @@ export default function BoardUiLive(props: BoardUiLiveProps): React.ReactElement
   const call = useCallback(async (intent: SequenceEditIntent, noticeMessage: string): Promise<void> => {
     setFailure(null);
     const outcome = await props.run(intent, noticeMessage);
-    if (!outcome.ok && !('unconfirmed' in outcome)) setFailure({code: outcome.code, ...(outcome.reason ? {reason: outcome.reason} : {})});
+    if (!outcome.ok && !('unconfirmed' in outcome) && !isSequenceEditNoop(outcome)) setFailure({code: outcome.code, ...(outcome.reason ? {reason: outcome.reason} : {})});
   }, [props.run]);
   const edit = (intent: SequenceEditIntent, noticeMessage: string): void => { if (!busy) void call(intent, noticeMessage); };
   const deleteNode = (nodeId: string, name: string): void => {
@@ -95,14 +96,14 @@ export default function BoardUiLive(props: BoardUiLiveProps): React.ReactElement
     noticeMessage: string): Promise<void> => {
     setFailure(null);
     const outcome = await props.runSubject(operation, allocation, noticeMessage);
-    if (!outcome.ok && !('unconfirmed' in outcome)) setFailure({code: outcome.code, ...(outcome.reason ? {reason: outcome.reason} : {})});
+    if (!outcome.ok && !('unconfirmed' in outcome) && !isSequenceEditNoop(outcome)) setFailure({code: outcome.code, ...(outcome.reason ? {reason: outcome.reason} : {})});
   }, [props.runSubject]);
   const editSubject = (operation: SubjectEditOperation, allocation: SequenceEditAllocation | undefined,
     noticeMessage: string): void => { if (!busy) void subjectOp(operation, allocation, noticeMessage); };
   const referenceOp = useCallback(async (request: BoardEditRequest, noticeMessage: string): Promise<void> => {
     setFailure(null);
     const outcome = await props.runReference(request, noticeMessage);
-    if (!outcome.ok && !('unconfirmed' in outcome)) setFailure({code: outcome.code, ...(outcome.reason ? {reason: outcome.reason} : {})});
+    if (!outcome.ok && !('unconfirmed' in outcome) && !isSequenceEditNoop(outcome)) setFailure({code: outcome.code, ...(outcome.reason ? {reason: outcome.reason} : {})});
   }, [props.runReference]);
   const editReference = (request: BoardEditRequest, noticeMessage: string): void => {
     if (!busy) void referenceOp(request, noticeMessage);

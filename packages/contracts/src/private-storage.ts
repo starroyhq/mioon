@@ -57,6 +57,8 @@ export interface ManagedFileOptions {root?: string; allowMissing?: boolean; priv
 export interface ReadPrivateFileOptions {root?: string; allowMissing?: boolean; maxBytes?: number; private?: boolean; encoding?: BufferEncoding}
 export interface WritePrivateFileOptions {root?: string; maxBytes?: number; replace?: boolean}
 export interface RemovePrivateFileOptions {root?: string; maxBytes?: number; private?: boolean}
+export const PRIVATE_STORAGE_BUFFER_BYTES = 64 * 1024 ** 2;
+export const PRIVATE_STORAGE_STREAM_BYTES = 8 * 1024 ** 3;
 
 /** Legacy informational Windows readiness seam. An ACL verifier alone cannot
  * enable this POSIX factory: the complete native backend is registered separately.
@@ -177,8 +179,8 @@ export function createPrivateStoragePolicy({windowsAclVerifier}: PrivateStorageP
       return info;
     });
   }
-  const limit = (maxBytes: unknown): void => {
-    if (maxBytes !== undefined && (typeof maxBytes !== 'number' || !Number.isSafeInteger(maxBytes) || maxBytes < 0 || maxBytes > 64 * 1024 * 1024)) fail('INVALID_LIMIT', 'A safe storage byte limit is required.');
+  const limit = (maxBytes: unknown, maximum = PRIVATE_STORAGE_BUFFER_BYTES): void => {
+    if (maxBytes !== undefined && (typeof maxBytes !== 'number' || !Number.isSafeInteger(maxBytes) || maxBytes < 0 || maxBytes > maximum)) fail('INVALID_LIMIT', 'A safe storage byte limit is required.');
   };
   const fileMetadata = (info: Stats, {private: privateMode = false, maxBytes}: {private?: boolean; maxBytes?: number} = {}): Stats => {
     if (info.isSymbolicLink()) fail('SYMBOLIC_LINK', 'Managed storage files must not be symbolic links.');
@@ -193,7 +195,8 @@ export function createPrivateStoragePolicy({windowsAclVerifier}: PrivateStorageP
   };
   function validateManagedFile(file: string, {root = path.dirname(file), allowMissing = false, private: privateMode = false, maxBytes}: ManagedFileOptions = {}): Stats | null {
     return safe(() => {
-      assertStoragePrivacyAvailable(); limit(maxBytes);
+      // Metadata validation does not allocate a whole-file buffer.
+      assertStoragePrivacyAvailable(); limit(maxBytes, PRIVATE_STORAGE_STREAM_BYTES);
       const {target, missing} = managed(file, root, allowMissing, false);
       if (missing) return null;
       const info = metadata(target);
@@ -206,6 +209,7 @@ export function createPrivateStoragePolicy({windowsAclVerifier}: PrivateStorageP
   }
   function readPrivateFile(file: string, {root = path.dirname(file), allowMissing = false, maxBytes = 4096, private: privateMode = true, encoding}: ReadPrivateFileOptions = {}): Buffer | string | null {
     return safe(() => {
+      assertStoragePrivacyAvailable(); limit(maxBytes);
       const before = validateManagedFile(file, {root, allowMissing, private: privateMode, maxBytes});
       if (!before) return null;
       let fd: number | undefined;
@@ -272,6 +276,7 @@ export function createPrivateStoragePolicy({windowsAclVerifier}: PrivateStorageP
   }
   function removePrivateFile(file: string, {root = path.dirname(file), maxBytes = 4096, private: privateMode = true}: RemovePrivateFileOptions = {}): void {
     return safe(() => {
+      assertStoragePrivacyAvailable(); limit(maxBytes);
       const before = validateManagedFile(file, {root, allowMissing: true, private: privateMode, maxBytes});
       if (!before) return;
       const after = validateManagedFile(file, {root, private: privateMode, maxBytes});
@@ -297,6 +302,8 @@ export interface WindowsManagedFileIO {
   openDirectory(directory:string,options:{root:string;private:boolean}):WindowsManagedDirectoryHandle;
   syncDirectory(directory:string,options:{root?:string;private:boolean}):void;
   renameNoReplace(source:string,destination:string,options:{root:string;expected:Stats}):Stats;
+  /** Atomically install an owned private video candidate in a verified ordinary directory. */
+  renameProjectOutputNoReplace?(source:string,destination:string,options:{root:string;expected:Stats}):void;
   removeOwnedFile(file:string,options:{root:string;expected:Stats;maxBytes?:number}):void;
   removeOwnedDirectory(directory:string,options:{root:string;expected:Stats}):void;
 }
