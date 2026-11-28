@@ -82,6 +82,10 @@ test('small controls keep 24px pointer targets, growing an invisible hit area wh
   // The marks buttons are wrapped by a tooltip trigger that replaces data-slot="button", so their rules must not depend on it.
   const disposition = read('asset-disposition.css');
   assert.match(disposition, /\.asset-disposition-buttons > button \{/); assert.doesNotMatch(disposition, /\.asset-disposition-buttons \[data-slot="button"\]/);
+  const workbench = readFileSync(new URL('../packages/ui/src/styles/workbench.css', import.meta.url), 'utf8');
+  assert.match(workbench, /\[data-slot="dialog-content"\] \[data-slot="dialog-close"\] \{ min-width: var\(--wb-control-compact\); min-height: var\(--wb-control-compact\); \}/);
+  assert.match(workbench, /\[data-slot="dialog-content"\] > \[data-slot="dialog-close"\]::after \{ content: ""; position: absolute; inset: -2px; \}/);
+  assert.match(workbench, /\[data-slot="dropdown-menu-item"\][\s\S]*?\[data-slot="collapsible-trigger"\][\s\S]*?button\[aria-expanded\][\s\S]*?label:has\(> input\[type="checkbox"\]\) \{ min-height: var\(--wb-control-compact\); \}/);
 });
 
 test('image provider choices wrap at their separator rather than inside a word', () => {
