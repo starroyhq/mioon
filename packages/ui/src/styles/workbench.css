@@ -12,7 +12,16 @@
 [data-slot="input"] { height: var(--wb-control); padding: 3px var(--wb-space-2); }
 [data-slot="textarea"] { padding: var(--wb-space-2); }
 [data-slot="input"]::placeholder, [data-slot="textarea"]::placeholder { color: var(--wb-muted); }
-[data-slot="input"]:focus, [data-slot="textarea"]:focus, .workbench-select:focus-visible { border-color: var(--wb-accent-line); outline: 0; box-shadow: 0 0 0 2px var(--wb-accent-subtle); }
+[data-slot="input"]:focus, [data-slot="textarea"]:focus { border-color: var(--wb-accent-line); outline: none; box-shadow: none; }
+[data-slot="input"]:focus-visible, [data-slot="textarea"]:focus-visible, [data-slot="select-trigger"]:focus-visible, .workbench-select:focus-visible {
+  border-color: var(--wb-accent-line);
+  outline: 1.5px solid var(--wb-accent-line);
+  outline-offset: -2px;
+  box-shadow: none;
+  transition-property: color, background-color, border-color, opacity, box-shadow;
+  --tw-ring-shadow: 0 0 #0000;
+  --tw-inset-ring-shadow: 0 0 #0000;
+}
 [data-slot="input"][aria-invalid="true"], [data-slot="textarea"][aria-invalid="true"], .workbench-select[aria-invalid="true"] { border-color: var(--wb-danger); }
 [data-slot="input"]:disabled, [data-slot="textarea"]:disabled { color: var(--wb-disabled); background: var(--wb-panel); }
 [data-slot="input"][type="number"], .wb-timecode { font-family: var(--wb-font-mono); font-variant-numeric: tabular-nums; }
@@ -39,10 +48,141 @@
 }
 .wb-button:not(:disabled):not([data-disabled]):hover { background: var(--wb-hover); }
 .wb-button:not(:disabled):not([data-disabled]):active { background: var(--wb-selected); }
-.wb-button:focus-visible, .wb-group-trigger:focus-visible {
+/* Single global :focus-visible contract (1.5px accent-line). Tight / flush-edge
+ * containers use inset offset (-2px) so keyboard focus is never clipped at any DPR. */
+:is(
+  button,
+  a,
+  summary,
+  select,
+  input,
+  textarea,
+  [role="button"],
+  [role="tab"],
+  [role="menuitem"],
+  [role="menuitemcheckbox"],
+  [role="menuitemradio"],
+  [role="option"],
+  [role="switch"],
+  [role="checkbox"],
+  [role="radio"],
+  [role="slider"],
+  [tabindex]:not([tabindex="-1"])
+):focus-visible,
+.wb-button:focus-visible,
+.wb-group-trigger:focus-visible,
+[data-slot="slider-thumb"]:has(input:focus-visible) {
+  outline: 1.5px solid var(--wb-accent-line);
+  outline-offset: 1px;
+  transition-property: color, background-color, border-color, opacity, box-shadow;
+  --tw-ring-shadow: 0 0 #0000;
+  --tw-inset-ring-shadow: 0 0 #0000;
+}
+[data-slot="slider-thumb"] input:focus-visible {
+  outline: none;
+}
+:is(
+  .topbar,
+  .workbench-topbar,
+  .project-home-header,
+  .native-settings-panel-header,
+  .workbench-panel-header,
+  .wb-panel-heading,
+  .asset-panel-heading,
+  [data-slot="tabs-list"],
+  .inspector-tabs,
+  .compact-panel-rail,
+  .launcher-home-sidebar,
+  .settings-center-nav,
+  .settings-service-nav,
+  .edit-timeline-toolbar,
+  .timeline-toolbar,
+  .timeline-scroll,
+  .timeline-track,
+  .track-controls,
+  .board-ui-live-toolbar,
+  .board-floating-toolbar,
+  .board-zoom-controls,
+  .board-film-strip,
+  .board-ui-context-menu,
+  .board-input-menu,
+  .board-service-menu,
+  .board-inspector,
+  .inspector-scroll,
+  .agent-editing-protection,
+  .canvas-controls,
+  .preview-bar,
+  .preview-controls,
+  .task-center-list,
+  .task-workspace-body,
+  .export-history-table,
+  .export-preflight-body,
+  .mio-panel,
+  .mio-log,
+  .mio-history-list,
+  .mio-panel-head,
+  .mio-composer,
+  .wb-panel-content,
+  .wb-dialog-content,
+  .asset-list,
+  .pf-list,
+  .pf-grid
+) :is(button, a, summary, select, input, textarea, [role="button"], [role="tab"], [role="slider"], [role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"], [role="option"], [tabindex]:not([tabindex="-1"])):not([role="switch"]):not([data-variant="primary"]):not([data-selected]):not(.board-ui-add-shot):focus-visible,
+:is(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  textarea,
+  select,
+  [data-slot="select-trigger"],
+  [role="tabpanel"],
+  [data-slot="tabs-content"],
+  .task-workspace-body,
+  .task-center-row,
+  .timeline-ruler,
+  .timeline-clip,
+  .subtitle-cue,
+  .pf-card-open,
+  .board-ui-card,
+  .board-film-thumbnail,
+  .mio-log,
+  .inspector-scroll,
+  .board-inspector,
+  [data-slot="scroll-area-viewport"],
+  [role="menuitem"],
+  [role="menuitemcheckbox"],
+  [role="menuitemradio"]
+):focus-visible {
+  outline: 1.5px solid var(--wb-accent-line);
+  outline-offset: -2px;
+  transition-property: color, background-color, border-color, opacity, box-shadow;
+  --tw-ring-shadow: 0 0 #0000;
+  --tw-inset-ring-shadow: 0 0 #0000;
+}
+:is([role="switch"], .wb-button[data-variant="primary"], .wb-chip[data-selected], .board-ui-add-shot):focus-visible {
   outline: 1.5px solid var(--wb-accent-line);
   outline-offset: 2px;
-  box-shadow: 0 0 0 4px var(--wb-accent-subtle);
+  transition-property: color, background-color, border-color, opacity, box-shadow;
+  --tw-ring-shadow: 0 0 #0000;
+  --tw-inset-ring-shadow: 0 0 #0000;
+}
+/* Unified Lucide stroke weight and replacement for browser-native <details> markers. */
+svg.lucide { stroke-width: 1.5; }
+details > summary { list-style: none; }
+details > summary::-webkit-details-marker { display: none; }
+details:not(.topbar-status, .edit-preview-audio, .comparison-identity, .video-model-actions, .settings-workspace-status-global, .shot-text-recovery-passive) > summary::before {
+  content: "";
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  flex: none;
+  vertical-align: -2.5px;
+  margin-inline-end: 4px;
+  background-color: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E") center / 14px 14px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E") center / 14px 14px no-repeat;
+  transition: transform .14s ease;
+}
+details:not(.topbar-status, .edit-preview-audio, .comparison-identity, .video-model-actions, .settings-workspace-status-global, .shot-text-recovery-passive)[open] > summary::before {
+  transform: rotate(90deg);
 }
 .wb-button:disabled, .wb-button[data-disabled] { opacity: 1; color: var(--wb-disabled); background: var(--wb-card); cursor: not-allowed; }
 .wb-button[data-variant="primary"] { background: var(--wb-accent); border-color: transparent; color: var(--wb-accent-foreground); }
@@ -139,4 +279,5 @@ label:not([class]):has(> input[type="checkbox"]) { display: inline-flex; align-i
 @media (prefers-reduced-motion: reduce) {
   .wb-spinner { animation: none; }
   .wb-progress > span { transition: none; }
+  details > summary::before { transition: none; }
 }

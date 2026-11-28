@@ -1,6 +1,7 @@
 import React, { useLayoutEffect, useMemo, useRef } from 'react';
-import type { ReactNode } from 'react';
+import type { ComponentType, SVGProps } from 'react';
 import { WorkbenchButton } from '@mioon/ui/components/workbench-controls';
+import { Download, Images, Layers, PanelLeftOpen, PanelRightOpen, SlidersVertical, Sparkles, Users } from '@mioon/ui/components/workbench-icons';
 import { WorkbenchTooltip } from './WorkspaceControls.tsx';
 import { WorkspaceVisibilityProvider } from './workspace-visibility.tsx';
 import { useI18n } from './i18n/I18nProvider.tsx';
@@ -28,18 +29,18 @@ export interface CompactPanelRailProps {
   readonly disabled?: boolean;
 }
 
-const glyphs: Record<CompactPanelRailIcon, ReactNode> = {
-  assets: <><rect x="5" y="3" width="16" height="16" rx="2" /><path d="M3 7H2v15h15v-1M6 15l4-4 3 3 3-5 4 6" /><circle cx="10" cy="7" r="1" /></>,
-  subjects: <><circle cx="10" cy="8" r="4" /><path d="M2 22v-3a8 8 0 0 1 16 0v3M17 4a4 4 0 0 1 0 8M22 22v-3a7 7 0 0 0-4-6" /></>,
-  properties: <><path d="M5 3v18M12 3v18M19 3v18M2 8h6m1 9h6m1-10h6" /></>,
-  versions: <><path d="m12 3 10 6-10 6L2 9Zm-9 11 9 5 9-5M3 18l9 5 9-5" /></>,
-  agent: <><path d="m12 3 2.6 6.4L21 12l-6.4 2.6L12 21l-2.6-6.4L3 12l6.4-2.6Z" /><path d="m20 2 1 2 2 1-2 1-1 2-1-2-2-1 2-1Z" /></>,
-  import: <><path d="M12 3v12m-5-5 5 5 5-5M4 14v7h16v-7" /></>,
+type RailIconComponent = ComponentType<SVGProps<SVGSVGElement> & { size?: number }>;
+const glyphs: Record<CompactPanelRailIcon, RailIconComponent> = {
+  assets: Images,
+  subjects: Users,
+  properties: SlidersVertical,
+  versions: Layers,
+  agent: Sparkles,
+  import: Download,
 };
 function RailIcon({ icon, side }: { icon?: CompactPanelRailIcon; side?: 'assets' | 'inspector' }) {
-  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    {icon ? glyphs[icon] : <><rect x="3" y="3" width="18" height="18" rx="2" /><path d={side === 'assets' ? 'M9 3v18m4-13 4 4-4 4' : 'M15 3v18m-4-13-4 4 4 4'} /></>}
-  </svg>;
+  const Component = icon ? glyphs[icon] : side === 'assets' ? PanelLeftOpen : PanelRightOpen;
+  return <Component size={16} aria-hidden="true" />;
 }
 
 /** View-only rail. The caller owns pane selection, overlay admission and pinning. */

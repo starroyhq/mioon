@@ -5,7 +5,7 @@ import { Button } from '@mioon/ui/components/button';
 import { Label } from '@mioon/ui/components/label';
 import { ScrollArea } from '@mioon/ui/components/scroll-area';
 import { WorkbenchTooltip } from './WorkspaceControls.tsx';
-import { Camera, Check, Sun, Upload } from '@mioon/ui/components/workbench-icons';
+import { Camera, Check, Info, Sun, Upload } from '@mioon/ui/components/workbench-icons';
 import BoardInspectorGroup from './BoardInspectorGroup.tsx';
 import AgentEditingBoundary from './AgentEditingBoundary.tsx';
 import { ImageChoice, SubjectImage, SubjectNotice, SubjectPager } from './SubjectLibrary.tsx';
@@ -127,7 +127,7 @@ export default function SubjectInspector({ subjects, variants = null, mockAvaila
         </div>
       </BoardInspectorGroup>
       <BoardInspectorGroup key={`usage:${subjectId}`} title={t('subjects.inspector.usage')} meta={uses?.phase === 'ready' && !uses.nextCursor ? active.length : undefined}
-        actions={<WorkbenchTooltip content={t('subjects.library.planningNote')}><Button type="button" variant="ghost" size="sm" className="icon-button" aria-label={t('shell.details')}>ⓘ</Button></WorkbenchTooltip>}>
+        actions={<WorkbenchTooltip content={t('subjects.library.planningNote')}><Button type="button" variant="ghost" size="sm" className="icon-button" aria-label={t('shell.details')}><Info size={14} aria-hidden="true" /></Button></WorkbenchTooltip>}>
         {uses?.phase === 'loading' && <p role="status">{t('subjects.binding.loading')}</p>}
         {uses?.phase === 'error' && <p role="alert" className="subject-warning">{renderMessage(uses.error)}</p>}
         {uses?.phase === 'ready' && !uses.nextCursor && !active.length && <p className="subject-helper">{t('subjects.binding.noneLoaded')}</p>}

@@ -8,7 +8,7 @@
 .board-port.board-port-reference{width:8px;height:8px;min-width:8px;min-height:8px}
 .board-port.board-port-reference:before{inset:-8px}
 .board-port.is-candidate,.board-port.is-origin{border-color:var(--wb-accent-line,#fff);background:var(--wb-accent-line,#fff);box-shadow:0 0 0 3px var(--wb-bg,#0b0c0e),0 0 0 4px var(--wb-accent-line,#fff)}
-.board-port:focus-visible{outline:2px solid var(--wb-accent-line,#fff);outline-offset:5px}
+.board-port:focus-visible{outline:1.5px solid var(--wb-accent-line,#fff);outline-offset:2px}
 .board-port[aria-disabled="true"]{cursor:default}
 @keyframes board-sequence-flow{from{offset-distance:0%}to{offset-distance:100%}}
 @keyframes board-reference-flow{from{stroke-dashoffset:26}to{stroke-dashoffset:0}}

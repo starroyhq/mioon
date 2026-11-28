@@ -28,9 +28,9 @@ test('history metadata separates time, dotted status and nonzero change count in
   for(const locale of ['zh-Hans','zh-Hant','en','ja'] as const)for(const count of [0,3]){
     const tree=render(locale,count),metadata=nodes(tree).find((node: RootNode)=>node.props?.['data-testid']==='agent-task-history-metadata');
     const time=conversationTime('2026-10-22T12:30:00.000Z',locale,conversationDay('2026-10-22T12:30:00.000Z'));
-    assert.equal(text(metadata),`${time}·●${translate(locale,'agent.task.status.completed')}${count?`·${translate(locale,'agent.conversation.changes',{count})}`:''}`);
+    assert.equal(text(metadata),`${time}·${translate(locale,'agent.task.status.completed')}${count?`·${translate(locale,'agent.conversation.changes',{count})}`:''}`);
     assert.equal(nodes(metadata).filter((node: RootNode)=>node.props?.['aria-hidden']==='true'&&text(node)==='·').length,count?2:1);
-    assert.equal(nodes(metadata).filter((node: RootNode)=>node.props?.['aria-hidden']==='true'&&text(node)==='●').length,1);
+    assert.equal(nodes(metadata).filter((node: RootNode)=>node.props?.['aria-hidden']==='true'&&node.props?.className==='wb-status-dot').length,1);
     assert.equal(text(metadata).includes(translate(locale,'agent.conversation.changes',{count:0})),false);
     const search=nodes(tree).find((node: RootNode)=>node.props?.className==='mio-history-search');
     assert.ok(search);assert.ok(nodes(search).some((node: RootNode)=>node.type==='icon'));assert.ok(nodes(search).some((node: RootNode)=>node.type==='input'));

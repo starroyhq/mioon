@@ -2,6 +2,7 @@ import { useI18n } from './i18n/I18nProvider.tsx';
 import React, { useId, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { Button } from '@mioon/ui/components/button';
+import { Cpu, Keyboard, Terminal } from '@mioon/ui/components/workbench-icons';
 import Icon from './icons.tsx';
 import LanguageControl from './LanguageControl.tsx';
 import { WorkspaceVisibilityProvider } from './workspace-visibility.tsx';
@@ -13,14 +14,11 @@ import type { SettingsCategory as Category } from './settings-categories.ts';
 
 export type HomeConnectionSlot = SettingsConnectionPage;
 const categoryIconNames: Partial<Record<Category, string>> = { general: 'settings', workspace: 'folder', 'video-tools': 'film', agent: 'sparkle', about: 'info' };
-const categoryIconPaths: Partial<Record<Category, ReactNode>> = {
-  models: <><rect width="16" height="16" x="4" y="4" rx="2" /><rect width="6" height="6" x="9" y="9" rx="1" /><path d="M15 2v2M15 20v2M2 15h2M2 9h2M20 15h2M20 9h2M9 2v2M9 20v2" /></>,
-  'external-agents': <><path d="m4 17 6-6-6-6" /><path d="M12 19h8" /></>,
-  shortcuts: <><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 13h.01M10 13h.01M14 13h.01M18 13h.01M8 16h8" /></>,
-};
 function SettingsCategoryIcon({ category }: { category: Category }) {
-  const path = categoryIconPaths[category];
-  return path ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{path}</svg> : <Icon name={categoryIconNames[category] ?? 'info'} size={16} strokeWidth={1.5} />;
+  if (category === 'models') return <Cpu size={16} aria-hidden="true" />;
+  if (category === 'external-agents') return <Terminal size={16} aria-hidden="true" />;
+  if (category === 'shortcuts') return <Keyboard size={16} aria-hidden="true" />;
+  return <Icon name={categoryIconNames[category] ?? 'info'} size={16} strokeWidth={1.5} />;
 }
 const connectionCategory = (page: SettingsPage) => ['agent', 'models', 'extensions', 'official', 'custom', 'comfy'].includes(page);
 

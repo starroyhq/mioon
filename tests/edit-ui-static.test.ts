@@ -176,7 +176,8 @@ test('the properties version bar shows follow/locked text and the lock state wit
     assert.match(follow, /data-testid="edit-ui-version-select"/u);
     assert.match(follow, /data-testid="edit-ui-version-lock"/u);
     assert.match(follow, /aria-pressed="false"/u);
-    assert.ok(follow.includes(locale === 'en' ? 'View on board ↗' : locale === 'ja' ? 'ボードで表示 ↗' : locale === 'zh-Hant' ? '在畫板中查看 ↗' : '在画板中查看 ↗'));
+    assert.ok(follow.includes(locale === 'en' ? 'View on board' : locale === 'ja' ? 'ボードで表示' : locale === 'zh-Hant' ? '在畫板中查看' : '在画板中查看'));
+    assert.ok(!follow.includes('↗'), 'board reveal button must use a vector icon instead of a bare arrow');
     const locked = ui.renderBar(locale, 'locked');
     assert.match(locked, /aria-pressed="true"/u);
     assert.ok(!/会新建|will create|作成します/u.test(locked), 'no explanatory sentence');

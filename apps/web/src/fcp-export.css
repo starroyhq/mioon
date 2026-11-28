@@ -142,7 +142,10 @@
 }
 .fcp-export-name-box:focus-within {
   border-color: var(--wb-accent-line);
-  box-shadow: 0 0 0 2px var(--wb-accent-subtle);
+}
+.fcp-export-name-box:has(:focus-visible) {
+  outline: 1.5px solid var(--wb-accent-line);
+  outline-offset: -2px;
 }
 .fcp-export-name-input[data-slot="input"] {
   flex: 1;
@@ -238,10 +241,6 @@
 }
 .fcp-export-disclosure:hover {
   color: var(--wb-accent);
-}
-.fcp-export-disclosure:focus-visible {
-  outline: 1.5px solid var(--wb-accent-line);
-  outline-offset: 2px;
 }
 .fcp-export-disclosure > svg {
   color: var(--wb-muted);
@@ -439,10 +438,6 @@
 }
 .fcp-export-missing-link:hover {
   color: var(--wb-text);
-}
-.fcp-export-missing-link:focus-visible {
-  outline: 1.5px solid var(--wb-accent-line);
-  outline-offset: 2px;
 }
 .fcp-export-missing-link > svg:first-child {
   color: var(--wb-warning);

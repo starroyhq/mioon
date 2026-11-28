@@ -22,7 +22,6 @@
 .settings-appearance-row > .workbench-select { max-width: 240px; }
 .settings-appearance-scale { display: flex; align-items: center; gap: var(--wb-space-3); width: 240px; }
 .settings-appearance-scale > [data-slot="slider"] { flex: 1; }
-.settings-appearance-scale [data-slot="slider-thumb"]:has(input:focus-visible) { outline: 2px solid var(--wb-accent-line); outline-offset: 2px; }
 .settings-appearance-scale > output { min-width: 4ch; text-align: right; font: 500 var(--wb-text-label)/1.4 var(--wb-font-mono); color: var(--wb-soft); }
 .settings-appearance-hint { color: var(--wb-soft); font-size: var(--wb-text-caption); line-height: 1.5; }
 .settings-appearance-actions { position: sticky; bottom: 0; z-index: 1; display: flex; align-items: center; justify-content: flex-end; gap: var(--wb-space-2); min-height: var(--wb-action-bar); padding-block: var(--wb-space-2); background: var(--wb-panel); border-top: 1px solid var(--wb-line-subtle); }
@@ -156,7 +155,8 @@ html[data-density="compact"] .task-workspace .job-card { padding-inline: var(--w
 .native-settings-unavailable { flex: none; margin: var(--wb-space-3) var(--wb-space-6); color: var(--wb-soft); font-size: var(--wb-text-label); }
 .project-home-settings-window .settings-workspace-status-global { position: relative; flex: none; margin: 0 0 0 auto; padding: var(--wb-space-1) var(--wb-space-2); border: 0; border-radius: var(--wb-radius-control); }
 .project-home-settings-window .settings-workspace-status-global > summary { min-height: var(--wb-control-compact); display: flex; align-items: center; gap: var(--wb-space-2); font-size: var(--wb-text-caption); }
-.project-home-settings-window .settings-workspace-status-global > summary::after { content: '\2304'; }
+.project-home-settings-window .settings-workspace-status-global .settings-workspace-status-chevron { flex: none; transition: transform .14s ease; }
+.project-home-settings-window .settings-workspace-status-global[open] .settings-workspace-status-chevron { transform: rotate(180deg); }
 .project-home-settings-window .settings-workspace-status-global > div { position: absolute; right: 0; top: calc(100% + var(--wb-space-2)); width: min(360px, calc(var(--mioon-viewport-width) - 24px)); max-height: calc(var(--mioon-viewport-height) - 80px); overflow: auto; margin-top: 0; padding: var(--wb-space-4); border: 1px solid var(--wb-line); border-radius: var(--wb-radius-card); background: var(--wb-raised); box-shadow: var(--wb-shadow); }
 .project-home-settings-window .settings-workspace-status-global .project-home-notice { padding: 0; margin: 0; border: 0; background: none; }
 

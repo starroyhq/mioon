@@ -125,8 +125,9 @@ test('new TSX imports React explicitly and scopes wrapping to narrow existing de
   const source = readFileSync(new URL('../apps/web/src/ExportSamplePeak.tsx', import.meta.url), 'utf8');
   assert.match(source, /import React from 'react'/); assert.doesNotMatch(source, /:\s*any\b|as\s+any\b|@ts-ignore|@ts-nocheck|localStorage|sessionStorage/);
   const css = readFileSync(new URL('../apps/web/src/styles.css', import.meta.url), 'utf8');
+  const workbenchCss = readFileSync(new URL('../packages/ui/src/styles/workbench.css', import.meta.url), 'utf8');
   assert.match(css, /\.export-sample-peak-actions>\.button\{[^}]*height:auto[^}]*max-width:100%[^}]*min-width:0[^}]*white-space:normal[^}]*overflow-wrap:anywhere/);
-  assert.match(css, /\.export-sample-peak summary:focus-visible\{outline:2px/);
+  assert.match(workbenchCss, /summary,[\s\S]*?:focus-visible[\s\S]*?outline:\s*1\.5px solid var\(--wb-accent-line\)/);
 });
 test('actual App context uses current refs, transport option shape, and frozen rows rather than current timeline', async () => {
   const source = app(), start = source.indexOf('  function exportSamplePeakContext()'), end = source.indexOf('  function checkTimelineExport(', start), block = source.slice(start, end);

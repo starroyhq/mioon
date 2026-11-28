@@ -39,7 +39,7 @@ test('the library search uses a drawn icon that cannot collide with the placehol
   const library = read('AssetLibrary.tsx'), icons = read('icons.tsx');
   assert.match(library, /<Input aria-label=\{t\('assets.search'\)\}[\s\S]*?\/><Icon name="search" size=\{14\} \/>/);
   assert.doesNotMatch(library, /⌕/);
-  assert.match(icons, /\n  search: </);
+  assert.match(icons, /\n  search: Search,/);
   assert.match(css, /\.asset-search>svg\{position:absolute;left:10px;top:50%;margin-top:-7px;[^}]*pointer-events:none\}/);
   // Input text starts after the icon (10px + 14px) with room to spare.
   assert.ok(px(/\.asset-search input\{padding:8px 9px 8px (\d+)px/, 'search input padding') >= 10 + 14 + 2);

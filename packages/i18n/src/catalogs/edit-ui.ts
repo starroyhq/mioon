@@ -8,7 +8,7 @@ export const editUiMessages = {
   'editUi.clip.placeholder': {'zh-Hans':' · 待生成（占位 {seconds} 秒）','zh-Hant':' · 待生成（佔位 {seconds} 秒）',en:' · Not generated ({seconds} s placeholder)',ja:' · 未生成（{seconds} 秒のプレースホルダー）'},
   'editUi.anchor.detached': {'zh-Hans':'未挂靠','zh-Hant':'未掛靠',en:'Not anchored',ja:'未接続'},
   'editUi.shot.title': {'zh-Hans':'镜头 {number} · {name}','zh-Hant':'鏡頭 {number} · {name}',en:'Shot {number} · {name}',ja:'ショット {number} · {name}'},
-  'editUi.shot.reveal': {'zh-Hans':'在画板中查看 ↗','zh-Hant':'在畫板中查看 ↗',en:'View on board ↗',ja:'ボードで表示 ↗'},
+  'editUi.shot.reveal': {'zh-Hans':'在画板中查看','zh-Hant':'在畫板中查看',en:'View on board',ja:'ボードで表示'},
   'editUi.version.label': {'zh-Hans':'版本','zh-Hant':'版本',en:'Version',ja:'バージョン'},
   'editUi.version.follow': {'zh-Hans':'跟随画板 · V{version}','zh-Hant':'跟隨畫板 · V{version}',en:'Follow board · V{version}',ja:'ボードに追従 · V{version}'},
   'editUi.version.locked': {'zh-Hans':'锁定 · V{version}','zh-Hant':'鎖定 · V{version}',en:'Locked · V{version}',ja:'ロック · V{version}'},

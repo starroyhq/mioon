@@ -3,7 +3,7 @@ import { Button } from '@mioon/ui/components/button'
 import { Tabs, TabsList, TabsTrigger } from '@mioon/ui/components/tabs'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@mioon/ui/components/collapsible'
 import { DialogContent, DialogDescription, DialogTitle } from '@mioon/ui/components/dialog'
-import { AlertTriangle, WorkbenchIcon } from '@mioon/ui/components/workbench-icons'
+import { AlertTriangle, ChevronRight, WorkbenchIcon } from '@mioon/ui/components/workbench-icons'
 import { cn } from '@mioon/ui/lib/utils'
 
 export type WorkbenchTone = 'neutral' | 'danger' | 'warning' | 'success'
@@ -94,7 +94,7 @@ export function WorkbenchPanel({ title, icon, count, actions, footer, className,
 
 export function WorkbenchGroup({ title, children, className, ...props }: Omit<React.ComponentProps<typeof Collapsible>, 'title'> & { title: React.ReactNode }) {
   return <Collapsible {...props} className={cn('wb-group', className)}>
-    <CollapsibleTrigger className="wb-group-trigger"><svg aria-hidden="true" viewBox="0 0 16 16" fill="none"><path d="m6 4 4 4-4 4" stroke="currentColor" strokeWidth="1.5" /></svg>{title}</CollapsibleTrigger>
+    <CollapsibleTrigger className="wb-group-trigger"><ChevronRight size={16} aria-hidden="true" />{title}</CollapsibleTrigger>
     <CollapsibleContent keepMounted className="wb-group-content">{children}</CollapsibleContent>
   </Collapsible>
 }

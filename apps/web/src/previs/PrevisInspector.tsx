@@ -7,7 +7,7 @@ import { Input } from '@mioon/ui/components/input';
 import { Label } from '@mioon/ui/components/label';
 import { ScrollArea } from '@mioon/ui/components/scroll-area';
 import { WorkbenchTooltip } from '../WorkspaceControls.tsx';
-import { ArrowUpRight, Box, Link, Lock } from '@mioon/ui/components/workbench-icons';
+import { ArrowUpRight, Box, Info, Link, Lock } from '@mioon/ui/components/workbench-icons';
 import { useI18n } from '../i18n/I18nProvider.tsx';
 import { useWorkspaceVisibility } from '../workspace-visibility.tsx';
 import BoardInspectorGroup from '../BoardInspectorGroup.tsx';
@@ -86,7 +86,7 @@ export default function PrevisInspector({ node, frame, readOnly, busy, shots = [
       </BoardInspectorGroup>
     </div></ScrollArea>
     <footer className="previs-inspector-footer"><span className="previs-saved" data-busy={busy || undefined}><span className="previs-saved-dot" aria-hidden="true" />{t(busy ? 'previs.inspector.saving' : 'previs.inspector.saved')}</span>
-      <WorkbenchTooltip content={t('previs.inspector.localNote')}><Button type="button" variant="ghost" size="icon-sm" className="icon-button" data-testid="previs-local-rendering-info" aria-label={t('previs.inspector.localNote')}>ⓘ</Button></WorkbenchTooltip>
+      <WorkbenchTooltip content={t('previs.inspector.localNote')}><Button type="button" variant="ghost" size="icon-sm" className="icon-button" data-testid="previs-local-rendering-info" aria-label={t('previs.inspector.localNote')}><Info size={14} aria-hidden="true" /></Button></WorkbenchTooltip>
       <Button size="sm" className="button primary" data-testid="previs-open" disabled={!visible} onClick={onOpen}><ArrowUpRight size={14} aria-hidden="true" />{t('previs.inspector.open')}</Button></footer>
   </aside>;
 }

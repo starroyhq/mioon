@@ -4,6 +4,7 @@
 import React, {useEffect, useState} from 'react';
 import {Button} from '@mioon/ui/components/button';
 import {Textarea} from '@mioon/ui/components/textarea';
+import {ArrowUpRight} from '@mioon/ui/components/workbench-icons';
 import {WorkbenchSelect} from '../WorkspaceControls.tsx';
 import Icon from '../icons.tsx';
 import ShotDialogue from '../ShotDialogue.tsx';
@@ -92,7 +93,7 @@ export default function GenerateInEditingPanel(props: GenerateInEditingPanelProp
     <header className="generate-in-editing-heading">
       <strong data-testid="editing-generate-shot-title">{props.shotLabel ? `${props.shotLabel} · ` : ''}{String(shot.title ?? '')}</strong>
       <Button type="button" variant="ghost" size="sm" className="text-button" data-testid="editing-generate-reveal"
-        onClick={() => props.onRevealOnBoard()}><Icon name="board" size={13} />{t('editUi.shot.reveal')}</Button>
+        onClick={() => props.onRevealOnBoard()}><Icon name="board" size={13} /><span>{t('editUi.shot.reveal')}</span><ArrowUpRight size={13} aria-hidden="true" /></Button>
     </header>
     <section className="generate-in-editing-field">
       <label htmlFor="editing-generate-prompt">{t('boardUi.inspector.description')}</label>
