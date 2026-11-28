@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="fdbefeb69c752c5b053318dd95c50c06122d1a7419b494d6a582f979fe548c48";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="1821fe457b170a9d1e880c29570f18ad6446a3bca95466a5e3f2169d2e5bee4e";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "sequence.preview": {
   "type": "object",
@@ -9970,6 +9970,101 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"
  },
+ "export.fcpxml.preview": {
+  "type": "object",
+  "properties": {
+   "copyMedia": {
+    "type": "boolean"
+   }
+  },
+  "required": [
+   "copyMedia"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "export.fcpxml.start": {
+  "type": "object",
+  "properties": {
+   "name": {
+    "type": "string",
+    "minLength": 1
+   },
+   "copyMedia": {
+    "type": "boolean"
+   },
+   "destination": {
+    "anyOf": [
+     {
+      "type": "object",
+      "properties": {
+       "kind": {
+        "type": "string",
+        "const": "project"
+       }
+      },
+      "required": [
+       "kind"
+      ],
+      "additionalProperties": false
+     },
+     {
+      "type": "object",
+      "properties": {
+       "kind": {
+        "type": "string",
+        "const": "chosen"
+       },
+       "token": {
+        "type": "string",
+        "minLength": 1
+       }
+      },
+      "required": [
+       "kind",
+       "token"
+      ],
+      "additionalProperties": false
+     }
+    ]
+   }
+  },
+  "required": [
+   "name",
+   "copyMedia",
+   "destination"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "export.fcpxml.get": {
+  "type": "object",
+  "properties": {
+   "exportId": {
+    "type": "string",
+    "minLength": 1
+   }
+  },
+  "required": [
+   "exportId"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "export.fcpxml.cancel": {
+  "type": "object",
+  "properties": {
+   "exportId": {
+    "type": "string",
+    "minLength": 1
+   }
+  },
+  "required": [
+   "exportId"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
  "workspace.settings.get": {
   "type": "object",
   "properties": {},
@@ -19080,6 +19175,38 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   ],
   "additionalProperties": false
  }
+};
+export const AGENT_TASK_FCP_EXPORT_START_PARAMETERS:unknown={
+ "type": "object",
+ "properties": {
+  "name": {
+   "type": "string",
+   "minLength": 1
+  },
+  "copyMedia": {
+   "type": "boolean"
+  },
+  "destination": {
+   "type": "object",
+   "properties": {
+    "kind": {
+     "type": "string",
+     "const": "project"
+    }
+   },
+   "required": [
+    "kind"
+   ],
+   "additionalProperties": false
+  }
+ },
+ "required": [
+  "name",
+  "copyMedia",
+  "destination"
+ ],
+ "additionalProperties": false,
+ "$schema": "http://json-schema.org/draft-07/schema#"
 };
 export const AGENT_TASK_THUMBNAIL_READ_PARAMETERS:unknown={
  "type": "object",

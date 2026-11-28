@@ -302,6 +302,8 @@ export interface WindowsManagedFileIO {
   openDirectory(directory:string,options:{root:string;private:boolean}):WindowsManagedDirectoryHandle;
   syncDirectory(directory:string,options:{root?:string;private:boolean}):void;
   renameNoReplace(source:string,destination:string,options:{root:string;expected:Stats}):Stats;
+  /** Atomically install an owned private video candidate in a verified ordinary directory. */
+  renameProjectOutputNoReplace?(source:string,destination:string,options:{root:string;expected:Stats}):void;
   removeOwnedFile(file:string,options:{root:string;expected:Stats;maxBytes?:number}):void;
   removeOwnedDirectory(directory:string,options:{root:string;expected:Stats}):void;
 }

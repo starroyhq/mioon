@@ -19,6 +19,7 @@ export interface WindowsStorageNative {
   createManagedDirectory?(directory:string,options:NativeManagedOptions,metadata:()=>Stats):NativeInspection;
   syncManagedDirectory?(directory:string,options:NativeManagedOptions):void;
   renameManaged?(source:string,destination:string,options:NativeManagedOptions,metadata:()=>Stats):NativeInspection;
+  renameProjectOutputNoReplace?(source:string,destination:string,options:NativeManagedOptions):void;
   removeManaged?(file:string,options:NativeManagedOptions):void;
   /** Read-only Windows volume/sync-root facts for project locations. */
   projectVolumeFacts?(path:string):unknown;
@@ -47,6 +48,9 @@ export function createWindowsPrivateStorageBackend(native:WindowsStorageNative):
   const streamMaximum=(value:number|undefined):number=>{const size=value===undefined?PRIVATE_STORAGE_STREAM_BYTES:value;if(!Number.isSafeInteger(size)||size<0||size>PRIVATE_STORAGE_STREAM_BYTES)throw new PrivateStorageError('INVALID_LIMIT','A safe streaming storage byte limit is required.');return size;};
   const managed=(file:string,options:ManagedFileOptions,kind:'file'|'directory'):NativeOptions=>({...options,root:options.root??path.dirname(file),kind,...(options.maxBytes===undefined?{}:{maxBytes:streamMaximum(options.maxBytes)})});
   const expected=(info:Stats):{expectedVolume:string;expectedFileId:string}=>{const identity=privateStorageIdentity(info),parts=/^windows:([a-f0-9]{16}):([a-f0-9]{32})$/u.exec(identity);if(!parts)throw unavailable();return {expectedVolume:parts[1]!,expectedFileId:parts[2]!};};
+  const renameProjectOutputNoReplace:WindowsManagedFileIO['renameProjectOutputNoReplace']=typeof native.renameProjectOutputNoReplace==='function'?
+    (source,destination,options)=>safely(()=>native.renameProjectOutputNoReplace!(source,destination,
+      {root:options.root,kind:'file',maxBytes:streamMaximum(options.expected.size),...expected(options.expected)})):undefined;
   const streamFunctions=['openManagedFile','openManagedDirectory','createManagedDirectory','syncManagedDirectory','renameManaged','removeManaged'] as const;
   const managedFileIO:WindowsManagedFileIO|undefined=streamFunctions.every(name=>typeof native[name]==='function')?Object.freeze({
     openFile:(file,options)=>safely(()=>{const lease=native.openManagedFile!(file,{...options,kind:'file',maxBytes:streamMaximum(options.maxBytes),...(options.expected?expected(options.expected):{})},()=>lstatSync(file));return Object.freeze({
@@ -59,6 +63,7 @@ export function createWindowsPrivateStorageBackend(native:WindowsStorageNative):
     openDirectory:(directory,options)=>safely(()=>{const lease=native.openManagedDirectory!(directory,{...options,kind:'directory'},()=>lstatSync(directory));return Object.freeze({metadata:()=>safely(()=>metadata(lease.metadata())),next:()=>safely(()=>lease.next()),close:()=>safely(()=>lease.close())});}),
     syncDirectory:(directory,options)=>safely(()=>native.syncManagedDirectory!(directory,{...options,root:options.root??directory,kind:'directory'})),
     renameNoReplace:(source,destination,options)=>safely(()=>metadata(native.renameManaged!(source,destination,{root:options.root,kind:'file',maxBytes:streamMaximum(undefined),...expected(options.expected)},()=>lstatSync(destination)))),
+    ...(renameProjectOutputNoReplace?{renameProjectOutputNoReplace}:{}),
     removeOwnedFile:(file,options)=>safely(()=>native.removeManaged!(file,{root:options.root,kind:'file',maxBytes:streamMaximum(options.maxBytes),...expected(options.expected)})),
     removeOwnedDirectory:(directory,options)=>safely(()=>native.removeManaged!(directory,{root:options.root,kind:'directory',...expected(options.expected)})),
   } satisfies WindowsManagedFileIO):undefined;

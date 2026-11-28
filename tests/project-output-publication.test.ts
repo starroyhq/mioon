@@ -1,7 +1,7 @@
 import test,{type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash,randomUUID} from 'node:crypto';
-import {appendFileSync,chmodSync,closeSync,existsSync,fstatSync,linkSync,mkdirSync,mkdtempSync,openSync,readFileSync,readdirSync,renameSync,rmSync,statSync,unlinkSync,utimesSync,writeFileSync,writeSync} from 'node:fs';
+import {appendFileSync,chmodSync,closeSync,createReadStream,existsSync,fstatSync,linkSync,mkdirSync,mkdtempSync,openSync,readFileSync,readdirSync,renameSync,rmSync,statSync,truncateSync,unlinkSync,utimesSync,writeFileSync,writeSync} from 'node:fs';
 import {open,type FileHandle} from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
@@ -9,6 +9,7 @@ import {realpathSync} from 'node:fs';
 import {createProjectFile,openProjectStore} from '../packages/business/src/project-file/index.ts';
 import {registerProjectMediaStore,registeredProjectAssetReferences} from '../packages/business/src/project-media-storage.ts';
 import {registerProjectOutputAdmission} from '../packages/business/src/project-output-owner.ts';
+import {createOutputArtifactStage,writeOutputArtifact} from '../packages/business/src/output-artifact-storage.ts';
 import {ensurePrivateDirectory} from '../packages/contracts/src/private-storage.ts';
 import {publishProjectOutput,inspectProjectOutput,readPublishedProjectOutput,markProjectOutputRegistered,assertPublishedProjectOutput,registerVerifiedProjectOutputs,isPublishedProjectOutput,restorePublishedProjectOutput,setProjectOutputPublicationTestHooks} from '../packages/business/src/project-output-publication.ts';
 import type {ProjectOutputInput,PublishedProjectOutput} from '../packages/business/src/project-output-publication.ts';
@@ -37,6 +38,24 @@ function useUmask(t: TestContext, mask: number): void {
 }
 const permissionBits = (file: string): number => statSync(file).mode & 0o777;
 
+test('staged export artifacts larger than 64 MiB are published with their verified size and hash', async t => {
+ const {store, projectDir, input} = fixture(t, 'exports');
+ const sizeBytes = 64 * 1024 ** 2 + 1;
+ const stageFile = createOutputArtifactStage(store, input.owner, 'export');
+ writeFileSync(stageFile, mp4HeaderFixture('Large export'), {mode: 0o600});
+ truncateSync(stageFile, sizeBytes);
+ const hash = createHash('sha256');
+ for await (const chunk of createReadStream(stageFile)) hash.update(chunk);
+ const sha256 = hash.digest('hex');
+ const artifact = writeOutputArtifact(store, {owner: input.owner, kind: 'export', sourceIdentity: input.owner.inputHash,
+  stageFile, info: {sizeBytes, sha256, width: 1280, height: 720, duration: 1800, hasVideo: true, hasAudio: true}}, () => {});
+ const output = await publishProjectOutput(store, {...input, assetId: artifact.assetId, publicationId: artifact.publicationId,
+  stageFile, mimeType: 'video/mp4', sizeBytes, sha256});
+ assert.equal(output.reference.sizeBytes, sizeBytes);
+ assert.equal(output.reference.fullSha256, sha256);
+ assert.equal(statSync(path.join(projectDir, output.relativePath)).size, sizeBytes);
+});
+
 for (const {kind, mask, forceCopy} of [
  {kind: 'exports', mask: 0o022, forceCopy: false},
  {kind: 'generated', mask: 0o022, forceCopy: false},
@@ -46,9 +65,14 @@ for (const {kind, mask, forceCopy} of [
  const f = fixture(t, kind), expectedMode = 0o666 & ~mask;
  useUmask(t, mask);
  let createdMode: number | undefined;
- setProjectOutputPublicationTestHooks(f.store, {forceCopy, fault(point, proof) {
+ setProjectOutputPublicationTestHooks(f.store, {forceCopy, fault(point, proof, workingFile) {
   if (point === 'after_target_create') {
-   createdMode = permissionBits(path.join(f.projectDir, proof.relativePath));
+   const finalFile = path.join(f.projectDir, proof.relativePath);
+   if (kind === 'exports') {
+    assert.ok(workingFile);
+    assert.equal(existsSync(finalFile), false);
+   }
+   createdMode = permissionBits(workingFile ?? finalFile);
    assert.equal(permissionBits(f.input.stageFile), 0o600);
   }
  }});
@@ -115,8 +139,8 @@ function changeCtimeOnly(file: string): void {
  assert.fail('the fixture must change ctime');
 }
 
-async function outputHandlePrototype(probe: string): Promise<Pick<FileHandle, 'read' | 'sync'>> {
- const sample = await open(probe, 'r'), prototype = Object.getPrototypeOf(sample) as Pick<FileHandle, 'read' | 'sync'>;
+async function outputHandlePrototype(probe: string): Promise<Pick<FileHandle, 'read' | 'sync' | 'write'>> {
+ const sample = await open(probe, 'r'), prototype = Object.getPrototypeOf(sample) as Pick<FileHandle, 'read' | 'sync' | 'write'>;
  await sample.close();
  return prototype;
 }
@@ -159,18 +183,24 @@ function linkLegacyStage(f: ReturnType<typeof fixture>): () => string {
 }
 
 for (const kind of ['exports','generated'] as const) test(`${kind} publication accepts ctime-only changes during the final full read`, async t => {
- const f = fixture(t, kind), target = observePublicationTarget(f);
+ const f = fixture(t, kind);
+ let target = '', verificationFile = '';
+ setProjectOutputPublicationTestHooks(f.store, {fault(point, proof, workingFile) {
+  if (point === 'after_intent') target = path.join(f.projectDir, proof.relativePath);
+  if (point === 'after_target_create') verificationFile = workingFile ?? target;
+ }});
  let changed = false;
- await afterFullOutputRead(t, f.input.stageFile, target, file => {
+ await afterFullOutputRead(t, f.input.stageFile, () => verificationFile, file => {
   if (changed) return;
+  if (kind === 'exports') assert.equal(existsSync(target), false);
   changeCtimeOnly(file);
   changed = true;
  });
  const output = await publishProjectOutput(f.store, f.input);
  assert.ok(changed);
- assert.equal(path.join(f.projectDir, output.relativePath), target());
+ assert.equal(path.join(f.projectDir, output.relativePath), target);
  assert.equal(output.sha256, f.input.sha256);
- assert.deepEqual(readFileSync(target()), bytes);
+ assert.deepEqual(readFileSync(target), bytes);
 });
 
 test('publication accepts ctime-only changes during the private stage hash', async t => {
@@ -432,6 +462,76 @@ function videoExport(f: ReturnType<typeof fixture>, displayName: string, payload
  return {...f.input, owner: {...f.input.owner, id: randomUUID(), requestId: randomUUID()}, assetId, stageFile,
   mimeType: 'video/mp4', sha256: sha(payload), sizeBytes: payload.length, displayName};
 }
+
+test('a disk-full error after the first export copy block leaves no final file or temporary candidate', async t => {
+ const f = fixture(t, 'exports');
+ const payload = Buffer.concat([mp4HeaderFixture('Export that exceeds the available disk space'), Buffer.alloc(150000, 1)]);
+ const input = videoExport(f, 'Mioon混剪', payload);
+ let final = '', candidate = '';
+ setProjectOutputPublicationTestHooks(f.store, {fault(point, proof, workingFile) {
+  if (point === 'after_target_create') {
+   assert.ok(workingFile);
+   candidate = workingFile;
+   final = path.join(f.projectDir, proof.relativePath);
+  }
+ }});
+ const prototype = await outputHandlePrototype(input.stageFile), original = prototype.write;
+ let failure: Error | undefined;
+ t.mock.method(prototype, 'write', async function(this: FileHandle, ...args: unknown[]) {
+  const position = args[3];
+  if (typeof position === 'number' && position > 0 && targetInfo(this, candidate)) {
+   assert.equal(statSync(candidate).size, position);
+   assert.equal(existsSync(final), false);
+   failure = Object.assign(Error('Disk is full'), {code: 'ENOSPC', path: candidate});
+   throw failure;
+  }
+  return await Reflect.apply(original, this, args);
+ });
+ const register = t.mock.fn(f.register);
+ await assert.rejects(publishProjectOutput(f.store, input, {}, register), error =>
+  error instanceof Error && failure !== undefined && error.cause === failure);
+ assert.equal(register.mock.callCount(), 0);
+ assert.equal(f.store.get('assets', input.assetId), null);
+ assert.deepEqual(readdirSync(path.dirname(final)), []);
+ assert.equal(existsSync(candidate), false);
+ assert.deepEqual(readFileSync(input.stageFile), payload);
+});
+
+for (const replace of [false, true]) test(`export rollback after installation ${replace ? 'preserves a same-byte replacement' : 'removes its own final file'}`, async t => {
+ const f = fixture(t, 'exports');
+ const payload = mp4HeaderFixture('Verified export before database commit');
+ const input = videoExport(f, 'Mioon混剪', payload);
+ const sentinel = Error('Fail after installation and before database commit');
+ let final = '', candidate = '', replacement: bigint | undefined;
+ setProjectOutputPublicationTestHooks(f.store, {fault(point, proof, workingFile) {
+  if (point === 'after_final') {
+   assert.ok(workingFile);
+   candidate = workingFile;
+   final = path.join(f.projectDir, proof.relativePath);
+   assert.equal(existsSync(final), false);
+   assert.deepEqual(readFileSync(candidate), payload);
+  }
+  if (point === 'after_install') {
+   assert.equal(f.store.db.isTransaction, true);
+   assert.ok(f.store.get('assets', input.assetId));
+   assert.deepEqual(readFileSync(final), payload);
+   if (replace) {
+    renameSync(final, path.join(f.root, 'displaced-output.mp4'));
+    writeFileSync(final, payload, {flag: 'wx'});
+    replacement = statSync(final, {bigint: true}).ino;
+   }
+   throw sentinel;
+  }
+ }});
+ await assert.rejects(publishProjectOutput(f.store, input, {}, f.register), error => error === sentinel);
+ assert.equal(f.store.get('assets', input.assetId), null);
+ assert.equal(existsSync(candidate), false);
+ if (replace) {
+  assert.equal(statSync(final, {bigint: true}).ino, replacement);
+  assert.deepEqual(readFileSync(final), payload);
+ } else assert.deepEqual(readdirSync(path.dirname(final)), []);
+ assert.deepEqual(readFileSync(input.stageFile), payload);
+});
 
 test('concurrent exports use separate numbered filenames without replacing any existing file', async t => {
  const f = fixture(t, 'exports'), directory = path.join(f.projectDir, '导出');

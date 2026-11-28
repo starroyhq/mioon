@@ -1,3 +1,6 @@
+import {FCP_EXPORT_NATIVE_CHANNEL} from '../packages/contracts/src/fcp-export-native.ts';
+import {createFcpExportHost} from '../apps/desktop/src/fcp-export-host.ts';
+import {fcpNativeInvalid, fcpNativeUnavailable} from '../packages/contracts/src/project-entry-fcp-bridge.ts';
 import {createAssetRelinkHost} from '../apps/desktop/src/asset-relink-host.ts';
 import {createProjectLocationHelp} from '../apps/desktop/src/project-location-help.ts';
 import {NATIVE_ASSET_MEDIA_CHANNEL} from '../packages/contracts/src/asset-media-native.ts';
@@ -243,7 +246,8 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
       await options.load?.(this.index, this.urls.length, url);
     }
   }
-  const context = vm.createContext({ createAssetRelinkHost, createProjectLocationHelp, NATIVE_ASSET_MEDIA_CHANNEL, createProjectEntryDesktopHost, PROJECT_ENTRY_DESKTOP_CHANNEL, PROJECT_ENTRY_DESKTOP_PENDING_OPEN_EVENT:pendingOpenChannel, desktopWindowBackground, createDesktopAppearanceCache:()=>createDesktopHarnessAppearanceCache(options.cache), probeDesktopProjectLocation:options.projectLocation??(async()=>({fileSystem:'apfs',isLocal:true,volumeReadOnly:false,permissionBits:true,cloud:'not-reported'})), projectLocationDecision, desktopAppDirectories, isProjectId, projectApiPath, readNativeBackendMetadata: async () => ({revision:0,preferences:DEFAULT_UI_PREFERENCES,recentOpened:{},recoveredDefaults:false,writable:true}), app, applicationMenuTemplate, createMenuCommandHost, menuCommandGestureScript, MENU_COMMAND_CHANNEL, MENU_COMMAND_EVENT, MENU_COMMAND_IDS, queueMicrotask, createDesktopTray, ...nativeTray, createAppLanguageHost, nt: nativeText, setNativeLanguageReader: () => {}, resolveLocale, APP_LANGUAGE_CHANNEL, readAppLanguagePreference: () => null, writeAppLanguagePreference: () => {}, process: { platform: 'darwin', env: {}, on() {} }, path, randomBytes, randomUUID,
+  const context = vm.createContext({ FCP_EXPORT_NATIVE_CHANNEL, createFcpExportHost, fcpNativeInvalid, fcpNativeUnavailable,
+    finalCutInstalled: async () => false, openInFinalCut: async () => false, createAssetRelinkHost, createProjectLocationHelp, NATIVE_ASSET_MEDIA_CHANNEL, createProjectEntryDesktopHost, PROJECT_ENTRY_DESKTOP_CHANNEL, PROJECT_ENTRY_DESKTOP_PENDING_OPEN_EVENT:pendingOpenChannel, desktopWindowBackground, createDesktopAppearanceCache:()=>createDesktopHarnessAppearanceCache(options.cache), probeDesktopProjectLocation:options.projectLocation??(async()=>({fileSystem:'apfs',isLocal:true,volumeReadOnly:false,permissionBits:true,cloud:'not-reported'})), projectLocationDecision, desktopAppDirectories, isProjectId, projectApiPath, readNativeBackendMetadata: async () => ({revision:0,preferences:DEFAULT_UI_PREFERENCES,recentOpened:{},recoveredDefaults:false,writable:true}), app, applicationMenuTemplate, createMenuCommandHost, menuCommandGestureScript, MENU_COMMAND_CHANNEL, MENU_COMMAND_EVENT, MENU_COMMAND_IDS, queueMicrotask, createDesktopTray, ...nativeTray, createAppLanguageHost, nt: nativeText, setNativeLanguageReader: () => {}, resolveLocale, APP_LANGUAGE_CHANNEL, readAppLanguagePreference: () => null, writeAppLanguagePreference: () => {}, process: { platform: 'darwin', env: {}, on() {} }, path, randomBytes, randomUUID,
     __MIOON_DESKTOP_CHANNEL__: 'development', desktopIdentity: { identityForChannel: () => ({ channel: 'development', productName: 'Synthetic', appId: 'synthetic' }) },
     prepareDesktopStorage: () => ({ userData: '/synthetic/userData', dataDir: '/synthetic/data', configFile: '/synthetic/config' }),
     initializeDesktopPrivateStorage: () => {}, privateStorageHelperFile: () => '/synthetic/native/mioon_private_storage.node',
@@ -309,7 +313,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
     observeInitialProjectLoad, createProjectRendererRecovery, createProjectBackendIncident,
     CANVAS_CLIPBOARD_CHANNEL, readNativeCanvasClipboard, clipboard: {read: () => assert.fail('Window lifecycle must not read the clipboard')},
     ipcMain: { handle(channel: string, handler: (...values: unknown[]) => unknown) {
-      assert.ok([ASSET_IMPORT_CHANNEL, APP_LANGUAGE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL, MENU_COMMAND_CHANNEL, PROJECT_ENTRY_DESKTOP_CHANNEL, NATIVE_ASSET_MEDIA_CHANNEL, CANVAS_CLIPBOARD_CHANNEL].includes(channel)); assert.equal(typeof handler, 'function');
+      assert.ok([ASSET_IMPORT_CHANNEL, APP_LANGUAGE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL, MENU_COMMAND_CHANNEL, PROJECT_ENTRY_DESKTOP_CHANNEL, NATIVE_ASSET_MEDIA_CHANNEL, CANVAS_CLIPBOARD_CHANNEL, FCP_EXPORT_NATIVE_CHANNEL].includes(channel)); assert.equal(typeof handler, 'function');
       r.ipcHandlers ??= new Map(); assert.equal(r.ipcHandlers.has(channel), false); r.ipcHandlers.set(channel, handler);
       if (channel === PROJECT_WINDOW_CHANNEL) r.bridge = handler; else if (channel === NATIVE_AUDIO_CHANNEL) r.audioBridge = handler;
     } },
@@ -332,7 +336,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
   vm.runInContext(source, context, { filename: 'actual-desktop-main.ts' });
   options.beforeReady?.(app);
   assert.deepEqual([...r.ipcHandlers!.keys()].sort(),
-    [ASSET_IMPORT_CHANNEL, APP_LANGUAGE_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, NATIVE_AUDIO_CHANNEL, PROJECT_WINDOW_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL, MENU_COMMAND_CHANNEL, PROJECT_ENTRY_DESKTOP_CHANNEL, NATIVE_ASSET_MEDIA_CHANNEL, CANVAS_CLIPBOARD_CHANNEL].sort());
+    [ASSET_IMPORT_CHANNEL, APP_LANGUAGE_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, NATIVE_AUDIO_CHANNEL, PROJECT_WINDOW_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL, MENU_COMMAND_CHANNEL, PROJECT_ENTRY_DESKTOP_CHANNEL, NATIVE_ASSET_MEDIA_CHANNEL, CANVAS_CLIPBOARD_CHANNEL, FCP_EXPORT_NATIVE_CHANNEL].sort());
   const get = (text: string) => vm.runInContext(text, context);
   t.after(async () => {
     get('quitting = true; trayHost?.dispose()'); options.release?.();
@@ -562,6 +566,31 @@ test('real main retains relink document tickets across a temporary Settings admi
  const applied=await invoke({action:'apply',projectId,previewToken:first.data.previewToken,requestId:randomUUID()});
  assert.equal(applied.ok,true,'the original document ticket remains usable after Settings closes');assert.equal(applied.data.status,'failed');
  assert.equal((await invoke(choose)).ok,true);assert.equal(picks,2);assert.equal(new Set(owners).size,1,'temporary admission never retires or remints document authority');
+});
+
+test('real main accepts FCP only from the active editor main frame and its own project', async t => {
+  const projectId = '22222222-2222-4222-8222-222222222222', exportId = randomUUID(), observed: unknown[] = [];
+  const f = await harness(t, {
+    beforeReady: app => app.emit('open-file', {preventDefault() {}}, '/synthetic/Movies/Project.mioon'),
+    projectControl: (_index, port) => ({...port, nativeFcpExport: {
+      chooseDestination(input) {assert.fail(JSON.stringify(input));},
+      async completedBundle(input) {observed.push(input); return null;},
+    }}),
+  });
+  await readyColdEditor(f);
+  const editor = f.r.windows[0], host = f.get('windowHost'), handler = f.r.ipcHandlers!.get(FCP_EXPORT_NATIVE_CHANNEL)!;
+  const invoke = (window: typeof editor, input: unknown, frame: DesktopHarnessFrame = window.webContents.mainFrame) =>
+    handler({sender: window.webContents, senderFrame: frame}, input);
+  const request = {kind: 'reveal', identity: {projectId, exportId}};
+  assert.deepEqual(await invoke(editor, request), {ok: true, data: false});
+  assert.deepEqual(await invoke(editor, {...request, identity: {projectId: randomUUID(), exportId}}), fcpNativeUnavailable());
+  assert.deepEqual(await invoke(editor, request, {url: editor.webContents.mainFrame.url}), fcpNativeUnavailable());
+  assert.equal(host.showSettings('agent', editor), true);
+  const settings = f.r.windows.at(-1)!;
+  await host.loadFor(settings);
+  assert.deepEqual(await invoke(settings, request), fcpNativeUnavailable());
+  assert.deepEqual(await invoke(editor, request), fcpNativeUnavailable());
+  assert.deepEqual(observed, [{projectId, exportId, windowId: host.contextFor(editor).windowId}]);
 });
 
 for (const stage of ['drain', 'backend-stop', 'remove', 'clear', 'new-validation', 'new-backend', 'new-cookie', 'new-connection', 'new-load']) {
