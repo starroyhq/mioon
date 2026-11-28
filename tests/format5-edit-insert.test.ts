@@ -471,3 +471,76 @@ test('copy as new shot keeps an image source and isolates generation of a copied
   assert.equal((store.get('shots', generatedShotId) as Row).selectedVersionId, version.id);
   assert.deepEqual(store.get('shots', WIRE_IDS.shotB), sourceShot);
 });
+
+test('main-track PNG split keeps source zero while the same video split advances its source', async t => {
+  const f = await createEditUiWireFixture();
+  t.after(async () => {await f.services.drain(); f.store.close(); f.library.close();});
+  const {projectId} = f;
+  const call = (operation: string, input: Record<string, unknown> = {}) =>
+    f.services.call(operation, {projectId, ...input});
+  const timeline = (): Format5Timeline => f.store.get('timelines', WIRE_IDS.timeline) as Format5Timeline;
+  const history = async () => sequenceHistoryViewResponseSchema.parse(await call('sequence.history.get'));
+  const preview = async (command: SequenceSyncCommand) => sequencePreviewResponseSchema.parse(await call('sequence.preview', {
+    requestId: crypto.randomUUID(), actionId: crypto.randomUUID(), intents: [sequenceSyncIntent(command)],
+  }));
+
+  for (const [assetId, rightSourceInFrame] of [[WIRE_IDS.imageAsset, 0], [WIRE_IDS.assetB, 45]] as const) {
+    const insertion = await preview({kind: 'insert-asset', assetId, trackId: null, startFrame: 0});
+    const inserted = sequenceEditReceiptSchema.parse(await call('sequence.commit',
+      {envelope: insertion.envelope, expectedPlanDigest: insertion.planDigest}));
+    assert.equal(inserted.status, 'applied');
+    const before = timeline();
+    const original = before.clips.find(clip => clip.startFrame === 0 && clip.assetId === assetId);
+    assert.ok(original?.sequenceSource);
+    assert.equal(original.trackId, before.mainTrack.trackId);
+    assert.equal(original.durationFrames, 90);
+    const cursor = await history();
+
+    if (assetId === WIRE_IDS.imageAsset) {
+      const unavailable = sequencePreviewFailureResponseSchema.parse(await call('sequence.preview', {
+        requestId: crypto.randomUUID(), actionId: crypto.randomUUID(),
+        intents: [sequenceSyncIntent({kind: 'clip-split', clipId: original.id, offsetFrames: 45,
+          rightClipId: crypto.randomUUID(), rightSourceInFrame: 45})],
+      }));
+      assert.equal(unavailable.code, 'SOURCE_BOUNDS');
+    }
+
+    const split = await preview({kind: 'clip-split', clipId: original.id, offsetFrames: 45, rightClipId: crypto.randomUUID()});
+    assert.deepEqual(timeline(), before);
+    assert.deepEqual(await history(), cursor);
+    const input = {envelope: split.envelope, expectedPlanDigest: split.planDigest};
+    const receipt = sequenceEditReceiptSchema.parse(await call('sequence.commit', input));
+    assert.equal(receipt.status, 'applied');
+    const after = timeline();
+    const pieces = after.clips.filter(clip => clip.sequenceSource?.nodeId === original.sequenceSource?.nodeId);
+    assert.deepEqual(pieces.map(clip => [clip.trackId, clip.assetId, clip.startFrame, clip.durationFrames, clip.sourceInFrame]), [
+      [before.mainTrack.trackId, assetId, 0, 45, 0],
+      [before.mainTrack.trackId, assetId, 45, 45, rightSourceInFrame],
+    ]);
+    assert.ok(pieces.every(clip => clip.sequenceSource?.segmentGroupId === original.sequenceSource?.segmentGroupId));
+    assert.equal(pieces[0]!.id, original.id);
+    assert.notEqual(pieces[1]!.id, original.id);
+    assert.equal(after.durationFrames, before.durationFrames);
+    assert.equal((await history()).position, cursor.position + 1);
+
+    const travel = async (direction: 'undo' | 'redo') => {
+      const current = await history();
+      assert.equal(current[direction]?.actionId, receipt.actionId);
+      const result = sequenceEditReceiptSchema.parse(await call(`sequence.${direction}`, {
+        requestId: crypto.randomUUID(), actionId: receipt.actionId,
+        expected: {position: current.position, revision: current.revision},
+      }));
+      assert.equal(result.status, 'applied');
+    };
+    await travel('undo');
+    assert.deepEqual(timeline().clips, before.clips);
+    const undone = await history();
+    assert.equal(undone.position, cursor.position);
+    assert.deepEqual(await call('sequence.commit', input), receipt);
+    assert.deepEqual(await history(), undone);
+    assert.deepEqual(timeline().clips, before.clips);
+    await travel('redo');
+    assert.deepEqual(timeline().clips, after.clips);
+    assert.equal((await history()).position, cursor.position + 1);
+  }
+});
