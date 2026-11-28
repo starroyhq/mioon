@@ -27,6 +27,7 @@ import {z} from 'zod';
 import {zodToJsonSchema} from 'zod-to-json-schema';
 import applicationPackage from '../../../package.json' with {type: 'json'};
 import type {OperationName} from '@mioon/contracts';
+import {fcpExportSchemas,type FcpExportOperation} from '../../contracts/src/fcp-export.ts';
 import {schemas as coreSchemas, descriptions as coreDescriptions, parse, operationEffect, effectAnnotations, LOCAL_MUTATION_OPERATIONS, isLocalMutationResponse, isExportPreflightResponse, isTimelineFormatReadResponse, TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse, REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse, SUBJECT_MUTATION_OPERATIONS, isSubjectMutationResponse, hasRequestNotAppliedProof} from '@mioon/contracts';
 import {resolveConnection, connectionSource, ConnectionError, type ConnectionSource, type LocalConnection} from './connection.ts';
 import {IMAGE_MUTATION_OPERATIONS,isImageMutationResponse,isImageTaskResponse,isImageGroupResponse,isImageRequestResponse,isImageProfilesResponse,isImageListResponse} from '@mioon/contracts';
@@ -464,6 +465,8 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid subject-generation retry acknowledgement.', {details: {...uncertainRequestDetails(body), submissionMayHaveSucceeded: true}});
     if ((LOCAL_MUTATION_OPERATIONS as readonly string[]).includes(operation) && !isLocalMutationResponse(operation, parsed, result))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid mutation acknowledgement.', {details: {...uncertainRequestDetails(body), submissionMayHaveSucceeded: true}});
+    if (Object.hasOwn(fcpExportSchemas, operation) && !fcpExportSchemas[operation as FcpExportOperation].output.safeParse(result).success)
+      throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid Final Cut Pro export response.', {details: uncertainRequestDetails(body)});
     if ((TIMELINE_MUTATION_OPERATIONS as readonly string[]).includes(operation) && !isTimelineMutationResponse(operation, parsed, result))
       throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid timeline acknowledgement.', {details: {...uncertainRequestDetails(body), submissionMayHaveSucceeded: true}});
     if ((REFERENCE_MUTATION_OPERATIONS as readonly string[]).includes(operation) && !isReferenceMutationResponse(operation, parsed, result))
